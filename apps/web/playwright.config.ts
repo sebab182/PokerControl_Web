@@ -1,6 +1,8 @@
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { defineConfig, devices } from '@playwright/test';
 
-const TEMP = '/home/seba/temp/pokercontrol';
+const TEMP = join(tmpdir(), 'pokercontrol');
 
 export default defineConfig({
   testDir: './e2e',
