@@ -22,7 +22,9 @@ jobs:
   deploy:
     needs: ci
     # Apagado hasta que existan los servicios y los secretos: ver docs/deploy.md.
+    # Tiene que ser variable del repo: el `if` se evalúa antes de cargar el environment.
     if: vars.DEPLOY_ENABLED == 'true'
+    environment: main
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
