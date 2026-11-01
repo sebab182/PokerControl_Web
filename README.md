@@ -2,7 +2,7 @@
 
 Migración web de [PokerControl](https://github.com/hfretes88/PokerControl): SPA React y API Fastify sobre PostgreSQL. La API está pensada para que la APK apunte a ella más adelante.
 
-Esta versión corre en local e incluye las vistas de la APK, sin informes ni deploy.
+Esta versión incluye las vistas de la APK, sin informes. El deploy se describe en [docs/deploy.md](docs/deploy.md).
 
 ## Estructura
 
@@ -61,7 +61,7 @@ El flujo no usa el `client_secret`: no lo copies al repo.
 | Ambiente | URL |
 |---|---|
 | Local | `http://localhost:3000/api/v1` |
-| Producción | A definir en la etapa de deploy |
+| Producción | La del servicio de Render (ver [docs/deploy.md](docs/deploy.md)) |
 
 ## Changelog de la API
 

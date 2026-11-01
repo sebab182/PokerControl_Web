@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildApp } from './app';
@@ -7,7 +7,9 @@ import { connect, runMigrations } from './db/client';
 import { generateOpenApi, openapiPath } from './openapi';
 import { planImport } from './backup';
 
-for (const line of readFileSync(resolve(__dirname, '../../../.env'), 'utf8').split(/\r?\n/)) {
+// En CI no hay .env: TEST_DATABASE_URL llega por el entorno.
+const envFile = resolve(__dirname, '../../../.env');
+for (const line of existsSync(envFile) ? readFileSync(envFile, 'utf8').split(/\r?\n/) : []) {
   const [k, ...v] = line.split('=');
   if (k && !process.env[k]) process.env[k] = v.join('=');
 }
@@ -773,5 +775,16 @@ describe('contrato', () => {
   });
   it('health no requiere autenticación', async () => {
     expect((await app.inject({ url: '/health' })).json()).toEqual({ ok: true });
+  });
+});
+
+describe('conexión', () => {
+  it('sobrevive a que la base corte una conexión inactiva', async () => {
+    const other = connect(url);
+    const { rows } = await other.pool.query('SELECT pg_backend_pid() AS pid');
+    await conn.pool.query('SELECT pg_terminate_backend($1)', [rows[0].pid]);
+    await new Promise(r => setTimeout(r, 200));
+    expect((await other.pool.query('SELECT 1 AS ok')).rows[0].ok).toBe(1);
+    await other.pool.end();
   });
 });

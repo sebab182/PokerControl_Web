@@ -1,6 +1,8 @@
 const BASE = `${import.meta.env.VITE_API_URL ?? 'http://localhost:3000'}/api/v1`;
 const TOKEN_KEY = 'pc_token';
 const SLOW_MS = 5000;
+// Holgado para un arranque en frío de Render, que puede tardar cerca de un minuto.
+const TIMEOUT_MS = 90000;
 
 export class ApiRequestError extends Error {
   constructor(
@@ -86,7 +88,7 @@ export async function api<T>(path: string, { method = 'GET', body, idempotent }:
   trackStart();
   let res: Response;
   try {
-    res = await fetch(`${BASE}${path}`, { method, headers, body: serialized });
+    res = await fetch(`${BASE}${path}`, { method, headers, body: serialized, signal: AbortSignal.timeout(TIMEOUT_MS) });
   } catch {
     throw new NetworkError();
   } finally {

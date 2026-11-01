@@ -26,6 +26,7 @@ export interface AppOptions {
   googleClientIds?: string[];
   logger?: boolean;
   rateLimitMax?: number;
+  trustProxy?: boolean;
 }
 
 declare module 'fastify' {
@@ -49,6 +50,7 @@ declare module '@fastify/jwt' {
 export async function buildApp(options: AppOptions) {
   const app = Fastify({
     logger: options.logger ?? false,
+    trustProxy: options.trustProxy ?? false,
     ajv: { customOptions: { removeAdditional: false, coerceTypes: 'array' } },
   });
 
