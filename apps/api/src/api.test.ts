@@ -7,7 +7,7 @@ import { connect, runMigrations } from './db/client';
 import { generateOpenApi, openapiPath } from './openapi';
 import { planImport } from './backup';
 
-for (const line of readFileSync(resolve(__dirname, '../../../.env'), 'utf8').split('\n')) {
+for (const line of readFileSync(resolve(__dirname, '../../../.env'), 'utf8').split(/\r?\n/)) {
   const [k, ...v] = line.split('=');
   if (k && !process.env[k]) process.env[k] = v.join('=');
 }

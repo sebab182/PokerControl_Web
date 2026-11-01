@@ -17,14 +17,18 @@ Esta versión corre en local e incluye las vistas de la APK, sin informes ni dep
 
 ## Puesta en marcha
 
-Requisitos: Node ≥22, pnpm (`corepack enable`) y PostgreSQL 16.
+Requisitos: Node ≥22, pnpm 12 (`npm install -g pnpm@12.16.1`) y PostgreSQL 16. Los comandos son para `cmd` en Windows.
 
-```sh
-cp .env.example .env     # completar credenciales, JWT_SECRET y Client ID de Google
+```bat
+copy .env.example .env   &:: completar credenciales, JWT_SECRET y Client ID de Google
 pnpm install
 pnpm db:migrate
-pnpm dev                 # web en :5173, API en :3000, Swagger en :3000/docs
+pnpm dev                 &:: web en :5173, API en :3000, Swagger en :3000/docs
 ```
+
+`pnpm e2e` necesita además una vez `pnpm --filter @pokercontrol/web exec playwright install chromium`.
+
+Si PostgreSQL corre en WSL, la distribución tiene que estar iniciada: la API llega a él por `localhost:5432`.
 
 Crear el rol y las bases (una sola vez):
 
