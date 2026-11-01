@@ -23,7 +23,7 @@ La variable `DEPLOY_ENABLED` mantiene apagado el deploy hasta terminar estos pas
 3. **Vercel:** en una carpeta vacía, `npx vercel link --yes --project pokercontrol`. Copiar `orgId` y `projectId` de `.vercel\project.json`. Crear un token en Account Settings → Tokens.
 4. **Dominio de la web:** con la URL de producción de Vercel (visible en el dashboard del proyecto), corregir `CORS_ORIGIN` en Render, sin `/` final.
 5. **Google:** agregar esa misma URL en "Orígenes autorizados de JavaScript" del client web.
-6. **GitHub**, en Settings → Secrets and variables → Actions:
+6. **GitHub**, en Settings → Environments → `main`:
 
    | Tipo | Nombre | Valor |
    |---|---|---|
@@ -35,7 +35,8 @@ La variable `DEPLOY_ENABLED` mantiene apagado el deploy hasta terminar estos pas
    | Secret | `VERCEL_PROJECT_ID` | `projectId` |
    | Variable | `VITE_API_URL` | URL de Render, sin `/` final |
    | Variable | `VITE_GOOGLE_CLIENT_ID` | Client ID web |
-   | Variable | `DEPLOY_ENABLED` | `true` |
+
+   Además, en Settings → Secrets and variables → Actions → Variables, crear la variable **de repositorio** `DEPLOY_ENABLED` = `true`.
 
 7. **Primer deploy:** Actions → Deploy → Run workflow, sobre `main`.
 
