@@ -1,0 +1,27 @@
+{
+  "name": "pokercontrol-web",
+  "private": true,
+  "packageManager": "pnpm@12.16.1",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter @pokercontrol/api --filter @pokercontrol/web dev",
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "eslint .",
+    "db:generate": "pnpm --filter @pokercontrol/api db:generate",
+    "db:migrate": "pnpm --filter @pokercontrol/api db:migrate",
+    "openapi": "pnpm --filter @pokercontrol/api openapi",
+    "e2e": "pnpm --filter @pokercontrol/web e2e",
+    "check": "pnpm typecheck && pnpm lint && pnpm test && pnpm --filter @pokercontrol/api exec tsx src/openapi.ts --check"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "eslint": "^9.0.0",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.0.0"
+  },
+  "type": "module"
+}

@@ -1,0 +1,33 @@
+{
+  "name": "@pokercontrol/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite < /dev/null",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "echo sin-tests-unitarios",
+    "e2e": "playwright test"
+  },
+  "dependencies": {
+    "@pokercontrol/contracts": "workspace:*",
+    "@pokercontrol/core": "workspace:*",
+    "@radix-ui/react-dialog": "^1.1.0",
+    "@react-oauth/google": "^0.12.1",
+    "@tanstack/react-query": "^5.60.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-router-dom": "^7.0.0"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.10.0",
+    "@playwright/test": "^1.50.0",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "typescript": "^5.8.3",
+    "vite": "^6.0.0"
+  }
+}
