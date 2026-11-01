@@ -1,0 +1,5487 @@
+openapi: 3.0.3
+info:
+  title: PokerControl API
+  version: 1.0.0
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas: {}
+paths:
+  /health:
+    get:
+      security: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: Ok
+                type: object
+                required:
+                  - ok
+                properties:
+                  ok:
+                    type: boolean
+  /api/v1/auth/google:
+    post:
+      tags:
+        - auth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              type: object
+              required:
+                - idToken
+              properties:
+                idToken:
+                  minLength: 1
+                  type: string
+      security: []
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: AuthResponse
+                type: object
+                required:
+                  - token
+                  - user
+                  - groups
+                properties:
+                  token:
+                    type: string
+                  user:
+                    additionalProperties: false
+                    title: User
+                    type: object
+                    required:
+                      - id
+                      - name
+                      - email
+                      - pictureUrl
+                    properties:
+                      id:
+                        type: string
+                      name:
+                        type: string
+                      email:
+                        type: string
+                      pictureUrl:
+                        type: string
+                        nullable: true
+                  groups:
+                    type: array
+                    items:
+                      additionalProperties: false
+                      title: GroupRef
+                      type: object
+                      required:
+                        - id
+                        - name
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /api/v1/auth/refresh:
+    post:
+      tags:
+        - auth
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: TokenResponse
+                type: object
+                required:
+                  - token
+                properties:
+                  token:
+                    type: string
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /api/v1/me:
+    get:
+      tags:
+        - auth
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: MeResponse
+                type: object
+                required:
+                  - user
+                  - groups
+                properties:
+                  user:
+                    additionalProperties: false
+                    title: User
+                    type: object
+                    required:
+                      - id
+                      - name
+                      - email
+                      - pictureUrl
+                    properties:
+                      id:
+                        type: string
+                      name:
+                        type: string
+                      email:
+                        type: string
+                      pictureUrl:
+                        type: string
+                        nullable: true
+                  groups:
+                    type: array
+                    items:
+                      additionalProperties: false
+                      title: GroupRef
+                      type: object
+                      required:
+                        - id
+                        - name
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /api/v1/groups:
+    get:
+      tags:
+        - groups
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  additionalProperties: false
+                  title: GroupRef
+                  type: object
+                  required:
+                    - id
+                    - name
+                  properties:
+                    id:
+                      type: string
+                    name:
+                      type: string
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+    post:
+      tags:
+        - groups
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  minLength: 1
+                  maxLength: 120
+                  type: string
+                timezone:
+                  minLength: 1
+                  maxLength: 64
+                  type: string
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: Group
+                type: object
+                required:
+                  - id
+                  - name
+                  - inviteCode
+                  - timezone
+                  - createdAt
+                  - members
+                properties:
+                  id:
+                    type: string
+                  name:
+                    type: string
+                  inviteCode:
+                    type: string
+                  timezone:
+                    type: string
+                  createdAt:
+                    type: string
+                  members:
+                    type: array
+                    items:
+                      additionalProperties: false
+                      title: GroupMember
+                      type: object
+                      required:
+                        - id
+                        - name
+                        - email
+                        - joinedAt
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+                        email:
+                          type: string
+                        joinedAt:
+                          type: string
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /api/v1/groups/join:
+    post:
+      tags:
+        - groups
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              type: object
+              required:
+                - inviteCode
+              properties:
+                inviteCode:
+                  minLength: 4
+                  maxLength: 16
+                  type: string
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: GroupRef
+                type: object
+                required:
+                  - id
+                  - name
+                properties:
+                  id:
+                    type: string
+                  name:
+                    type: string
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /api/v1/groups/{groupId}:
+    get:
+      tags:
+        - groups
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: Group
+                type: object
+                required:
+                  - id
+                  - name
+                  - inviteCode
+                  - timezone
+                  - createdAt
+                  - members
+                properties:
+                  id:
+                    type: string
+                  name:
+                    type: string
+                  inviteCode:
+                    type: string
+                  timezone:
+                    type: string
+                  createdAt:
+                    type: string
+                  members:
+                    type: array
+                    items:
+                      additionalProperties: false
+                      title: GroupMember
+                      type: object
+                      required:
+                        - id
+                        - name
+                        - email
+                        - joinedAt
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+                        email:
+                          type: string
+                        joinedAt:
+                          type: string
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+    patch:
+      tags:
+        - groups
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              type: object
+              properties:
+                name:
+                  minLength: 1
+                  maxLength: 120
+                  type: string
+                timezone:
+                  minLength: 1
+                  maxLength: 64
+                  type: string
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: Group
+                type: object
+                required:
+                  - id
+                  - name
+                  - inviteCode
+                  - timezone
+                  - createdAt
+                  - members
+                properties:
+                  id:
+                    type: string
+                  name:
+                    type: string
+                  inviteCode:
+                    type: string
+                  timezone:
+                    type: string
+                  createdAt:
+                    type: string
+                  members:
+                    type: array
+                    items:
+                      additionalProperties: false
+                      title: GroupMember
+                      type: object
+                      required:
+                        - id
+                        - name
+                        - email
+                        - joinedAt
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+                        email:
+                          type: string
+                        joinedAt:
+                          type: string
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /api/v1/groups/{groupId}/invite/rotate:
+    post:
+      tags:
+        - groups
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: Group
+                type: object
+                required:
+                  - id
+                  - name
+                  - inviteCode
+                  - timezone
+                  - createdAt
+                  - members
+                properties:
+                  id:
+                    type: string
+                  name:
+                    type: string
+                  inviteCode:
+                    type: string
+                  timezone:
+                    type: string
+                  createdAt:
+                    type: string
+                  members:
+                    type: array
+                    items:
+                      additionalProperties: false
+                      title: GroupMember
+                      type: object
+                      required:
+                        - id
+                        - name
+                        - email
+                        - joinedAt
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+                        email:
+                          type: string
+                        joinedAt:
+                          type: string
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /api/v1/groups/{groupId}/members/me:
+    delete:
+      tags:
+        - groups
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: Ok
+                type: object
+                required:
+                  - ok
+                properties:
+                  ok:
+                    type: boolean
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /api/v1/groups/{groupId}/players:
+    get:
+      tags: &a1
+        - players
+      parameters:
+        - schema:
+            type: boolean
+          in: query
+          name: includeArchived
+          required: false
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  additionalProperties: false
+                  title: Player
+                  type: object
+                  required:
+                    - id
+                    - name
+                    - createdAt
+                    - archivedAt
+                    - adjustments
+                  properties:
+                    id:
+                      type: string
+                    name:
+                      type: string
+                    createdAt:
+                      type: string
+                    archivedAt:
+                      type: string
+                      nullable: true
+                    adjustments:
+                      type: array
+                      items:
+                        additionalProperties: false
+                        title: PlayerAdjustment
+                        type: object
+                        required:
+                          - id
+                          - description
+                          - amount
+                          - date
+                        properties:
+                          id:
+                            type: string
+                          description:
+                            type: string
+                          amount:
+                            type: number
+                          date:
+                            type: string
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+    post:
+      tags: *a1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  minLength: 1
+                  maxLength: 120
+                  type: string
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: Player
+                type: object
+                required:
+                  - id
+                  - name
+                  - createdAt
+                  - archivedAt
+                  - adjustments
+                properties:
+                  id:
+                    type: string
+                  name:
+                    type: string
+                  createdAt:
+                    type: string
+                  archivedAt:
+                    type: string
+                    nullable: true
+                  adjustments:
+                    type: array
+                    items:
+                      additionalProperties: false
+                      title: PlayerAdjustment
+                      type: object
+                      required:
+                        - id
+                        - description
+                        - amount
+                        - date
+                      properties:
+                        id:
+                          type: string
+                        description:
+                          type: string
+                        amount:
+                          type: number
+                        date:
+                          type: string
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /api/v1/groups/{groupId}/players/{id}:
+    patch:
+      tags: *a1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  minLength: 1
+                  maxLength: 120
+                  type: string
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+        - schema:
+            type: string
+          in: path
+          name: id
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: Player
+                type: object
+                required:
+                  - id
+                  - name
+                  - createdAt
+                  - archivedAt
+                  - adjustments
+                properties:
+                  id:
+                    type: string
+                  name:
+                    type: string
+                  createdAt:
+                    type: string
+                  archivedAt:
+                    type: string
+                    nullable: true
+                  adjustments:
+                    type: array
+                    items:
+                      additionalProperties: false
+                      title: PlayerAdjustment
+                      type: object
+                      required:
+                        - id
+                        - description
+                        - amount
+                        - date
+                      properties:
+                        id:
+                          type: string
+                        description:
+                          type: string
+                        amount:
+                          type: number
+                        date:
+                          type: string
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+    delete:
+      tags: *a1
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+        - schema:
+            type: string
+          in: path
+          name: id
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: DeletePlayerResponse
+                type: object
+                required:
+                  - archived
+                properties:
+                  archived:
+                    type: boolean
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /api/v1/groups/{groupId}/players/{id}/unarchive:
+    post:
+      tags: *a1
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+        - schema:
+            type: string
+          in: path
+          name: id
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: Player
+                type: object
+                required:
+                  - id
+                  - name
+                  - createdAt
+                  - archivedAt
+                  - adjustments
+                properties:
+                  id:
+                    type: string
+                  name:
+                    type: string
+                  createdAt:
+                    type: string
+                  archivedAt:
+                    type: string
+                    nullable: true
+                  adjustments:
+                    type: array
+                    items:
+                      additionalProperties: false
+                      title: PlayerAdjustment
+                      type: object
+                      required:
+                        - id
+                        - description
+                        - amount
+                        - date
+                      properties:
+                        id:
+                          type: string
+                        description:
+                          type: string
+                        amount:
+                          type: number
+                        date:
+                          type: string
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /api/v1/groups/{groupId}/players/{id}/adjustments:
+    post:
+      tags: *a1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              type: object
+              required:
+                - description
+                - amount
+              properties:
+                description:
+                  maxLength: 200
+                  type: string
+                amount:
+                  minimum: -9999999999.99
+                  maximum: 9999999999.99
+                  type: number
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+        - schema:
+            type: string
+          in: path
+          name: id
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: Player
+                type: object
+                required:
+                  - id
+                  - name
+                  - createdAt
+                  - archivedAt
+                  - adjustments
+                properties:
+                  id:
+                    type: string
+                  name:
+                    type: string
+                  createdAt:
+                    type: string
+                  archivedAt:
+                    type: string
+                    nullable: true
+                  adjustments:
+                    type: array
+                    items:
+                      additionalProperties: false
+                      title: PlayerAdjustment
+                      type: object
+                      required:
+                        - id
+                        - description
+                        - amount
+                        - date
+                      properties:
+                        id:
+                          type: string
+                        description:
+                          type: string
+                        amount:
+                          type: number
+                        date:
+                          type: string
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /api/v1/groups/{groupId}/players/{id}/adjustments/{adjustmentId}:
+    patch:
+      tags: *a1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              type: object
+              required:
+                - description
+                - amount
+              properties:
+                description:
+                  maxLength: 200
+                  type: string
+                amount:
+                  minimum: -9999999999.99
+                  maximum: 9999999999.99
+                  type: number
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+        - schema:
+            type: string
+          in: path
+          name: id
+          required: true
+        - schema:
+            type: string
+          in: path
+          name: adjustmentId
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: Player
+                type: object
+                required:
+                  - id
+                  - name
+                  - createdAt
+                  - archivedAt
+                  - adjustments
+                properties:
+                  id:
+                    type: string
+                  name:
+                    type: string
+                  createdAt:
+                    type: string
+                  archivedAt:
+                    type: string
+                    nullable: true
+                  adjustments:
+                    type: array
+                    items:
+                      additionalProperties: false
+                      title: PlayerAdjustment
+                      type: object
+                      required:
+                        - id
+                        - description
+                        - amount
+                        - date
+                      properties:
+                        id:
+                          type: string
+                        description:
+                          type: string
+                        amount:
+                          type: number
+                        date:
+                          type: string
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+    delete:
+      tags: *a1
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+        - schema:
+            type: string
+          in: path
+          name: id
+          required: true
+        - schema:
+            type: string
+          in: path
+          name: adjustmentId
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: Deleted
+                type: object
+                required:
+                  - deleted
+                properties:
+                  deleted:
+                    type: boolean
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /api/v1/groups/{groupId}/players/{id}/stats:
+    get:
+      tags: *a1
+      parameters:
+        - schema:
+            type: string
+          in: query
+          name: seasonId
+          required: false
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+        - schema:
+            type: string
+          in: path
+          name: id
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: PlayerStats
+                type: object
+                required:
+                  - totalGames
+                  - wins
+                  - losses
+                  - ties
+                  - winRate
+                  - totalBalance
+                  - sessionBalance
+                  - adjustmentsTotal
+                  - manualDebtsNet
+                  - adjustments
+                  - bestGame
+                  - worstGame
+                  - history
+                properties:
+                  totalGames:
+                    type: number
+                  wins:
+                    type: number
+                  losses:
+                    type: number
+                  ties:
+                    type: number
+                  winRate:
+                    type: number
+                  totalBalance:
+                    type: number
+                  sessionBalance:
+                    type: number
+                  adjustmentsTotal:
+                    type: number
+                  manualDebtsNet:
+                    type: number
+                  adjustments:
+                    type: array
+                    items:
+                      additionalProperties: false
+                      title: PlayerAdjustment
+                      type: object
+                      required:
+                        - id
+                        - description
+                        - amount
+                        - date
+                      properties:
+                        id:
+                          type: string
+                        description:
+                          type: string
+                        amount:
+                          type: number
+                        date:
+                          type: string
+                  bestGame:
+                    additionalProperties: false
+                    title: PlayerHistoryEntry
+                    type: object
+                    required:
+                      - sessionId
+                      - sessionName
+                      - date
+                      - totalBought
+                      - finalAmount
+                      - balance
+                    properties:
+                      sessionId:
+                        type: string
+                      sessionName:
+                        type: string
+                      date:
+                        type: string
+                      totalBought:
+                        type: number
+                      finalAmount:
+                        type: number
+                      balance:
+                        type: number
+                    nullable: true
+                  worstGame:
+                    additionalProperties: false
+                    title: PlayerHistoryEntry
+                    type: object
+                    required:
+                      - sessionId
+                      - sessionName
+                      - date
+                      - totalBought
+                      - finalAmount
+                      - balance
+                    properties:
+                      sessionId:
+                        type: string
+                      sessionName:
+                        type: string
+                      date:
+                        type: string
+                      totalBought:
+                        type: number
+                      finalAmount:
+                        type: number
+                      balance:
+                        type: number
+                    nullable: true
+                  history:
+                    type: array
+                    items:
+                      additionalProperties: false
+                      title: PlayerHistoryEntry
+                      type: object
+                      required:
+                        - sessionId
+                        - sessionName
+                        - date
+                        - totalBought
+                        - finalAmount
+                        - balance
+                      properties:
+                        sessionId:
+                          type: string
+                        sessionName:
+                          type: string
+                        date:
+                          type: string
+                        totalBought:
+                          type: number
+                        finalAmount:
+                          type: number
+                        balance:
+                          type: number
+                nullable: true
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /api/v1/groups/{groupId}/players/{id}/report:
+    get:
+      tags: *a1
+      parameters:
+        - schema:
+            type: string
+          in: query
+          name: seasonId
+          required: false
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+        - schema:
+            type: string
+          in: path
+          name: id
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: PlayerReport
+                type: object
+                required:
+                  - playerId
+                  - games
+                  - avgBuysPerGame
+                  - rebuyRate
+                  - roi
+                  - lowestCumulative
+                  - recoveries
+                  - nightComebacks
+                  - longestWinStreak
+                  - longestLossStreak
+                  - currentStreak
+                properties:
+                  playerId:
+                    type: string
+                  games:
+                    type: number
+                  avgBuysPerGame:
+                    type: number
+                  rebuyRate:
+                    type: number
+                  roi:
+                    type: number
+                  lowestCumulative:
+                    type: number
+                  recoveries:
+                    type: array
+                    items:
+                      additionalProperties: false
+                      type: object
+                      required:
+                        - lowestBalance
+                        - lowestAt
+                        - recoveredAt
+                        - gamesToRecover
+                      properties:
+                        lowestBalance:
+                          type: number
+                        lowestAt:
+                          additionalProperties: false
+                          title: SessionRef
+                          type: object
+                          required:
+                            - sessionId
+                            - sessionName
+                            - date
+                          properties:
+                            sessionId:
+                              type: string
+                            sessionName:
+                              type: string
+                            date:
+                              type: string
+                        recoveredAt:
+                          additionalProperties: false
+                          title: SessionRef
+                          type: object
+                          required:
+                            - sessionId
+                            - sessionName
+                            - date
+                          properties:
+                            sessionId:
+                              type: string
+                            sessionName:
+                              type: string
+                            date:
+                              type: string
+                        gamesToRecover:
+                          type: number
+                  nightComebacks:
+                    type: number
+                  longestWinStreak:
+                    type: number
+                  longestLossStreak:
+                    type: number
+                  currentStreak:
+                    additionalProperties: false
+                    type: object
+                    required:
+                      - type
+                      - count
+                    properties:
+                      type:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - win
+                          - type: string
+                            enum:
+                              - loss
+                          - type: string
+                            enum:
+                              - none
+                      count:
+                        type: number
+                nullable: true
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /api/v1/groups/{groupId}/players/{id}/debts:
+    get:
+      tags: *a1
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+        - schema:
+            type: string
+          in: path
+          name: id
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: PlayerDebts
+                type: object
+                required:
+                  - owes
+                  - owed
+                properties:
+                  owes:
+                    type: array
+                    items:
+                      additionalProperties: false
+                      title: Debt
+                      type: object
+                      required:
+                        - id
+                        - fromPlayer
+                        - toPlayer
+                        - sessionId
+                        - sourceType
+                        - label
+                        - originalAmount
+                        - pendingAmount
+                        - status
+                        - payments
+                        - createdAt
+                        - isConsolidated
+                        - manualAmount
+                      properties:
+                        id:
+                          type: string
+                        fromPlayer:
+                          additionalProperties: false
+                          title: PlayerRef
+                          type: object
+                          required:
+                            - id
+                            - name
+                          properties:
+                            id:
+                              type: string
+                            name:
+                              type: string
+                        toPlayer:
+                          additionalProperties: false
+                          title: PlayerRef
+                          type: object
+                          required:
+                            - id
+                            - name
+                          properties:
+                            id:
+                              type: string
+                            name:
+                              type: string
+                        sessionId:
+                          type: string
+                          nullable: true
+                        sourceType:
+                          anyOf:
+                            - type: string
+                              enum:
+                                - session
+                            - type: string
+                              enum:
+                                - manual
+                            - type: string
+                              enum:
+                                - consolidated
+                        label:
+                          type: string
+                        originalAmount:
+                          type: number
+                        pendingAmount:
+                          type: number
+                        status:
+                          anyOf:
+                            - type: string
+                              enum:
+                                - pending
+                            - type: string
+                              enum:
+                                - partial
+                            - type: string
+                              enum:
+                                - paid
+                        payments:
+                          type: array
+                          items:
+                            additionalProperties: false
+                            title: DebtPayment
+                            type: object
+                            required:
+                              - amount
+                              - date
+                              - note
+                            properties:
+                              amount:
+                                type: number
+                              date:
+                                type: string
+                              note:
+                                type: string
+                        createdAt:
+                          type: string
+                        isConsolidated:
+                          type: boolean
+                        manualAmount:
+                          type: number
+                  owed:
+                    type: array
+                    items:
+                      additionalProperties: false
+                      title: Debt
+                      type: object
+                      required:
+                        - id
+                        - fromPlayer
+                        - toPlayer
+                        - sessionId
+                        - sourceType
+                        - label
+                        - originalAmount
+                        - pendingAmount
+                        - status
+                        - payments
+                        - createdAt
+                        - isConsolidated
+                        - manualAmount
+                      properties:
+                        id:
+                          type: string
+                        fromPlayer:
+                          additionalProperties: false
+                          title: PlayerRef
+                          type: object
+                          required:
+                            - id
+                            - name
+                          properties:
+                            id:
+                              type: string
+                            name:
+                              type: string
+                        toPlayer:
+                          additionalProperties: false
+                          title: PlayerRef
+                          type: object
+                          required:
+                            - id
+                            - name
+                          properties:
+                            id:
+                              type: string
+                            name:
+                              type: string
+                        sessionId:
+                          type: string
+                          nullable: true
+                        sourceType:
+                          anyOf:
+                            - type: string
+                              enum:
+                                - session
+                            - type: string
+                              enum:
+                                - manual
+                            - type: string
+                              enum:
+                                - consolidated
+                        label:
+                          type: string
+                        originalAmount:
+                          type: number
+                        pendingAmount:
+                          type: number
+                        status:
+                          anyOf:
+                            - type: string
+                              enum:
+                                - pending
+                            - type: string
+                              enum:
+                                - partial
+                            - type: string
+                              enum:
+                                - paid
+                        payments:
+                          type: array
+                          items:
+                            additionalProperties: false
+                            title: DebtPayment
+                            type: object
+                            required:
+                              - amount
+                              - date
+                              - note
+                            properties:
+                              amount:
+                                type: number
+                              date:
+                                type: string
+                              note:
+                                type: string
+                        createdAt:
+                          type: string
+                        isConsolidated:
+                          type: boolean
+                        manualAmount:
+                          type: number
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /api/v1/groups/{groupId}/ranking:
+    get:
+      tags:
+        - ranking
+      parameters:
+        - schema:
+            type: string
+          in: query
+          name: seasonId
+          required: false
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  additionalProperties: false
+                  title: RankingEntry
+                  type: object
+                  required:
+                    - playerId
+                    - name
+                    - archived
+                    - totalGames
+                    - wins
+                    - losses
+                    - ties
+                    - winRate
+                    - totalBalance
+                    - sessionBalance
+                    - adjustmentsTotal
+                    - manualDebtsNet
+                    - adjustments
+                    - bestGame
+                    - worstGame
+                    - history
+                  properties:
+                    playerId:
+                      type: string
+                    name:
+                      type: string
+                    archived:
+                      type: boolean
+                    totalGames:
+                      type: number
+                    wins:
+                      type: number
+                    losses:
+                      type: number
+                    ties:
+                      type: number
+                    winRate:
+                      type: number
+                    totalBalance:
+                      type: number
+                    sessionBalance:
+                      type: number
+                    adjustmentsTotal:
+                      type: number
+                    manualDebtsNet:
+                      type: number
+                    adjustments:
+                      type: array
+                      items:
+                        additionalProperties: false
+                        title: PlayerAdjustment
+                        type: object
+                        required:
+                          - id
+                          - description
+                          - amount
+                          - date
+                        properties:
+                          id:
+                            type: string
+                          description:
+                            type: string
+                          amount:
+                            type: number
+                          date:
+                            type: string
+                    bestGame:
+                      additionalProperties: false
+                      title: PlayerHistoryEntry
+                      type: object
+                      required:
+                        - sessionId
+                        - sessionName
+                        - date
+                        - totalBought
+                        - finalAmount
+                        - balance
+                      properties:
+                        sessionId:
+                          type: string
+                        sessionName:
+                          type: string
+                        date:
+                          type: string
+                        totalBought:
+                          type: number
+                        finalAmount:
+                          type: number
+                        balance:
+                          type: number
+                      nullable: true
+                    worstGame:
+                      additionalProperties: false
+                      title: PlayerHistoryEntry
+                      type: object
+                      required:
+                        - sessionId
+                        - sessionName
+                        - date
+                        - totalBought
+                        - finalAmount
+                        - balance
+                      properties:
+                        sessionId:
+                          type: string
+                        sessionName:
+                          type: string
+                        date:
+                          type: string
+                        totalBought:
+                          type: number
+                        finalAmount:
+                          type: number
+                        balance:
+                          type: number
+                      nullable: true
+                    history:
+                      type: array
+                      items:
+                        additionalProperties: false
+                        title: PlayerHistoryEntry
+                        type: object
+                        required:
+                          - sessionId
+                          - sessionName
+                          - date
+                          - totalBought
+                          - finalAmount
+                          - balance
+                        properties:
+                          sessionId:
+                            type: string
+                          sessionName:
+                            type: string
+                          date:
+                            type: string
+                          totalBought:
+                            type: number
+                          finalAmount:
+                            type: number
+                          balance:
+                            type: number
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /api/v1/groups/{groupId}/seasons:
+    get:
+      tags: &a2
+        - seasons
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  additionalProperties: false
+                  title: Season
+                  type: object
+                  required:
+                    - id
+                    - name
+                    - createdAt
+                    - closedAt
+                    - status
+                    - sessionCount
+                    - openSessionCount
+                    - leader
+                  properties:
+                    id:
+                      type: string
+                    name:
+                      type: string
+                    createdAt:
+                      type: string
+                    closedAt:
+                      type: string
+                      nullable: true
+                    status:
+                      anyOf:
+                        - type: string
+                          enum:
+                            - active
+                        - type: string
+                          enum:
+                            - closed
+                    sessionCount:
+                      type: number
+                    openSessionCount:
+                      type: number
+                    leader:
+                      additionalProperties: false
+                      type: object
+                      required:
+                        - playerId
+                        - name
+                        - sessionBalance
+                      properties:
+                        playerId:
+                          type: string
+                        name:
+                          type: string
+                        sessionBalance:
+                          type: number
+                      nullable: true
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+    post:
+      tags: *a2
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              type: object
+              properties:
+                name:
+                  maxLength: 120
+                  type: string
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: Season
+                type: object
+                required:
+                  - id
+                  - name
+                  - createdAt
+                  - closedAt
+                  - status
+                  - sessionCount
+                  - openSessionCount
+                  - leader
+                properties:
+                  id:
+                    type: string
+                  name:
+                    type: string
+                  createdAt:
+                    type: string
+                  closedAt:
+                    type: string
+                    nullable: true
+                  status:
+                    anyOf:
+                      - type: string
+                        enum:
+                          - active
+                      - type: string
+                        enum:
+                          - closed
+                  sessionCount:
+                    type: number
+                  openSessionCount:
+                    type: number
+                  leader:
+                    additionalProperties: false
+                    type: object
+                    required:
+                      - playerId
+                      - name
+                      - sessionBalance
+                    properties:
+                      playerId:
+                        type: string
+                      name:
+                        type: string
+                      sessionBalance:
+                        type: number
+                    nullable: true
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /api/v1/groups/{groupId}/seasons/{id}:
+    patch:
+      tags: *a2
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  minLength: 1
+                  maxLength: 120
+                  type: string
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+        - schema:
+            type: string
+          in: path
+          name: id
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: Season
+                type: object
+                required:
+                  - id
+                  - name
+                  - createdAt
+                  - closedAt
+                  - status
+                  - sessionCount
+                  - openSessionCount
+                  - leader
+                properties:
+                  id:
+                    type: string
+                  name:
+                    type: string
+                  createdAt:
+                    type: string
+                  closedAt:
+                    type: string
+                    nullable: true
+                  status:
+                    anyOf:
+                      - type: string
+                        enum:
+                          - active
+                      - type: string
+                        enum:
+                          - closed
+                  sessionCount:
+                    type: number
+                  openSessionCount:
+                    type: number
+                  leader:
+                    additionalProperties: false
+                    type: object
+                    required:
+                      - playerId
+                      - name
+                      - sessionBalance
+                    properties:
+                      playerId:
+                        type: string
+                      name:
+                        type: string
+                      sessionBalance:
+                        type: number
+                    nullable: true
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+    delete:
+      tags: *a2
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+        - schema:
+            type: string
+          in: path
+          name: id
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: Deleted
+                type: object
+                required:
+                  - deleted
+                properties:
+                  deleted:
+                    type: boolean
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /api/v1/groups/{groupId}/seasons/{id}/close:
+    post:
+      tags: *a2
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+        - schema:
+            type: string
+          in: path
+          name: id
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: Season
+                type: object
+                required:
+                  - id
+                  - name
+                  - createdAt
+                  - closedAt
+                  - status
+                  - sessionCount
+                  - openSessionCount
+                  - leader
+                properties:
+                  id:
+                    type: string
+                  name:
+                    type: string
+                  createdAt:
+                    type: string
+                  closedAt:
+                    type: string
+                    nullable: true
+                  status:
+                    anyOf:
+                      - type: string
+                        enum:
+                          - active
+                      - type: string
+                        enum:
+                          - closed
+                  sessionCount:
+                    type: number
+                  openSessionCount:
+                    type: number
+                  leader:
+                    additionalProperties: false
+                    type: object
+                    required:
+                      - playerId
+                      - name
+                      - sessionBalance
+                    properties:
+                      playerId:
+                        type: string
+                      name:
+                        type: string
+                      sessionBalance:
+                        type: number
+                    nullable: true
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /api/v1/groups/{groupId}/seasons/{id}/reopen:
+    post:
+      tags: *a2
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+        - schema:
+            type: string
+          in: path
+          name: id
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: Season
+                type: object
+                required:
+                  - id
+                  - name
+                  - createdAt
+                  - closedAt
+                  - status
+                  - sessionCount
+                  - openSessionCount
+                  - leader
+                properties:
+                  id:
+                    type: string
+                  name:
+                    type: string
+                  createdAt:
+                    type: string
+                  closedAt:
+                    type: string
+                    nullable: true
+                  status:
+                    anyOf:
+                      - type: string
+                        enum:
+                          - active
+                      - type: string
+                        enum:
+                          - closed
+                  sessionCount:
+                    type: number
+                  openSessionCount:
+                    type: number
+                  leader:
+                    additionalProperties: false
+                    type: object
+                    required:
+                      - playerId
+                      - name
+                      - sessionBalance
+                    properties:
+                      playerId:
+                        type: string
+                      name:
+                        type: string
+                      sessionBalance:
+                        type: number
+                    nullable: true
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /api/v1/groups/{groupId}/seasons/{seasonId}/sessions:
+    get:
+      tags: &a3
+        - sessions
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+        - schema:
+            type: string
+          in: path
+          name: seasonId
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  additionalProperties: false
+                  title: SessionSummary
+                  type: object
+                  required:
+                    - id
+                    - name
+                    - createdAt
+                    - status
+                    - pot
+                    - playerCount
+                  properties:
+                    id:
+                      type: string
+                    name:
+                      type: string
+                    createdAt:
+                      type: string
+                    status:
+                      anyOf:
+                        - type: string
+                          enum:
+                            - active
+                        - type: string
+                          enum:
+                            - closed
+                    pot:
+                      type: number
+                    playerCount:
+                      type: number
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+    post:
+      tags: *a3
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              type: object
+              required:
+                - playerIds
+              properties:
+                name:
+                  maxLength: 120
+                  type: string
+                playerIds:
+                  type: array
+                  items:
+                    type: string
+                initialBuyIn:
+                  exclusiveMinimum: 0
+                  maximum: 9999999999.99
+                  type: number
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+        - schema:
+            type: string
+          in: path
+          name: seasonId
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: Session
+                type: object
+                required:
+                  - id
+                  - name
+                  - createdAt
+                  - closedAt
+                  - status
+                  - seasonId
+                  - participants
+                  - calc
+                  - missingResults
+                properties:
+                  id:
+                    type: string
+                  name:
+                    type: string
+                  createdAt:
+                    type: string
+                  closedAt:
+                    type: string
+                    nullable: true
+                  status:
+                    anyOf:
+                      - type: string
+                        enum:
+                          - active
+                      - type: string
+                        enum:
+                          - closed
+                  seasonId:
+                    type: string
+                  participants:
+                    type: array
+                    items:
+                      additionalProperties: false
+                      title: Participant
+                      type: object
+                      required:
+                        - playerId
+                        - name
+                        - buys
+                        - finalAmount
+                      properties:
+                        playerId:
+                          type: string
+                        name:
+                          type: string
+                        buys:
+                          type: array
+                          items:
+                            additionalProperties: false
+                            title: Buy
+                            type: object
+                            required:
+                              - id
+                              - amount
+                              - timestamp
+                            properties:
+                              id:
+                                type: string
+                              amount:
+                                type: number
+                              timestamp:
+                                type: string
+                        finalAmount:
+                          type: number
+                          nullable: true
+                  calc:
+                    additionalProperties: false
+                    title: SessionCalc
+                    type: object
+                    required:
+                      - totalPot
+                      - totalOut
+                      - diff
+                      - status
+                    properties:
+                      totalPot:
+                        type: number
+                      totalOut:
+                        type: number
+                      diff:
+                        type: number
+                      status:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - ok
+                          - type: string
+                            enum:
+                              - faltan
+                          - type: string
+                            enum:
+                              - sobran
+                  missingResults:
+                    type: array
+                    items:
+                      type: string
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /api/v1/groups/{groupId}/sessions/{id}:
+    get:
+      tags: *a3
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+        - schema:
+            type: string
+          in: path
+          name: id
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: Session
+                type: object
+                required:
+                  - id
+                  - name
+                  - createdAt
+                  - closedAt
+                  - status
+                  - seasonId
+                  - participants
+                  - calc
+                  - missingResults
+                properties:
+                  id:
+                    type: string
+                  name:
+                    type: string
+                  createdAt:
+                    type: string
+                  closedAt:
+                    type: string
+                    nullable: true
+                  status:
+                    anyOf:
+                      - type: string
+                        enum:
+                          - active
+                      - type: string
+                        enum:
+                          - closed
+                  seasonId:
+                    type: string
+                  participants:
+                    type: array
+                    items:
+                      additionalProperties: false
+                      title: Participant
+                      type: object
+                      required:
+                        - playerId
+                        - name
+                        - buys
+                        - finalAmount
+                      properties:
+                        playerId:
+                          type: string
+                        name:
+                          type: string
+                        buys:
+                          type: array
+                          items:
+                            additionalProperties: false
+                            title: Buy
+                            type: object
+                            required:
+                              - id
+                              - amount
+                              - timestamp
+                            properties:
+                              id:
+                                type: string
+                              amount:
+                                type: number
+                              timestamp:
+                                type: string
+                        finalAmount:
+                          type: number
+                          nullable: true
+                  calc:
+                    additionalProperties: false
+                    title: SessionCalc
+                    type: object
+                    required:
+                      - totalPot
+                      - totalOut
+                      - diff
+                      - status
+                    properties:
+                      totalPot:
+                        type: number
+                      totalOut:
+                        type: number
+                      diff:
+                        type: number
+                      status:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - ok
+                          - type: string
+                            enum:
+                              - faltan
+                          - type: string
+                            enum:
+                              - sobran
+                  missingResults:
+                    type: array
+                    items:
+                      type: string
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+    delete:
+      tags: *a3
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+        - schema:
+            type: string
+          in: path
+          name: id
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: Deleted
+                type: object
+                required:
+                  - deleted
+                properties:
+                  deleted:
+                    type: boolean
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /api/v1/groups/{groupId}/sessions/{id}/participants:
+    post:
+      tags: *a3
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              type: object
+              required:
+                - playerId
+              properties:
+                playerId:
+                  type: string
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+        - schema:
+            type: string
+          in: path
+          name: id
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: Session
+                type: object
+                required:
+                  - id
+                  - name
+                  - createdAt
+                  - closedAt
+                  - status
+                  - seasonId
+                  - participants
+                  - calc
+                  - missingResults
+                properties:
+                  id:
+                    type: string
+                  name:
+                    type: string
+                  createdAt:
+                    type: string
+                  closedAt:
+                    type: string
+                    nullable: true
+                  status:
+                    anyOf:
+                      - type: string
+                        enum:
+                          - active
+                      - type: string
+                        enum:
+                          - closed
+                  seasonId:
+                    type: string
+                  participants:
+                    type: array
+                    items:
+                      additionalProperties: false
+                      title: Participant
+                      type: object
+                      required:
+                        - playerId
+                        - name
+                        - buys
+                        - finalAmount
+                      properties:
+                        playerId:
+                          type: string
+                        name:
+                          type: string
+                        buys:
+                          type: array
+                          items:
+                            additionalProperties: false
+                            title: Buy
+                            type: object
+                            required:
+                              - id
+                              - amount
+                              - timestamp
+                            properties:
+                              id:
+                                type: string
+                              amount:
+                                type: number
+                              timestamp:
+                                type: string
+                        finalAmount:
+                          type: number
+                          nullable: true
+                  calc:
+                    additionalProperties: false
+                    title: SessionCalc
+                    type: object
+                    required:
+                      - totalPot
+                      - totalOut
+                      - diff
+                      - status
+                    properties:
+                      totalPot:
+                        type: number
+                      totalOut:
+                        type: number
+                      diff:
+                        type: number
+                      status:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - ok
+                          - type: string
+                            enum:
+                              - faltan
+                          - type: string
+                            enum:
+                              - sobran
+                  missingResults:
+                    type: array
+                    items:
+                      type: string
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /api/v1/groups/{groupId}/sessions/{id}/participants/{playerId}:
+    delete:
+      tags: *a3
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+        - schema:
+            type: string
+          in: path
+          name: id
+          required: true
+        - schema:
+            type: string
+          in: path
+          name: playerId
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: Session
+                type: object
+                required:
+                  - id
+                  - name
+                  - createdAt
+                  - closedAt
+                  - status
+                  - seasonId
+                  - participants
+                  - calc
+                  - missingResults
+                properties:
+                  id:
+                    type: string
+                  name:
+                    type: string
+                  createdAt:
+                    type: string
+                  closedAt:
+                    type: string
+                    nullable: true
+                  status:
+                    anyOf:
+                      - type: string
+                        enum:
+                          - active
+                      - type: string
+                        enum:
+                          - closed
+                  seasonId:
+                    type: string
+                  participants:
+                    type: array
+                    items:
+                      additionalProperties: false
+                      title: Participant
+                      type: object
+                      required:
+                        - playerId
+                        - name
+                        - buys
+                        - finalAmount
+                      properties:
+                        playerId:
+                          type: string
+                        name:
+                          type: string
+                        buys:
+                          type: array
+                          items:
+                            additionalProperties: false
+                            title: Buy
+                            type: object
+                            required:
+                              - id
+                              - amount
+                              - timestamp
+                            properties:
+                              id:
+                                type: string
+                              amount:
+                                type: number
+                              timestamp:
+                                type: string
+                        finalAmount:
+                          type: number
+                          nullable: true
+                  calc:
+                    additionalProperties: false
+                    title: SessionCalc
+                    type: object
+                    required:
+                      - totalPot
+                      - totalOut
+                      - diff
+                      - status
+                    properties:
+                      totalPot:
+                        type: number
+                      totalOut:
+                        type: number
+                      diff:
+                        type: number
+                      status:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - ok
+                          - type: string
+                            enum:
+                              - faltan
+                          - type: string
+                            enum:
+                              - sobran
+                  missingResults:
+                    type: array
+                    items:
+                      type: string
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+    patch:
+      tags: *a3
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              type: object
+              required:
+                - finalAmount
+              properties:
+                finalAmount:
+                  minimum: 0
+                  maximum: 9999999999.99
+                  type: number
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+        - schema:
+            type: string
+          in: path
+          name: id
+          required: true
+        - schema:
+            type: string
+          in: path
+          name: playerId
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: Session
+                type: object
+                required:
+                  - id
+                  - name
+                  - createdAt
+                  - closedAt
+                  - status
+                  - seasonId
+                  - participants
+                  - calc
+                  - missingResults
+                properties:
+                  id:
+                    type: string
+                  name:
+                    type: string
+                  createdAt:
+                    type: string
+                  closedAt:
+                    type: string
+                    nullable: true
+                  status:
+                    anyOf:
+                      - type: string
+                        enum:
+                          - active
+                      - type: string
+                        enum:
+                          - closed
+                  seasonId:
+                    type: string
+                  participants:
+                    type: array
+                    items:
+                      additionalProperties: false
+                      title: Participant
+                      type: object
+                      required:
+                        - playerId
+                        - name
+                        - buys
+                        - finalAmount
+                      properties:
+                        playerId:
+                          type: string
+                        name:
+                          type: string
+                        buys:
+                          type: array
+                          items:
+                            additionalProperties: false
+                            title: Buy
+                            type: object
+                            required:
+                              - id
+                              - amount
+                              - timestamp
+                            properties:
+                              id:
+                                type: string
+                              amount:
+                                type: number
+                              timestamp:
+                                type: string
+                        finalAmount:
+                          type: number
+                          nullable: true
+                  calc:
+                    additionalProperties: false
+                    title: SessionCalc
+                    type: object
+                    required:
+                      - totalPot
+                      - totalOut
+                      - diff
+                      - status
+                    properties:
+                      totalPot:
+                        type: number
+                      totalOut:
+                        type: number
+                      diff:
+                        type: number
+                      status:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - ok
+                          - type: string
+                            enum:
+                              - faltan
+                          - type: string
+                            enum:
+                              - sobran
+                  missingResults:
+                    type: array
+                    items:
+                      type: string
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /api/v1/groups/{groupId}/sessions/{id}/buys:
+    post:
+      tags: *a3
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              type: object
+              required:
+                - playerId
+                - amount
+              properties:
+                playerId:
+                  type: string
+                amount:
+                  exclusiveMinimum: 0
+                  maximum: 9999999999.99
+                  type: number
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+        - schema:
+            type: string
+          in: path
+          name: id
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: Session
+                type: object
+                required:
+                  - id
+                  - name
+                  - createdAt
+                  - closedAt
+                  - status
+                  - seasonId
+                  - participants
+                  - calc
+                  - missingResults
+                properties:
+                  id:
+                    type: string
+                  name:
+                    type: string
+                  createdAt:
+                    type: string
+                  closedAt:
+                    type: string
+                    nullable: true
+                  status:
+                    anyOf:
+                      - type: string
+                        enum:
+                          - active
+                      - type: string
+                        enum:
+                          - closed
+                  seasonId:
+                    type: string
+                  participants:
+                    type: array
+                    items:
+                      additionalProperties: false
+                      title: Participant
+                      type: object
+                      required:
+                        - playerId
+                        - name
+                        - buys
+                        - finalAmount
+                      properties:
+                        playerId:
+                          type: string
+                        name:
+                          type: string
+                        buys:
+                          type: array
+                          items:
+                            additionalProperties: false
+                            title: Buy
+                            type: object
+                            required:
+                              - id
+                              - amount
+                              - timestamp
+                            properties:
+                              id:
+                                type: string
+                              amount:
+                                type: number
+                              timestamp:
+                                type: string
+                        finalAmount:
+                          type: number
+                          nullable: true
+                  calc:
+                    additionalProperties: false
+                    title: SessionCalc
+                    type: object
+                    required:
+                      - totalPot
+                      - totalOut
+                      - diff
+                      - status
+                    properties:
+                      totalPot:
+                        type: number
+                      totalOut:
+                        type: number
+                      diff:
+                        type: number
+                      status:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - ok
+                          - type: string
+                            enum:
+                              - faltan
+                          - type: string
+                            enum:
+                              - sobran
+                  missingResults:
+                    type: array
+                    items:
+                      type: string
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /api/v1/groups/{groupId}/sessions/{id}/buys/{buyId}:
+    delete:
+      tags: *a3
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+        - schema:
+            type: string
+          in: path
+          name: id
+          required: true
+        - schema:
+            type: string
+          in: path
+          name: buyId
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: Session
+                type: object
+                required:
+                  - id
+                  - name
+                  - createdAt
+                  - closedAt
+                  - status
+                  - seasonId
+                  - participants
+                  - calc
+                  - missingResults
+                properties:
+                  id:
+                    type: string
+                  name:
+                    type: string
+                  createdAt:
+                    type: string
+                  closedAt:
+                    type: string
+                    nullable: true
+                  status:
+                    anyOf:
+                      - type: string
+                        enum:
+                          - active
+                      - type: string
+                        enum:
+                          - closed
+                  seasonId:
+                    type: string
+                  participants:
+                    type: array
+                    items:
+                      additionalProperties: false
+                      title: Participant
+                      type: object
+                      required:
+                        - playerId
+                        - name
+                        - buys
+                        - finalAmount
+                      properties:
+                        playerId:
+                          type: string
+                        name:
+                          type: string
+                        buys:
+                          type: array
+                          items:
+                            additionalProperties: false
+                            title: Buy
+                            type: object
+                            required:
+                              - id
+                              - amount
+                              - timestamp
+                            properties:
+                              id:
+                                type: string
+                              amount:
+                                type: number
+                              timestamp:
+                                type: string
+                        finalAmount:
+                          type: number
+                          nullable: true
+                  calc:
+                    additionalProperties: false
+                    title: SessionCalc
+                    type: object
+                    required:
+                      - totalPot
+                      - totalOut
+                      - diff
+                      - status
+                    properties:
+                      totalPot:
+                        type: number
+                      totalOut:
+                        type: number
+                      diff:
+                        type: number
+                      status:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - ok
+                          - type: string
+                            enum:
+                              - faltan
+                          - type: string
+                            enum:
+                              - sobran
+                  missingResults:
+                    type: array
+                    items:
+                      type: string
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /api/v1/groups/{groupId}/sessions/{id}/close:
+    post:
+      tags: *a3
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              type: object
+              properties:
+                confirmedDiff:
+                  type: number
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+        - schema:
+            type: string
+          in: path
+          name: id
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: CloseSessionResponse
+                type: object
+                required:
+                  - session
+                  - debts
+                properties:
+                  session:
+                    additionalProperties: false
+                    title: Session
+                    type: object
+                    required:
+                      - id
+                      - name
+                      - createdAt
+                      - closedAt
+                      - status
+                      - seasonId
+                      - participants
+                      - calc
+                      - missingResults
+                    properties:
+                      id:
+                        type: string
+                      name:
+                        type: string
+                      createdAt:
+                        type: string
+                      closedAt:
+                        type: string
+                        nullable: true
+                      status:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - active
+                          - type: string
+                            enum:
+                              - closed
+                      seasonId:
+                        type: string
+                      participants:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          title: Participant
+                          type: object
+                          required:
+                            - playerId
+                            - name
+                            - buys
+                            - finalAmount
+                          properties:
+                            playerId:
+                              type: string
+                            name:
+                              type: string
+                            buys:
+                              type: array
+                              items:
+                                additionalProperties: false
+                                title: Buy
+                                type: object
+                                required:
+                                  - id
+                                  - amount
+                                  - timestamp
+                                properties:
+                                  id:
+                                    type: string
+                                  amount:
+                                    type: number
+                                  timestamp:
+                                    type: string
+                            finalAmount:
+                              type: number
+                              nullable: true
+                      calc:
+                        additionalProperties: false
+                        title: SessionCalc
+                        type: object
+                        required:
+                          - totalPot
+                          - totalOut
+                          - diff
+                          - status
+                        properties:
+                          totalPot:
+                            type: number
+                          totalOut:
+                            type: number
+                          diff:
+                            type: number
+                          status:
+                            anyOf:
+                              - type: string
+                                enum:
+                                  - ok
+                              - type: string
+                                enum:
+                                  - faltan
+                              - type: string
+                                enum:
+                                  - sobran
+                      missingResults:
+                        type: array
+                        items:
+                          type: string
+                  debts:
+                    type: array
+                    items:
+                      additionalProperties: false
+                      title: Debt
+                      type: object
+                      required:
+                        - id
+                        - fromPlayer
+                        - toPlayer
+                        - sessionId
+                        - sourceType
+                        - label
+                        - originalAmount
+                        - pendingAmount
+                        - status
+                        - payments
+                        - createdAt
+                        - isConsolidated
+                        - manualAmount
+                      properties:
+                        id:
+                          type: string
+                        fromPlayer:
+                          additionalProperties: false
+                          title: PlayerRef
+                          type: object
+                          required:
+                            - id
+                            - name
+                          properties:
+                            id:
+                              type: string
+                            name:
+                              type: string
+                        toPlayer:
+                          additionalProperties: false
+                          title: PlayerRef
+                          type: object
+                          required:
+                            - id
+                            - name
+                          properties:
+                            id:
+                              type: string
+                            name:
+                              type: string
+                        sessionId:
+                          type: string
+                          nullable: true
+                        sourceType:
+                          anyOf:
+                            - type: string
+                              enum:
+                                - session
+                            - type: string
+                              enum:
+                                - manual
+                            - type: string
+                              enum:
+                                - consolidated
+                        label:
+                          type: string
+                        originalAmount:
+                          type: number
+                        pendingAmount:
+                          type: number
+                        status:
+                          anyOf:
+                            - type: string
+                              enum:
+                                - pending
+                            - type: string
+                              enum:
+                                - partial
+                            - type: string
+                              enum:
+                                - paid
+                        payments:
+                          type: array
+                          items:
+                            additionalProperties: false
+                            title: DebtPayment
+                            type: object
+                            required:
+                              - amount
+                              - date
+                              - note
+                            properties:
+                              amount:
+                                type: number
+                              date:
+                                type: string
+                              note:
+                                type: string
+                        createdAt:
+                          type: string
+                        isConsolidated:
+                          type: boolean
+                        manualAmount:
+                          type: number
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /api/v1/groups/{groupId}/sessions/{id}/debts:
+    get:
+      tags: *a3
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+        - schema:
+            type: string
+          in: path
+          name: id
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: SessionDebtsView
+                type: object
+                required:
+                  - balances
+                  - allHaveResult
+                  - sessionStatus
+                  - items
+                properties:
+                  balances:
+                    type: array
+                    items:
+                      additionalProperties: false
+                      type: object
+                      required:
+                        - playerId
+                        - name
+                        - balance
+                      properties:
+                        playerId:
+                          type: string
+                        name:
+                          type: string
+                        balance:
+                          type: number
+                          nullable: true
+                  allHaveResult:
+                    type: boolean
+                  sessionStatus:
+                    anyOf:
+                      - type: string
+                        enum:
+                          - active
+                      - type: string
+                        enum:
+                          - closed
+                  items:
+                    type: array
+                    items:
+                      additionalProperties: false
+                      type: object
+                      required:
+                        - fromId
+                        - fromName
+                        - toId
+                        - toName
+                        - amount
+                        - state
+                        - debt
+                      properties:
+                        fromId:
+                          type: string
+                        fromName:
+                          type: string
+                        toId:
+                          type: string
+                        toName:
+                          type: string
+                        amount:
+                          type: number
+                        state:
+                          anyOf:
+                            - type: string
+                              enum:
+                                - open
+                            - type: string
+                              enum:
+                                - merged
+                        debt:
+                          additionalProperties: false
+                          title: Debt
+                          type: object
+                          required:
+                            - id
+                            - fromPlayer
+                            - toPlayer
+                            - sessionId
+                            - sourceType
+                            - label
+                            - originalAmount
+                            - pendingAmount
+                            - status
+                            - payments
+                            - createdAt
+                            - isConsolidated
+                            - manualAmount
+                          properties:
+                            id:
+                              type: string
+                            fromPlayer:
+                              additionalProperties: false
+                              title: PlayerRef
+                              type: object
+                              required:
+                                - id
+                                - name
+                              properties:
+                                id:
+                                  type: string
+                                name:
+                                  type: string
+                            toPlayer:
+                              additionalProperties: false
+                              title: PlayerRef
+                              type: object
+                              required:
+                                - id
+                                - name
+                              properties:
+                                id:
+                                  type: string
+                                name:
+                                  type: string
+                            sessionId:
+                              type: string
+                              nullable: true
+                            sourceType:
+                              anyOf:
+                                - type: string
+                                  enum:
+                                    - session
+                                - type: string
+                                  enum:
+                                    - manual
+                                - type: string
+                                  enum:
+                                    - consolidated
+                            label:
+                              type: string
+                            originalAmount:
+                              type: number
+                            pendingAmount:
+                              type: number
+                            status:
+                              anyOf:
+                                - type: string
+                                  enum:
+                                    - pending
+                                - type: string
+                                  enum:
+                                    - partial
+                                - type: string
+                                  enum:
+                                    - paid
+                            payments:
+                              type: array
+                              items:
+                                additionalProperties: false
+                                title: DebtPayment
+                                type: object
+                                required:
+                                  - amount
+                                  - date
+                                  - note
+                                properties:
+                                  amount:
+                                    type: number
+                                  date:
+                                    type: string
+                                  note:
+                                    type: string
+                            createdAt:
+                              type: string
+                            isConsolidated:
+                              type: boolean
+                            manualAmount:
+                              type: number
+                          nullable: true
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /api/v1/groups/{groupId}/debts:
+    get:
+      tags: &a4
+        - debts
+      parameters:
+        - schema:
+            type: string
+          in: query
+          name: sessionId
+          required: false
+        - schema:
+            anyOf:
+              - type: string
+                enum:
+                  - pending
+              - type: string
+                enum:
+                  - partial
+              - type: string
+                enum:
+                  - paid
+          in: query
+          name: status
+          required: false
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  additionalProperties: false
+                  title: Debt
+                  type: object
+                  required:
+                    - id
+                    - fromPlayer
+                    - toPlayer
+                    - sessionId
+                    - sourceType
+                    - label
+                    - originalAmount
+                    - pendingAmount
+                    - status
+                    - payments
+                    - createdAt
+                    - isConsolidated
+                    - manualAmount
+                  properties:
+                    id:
+                      type: string
+                    fromPlayer:
+                      additionalProperties: false
+                      title: PlayerRef
+                      type: object
+                      required:
+                        - id
+                        - name
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+                    toPlayer:
+                      additionalProperties: false
+                      title: PlayerRef
+                      type: object
+                      required:
+                        - id
+                        - name
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+                    sessionId:
+                      type: string
+                      nullable: true
+                    sourceType:
+                      anyOf:
+                        - type: string
+                          enum:
+                            - session
+                        - type: string
+                          enum:
+                            - manual
+                        - type: string
+                          enum:
+                            - consolidated
+                    label:
+                      type: string
+                    originalAmount:
+                      type: number
+                    pendingAmount:
+                      type: number
+                    status:
+                      anyOf:
+                        - type: string
+                          enum:
+                            - pending
+                        - type: string
+                          enum:
+                            - partial
+                        - type: string
+                          enum:
+                            - paid
+                    payments:
+                      type: array
+                      items:
+                        additionalProperties: false
+                        title: DebtPayment
+                        type: object
+                        required:
+                          - amount
+                          - date
+                          - note
+                        properties:
+                          amount:
+                            type: number
+                          date:
+                            type: string
+                          note:
+                            type: string
+                    createdAt:
+                      type: string
+                    isConsolidated:
+                      type: boolean
+                    manualAmount:
+                      type: number
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /api/v1/groups/{groupId}/debts/pending-by-debtor:
+    get:
+      tags: *a4
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  additionalProperties: false
+                  title: DebtorGroup
+                  type: object
+                  required:
+                    - player
+                    - debts
+                    - totalPending
+                  properties:
+                    player:
+                      additionalProperties: false
+                      title: PlayerRef
+                      type: object
+                      required:
+                        - id
+                        - name
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+                    debts:
+                      type: array
+                      items:
+                        additionalProperties: false
+                        title: Debt
+                        type: object
+                        required:
+                          - id
+                          - fromPlayer
+                          - toPlayer
+                          - sessionId
+                          - sourceType
+                          - label
+                          - originalAmount
+                          - pendingAmount
+                          - status
+                          - payments
+                          - createdAt
+                          - isConsolidated
+                          - manualAmount
+                        properties:
+                          id:
+                            type: string
+                          fromPlayer:
+                            additionalProperties: false
+                            title: PlayerRef
+                            type: object
+                            required:
+                              - id
+                              - name
+                            properties:
+                              id:
+                                type: string
+                              name:
+                                type: string
+                          toPlayer:
+                            additionalProperties: false
+                            title: PlayerRef
+                            type: object
+                            required:
+                              - id
+                              - name
+                            properties:
+                              id:
+                                type: string
+                              name:
+                                type: string
+                          sessionId:
+                            type: string
+                            nullable: true
+                          sourceType:
+                            anyOf:
+                              - type: string
+                                enum:
+                                  - session
+                              - type: string
+                                enum:
+                                  - manual
+                              - type: string
+                                enum:
+                                  - consolidated
+                          label:
+                            type: string
+                          originalAmount:
+                            type: number
+                          pendingAmount:
+                            type: number
+                          status:
+                            anyOf:
+                              - type: string
+                                enum:
+                                  - pending
+                              - type: string
+                                enum:
+                                  - partial
+                              - type: string
+                                enum:
+                                  - paid
+                          payments:
+                            type: array
+                            items:
+                              additionalProperties: false
+                              title: DebtPayment
+                              type: object
+                              required:
+                                - amount
+                                - date
+                                - note
+                              properties:
+                                amount:
+                                  type: number
+                                date:
+                                  type: string
+                                note:
+                                  type: string
+                          createdAt:
+                            type: string
+                          isConsolidated:
+                            type: boolean
+                          manualAmount:
+                            type: number
+                    totalPending:
+                      type: number
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /api/v1/groups/{groupId}/debts/reorganize-status:
+    get:
+      tags: *a4
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: ReorganizeStatus
+                type: object
+                required:
+                  - canReorganize
+                  - canUndo
+                  - reason
+                properties:
+                  canReorganize:
+                    type: boolean
+                  canUndo:
+                    type: boolean
+                  reason:
+                    anyOf:
+                      - anyOf:
+                          - type: string
+                            enum:
+                              - no_backup
+                          - type: string
+                            enum:
+                              - has_payments
+                      - type: object
+                        nullable: true
+                        enum:
+                          - null
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /api/v1/groups/{groupId}/debts/{id}/payments:
+    post:
+      tags: *a4
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              type: object
+              required:
+                - amount
+              properties:
+                amount:
+                  exclusiveMinimum: 0
+                  maximum: 9999999999.99
+                  type: number
+                note:
+                  maxLength: 200
+                  type: string
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+        - schema:
+            type: string
+          in: path
+          name: id
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: Debt
+                type: object
+                required:
+                  - id
+                  - fromPlayer
+                  - toPlayer
+                  - sessionId
+                  - sourceType
+                  - label
+                  - originalAmount
+                  - pendingAmount
+                  - status
+                  - payments
+                  - createdAt
+                  - isConsolidated
+                  - manualAmount
+                properties:
+                  id:
+                    type: string
+                  fromPlayer:
+                    additionalProperties: false
+                    title: PlayerRef
+                    type: object
+                    required:
+                      - id
+                      - name
+                    properties:
+                      id:
+                        type: string
+                      name:
+                        type: string
+                  toPlayer:
+                    additionalProperties: false
+                    title: PlayerRef
+                    type: object
+                    required:
+                      - id
+                      - name
+                    properties:
+                      id:
+                        type: string
+                      name:
+                        type: string
+                  sessionId:
+                    type: string
+                    nullable: true
+                  sourceType:
+                    anyOf:
+                      - type: string
+                        enum:
+                          - session
+                      - type: string
+                        enum:
+                          - manual
+                      - type: string
+                        enum:
+                          - consolidated
+                  label:
+                    type: string
+                  originalAmount:
+                    type: number
+                  pendingAmount:
+                    type: number
+                  status:
+                    anyOf:
+                      - type: string
+                        enum:
+                          - pending
+                      - type: string
+                        enum:
+                          - partial
+                      - type: string
+                        enum:
+                          - paid
+                  payments:
+                    type: array
+                    items:
+                      additionalProperties: false
+                      title: DebtPayment
+                      type: object
+                      required:
+                        - amount
+                        - date
+                        - note
+                      properties:
+                        amount:
+                          type: number
+                        date:
+                          type: string
+                        note:
+                          type: string
+                  createdAt:
+                    type: string
+                  isConsolidated:
+                    type: boolean
+                  manualAmount:
+                    type: number
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /api/v1/groups/{groupId}/debts/{id}/mark-paid:
+    post:
+      tags: *a4
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+        - schema:
+            type: string
+          in: path
+          name: id
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: Debt
+                type: object
+                required:
+                  - id
+                  - fromPlayer
+                  - toPlayer
+                  - sessionId
+                  - sourceType
+                  - label
+                  - originalAmount
+                  - pendingAmount
+                  - status
+                  - payments
+                  - createdAt
+                  - isConsolidated
+                  - manualAmount
+                properties:
+                  id:
+                    type: string
+                  fromPlayer:
+                    additionalProperties: false
+                    title: PlayerRef
+                    type: object
+                    required:
+                      - id
+                      - name
+                    properties:
+                      id:
+                        type: string
+                      name:
+                        type: string
+                  toPlayer:
+                    additionalProperties: false
+                    title: PlayerRef
+                    type: object
+                    required:
+                      - id
+                      - name
+                    properties:
+                      id:
+                        type: string
+                      name:
+                        type: string
+                  sessionId:
+                    type: string
+                    nullable: true
+                  sourceType:
+                    anyOf:
+                      - type: string
+                        enum:
+                          - session
+                      - type: string
+                        enum:
+                          - manual
+                      - type: string
+                        enum:
+                          - consolidated
+                  label:
+                    type: string
+                  originalAmount:
+                    type: number
+                  pendingAmount:
+                    type: number
+                  status:
+                    anyOf:
+                      - type: string
+                        enum:
+                          - pending
+                      - type: string
+                        enum:
+                          - partial
+                      - type: string
+                        enum:
+                          - paid
+                  payments:
+                    type: array
+                    items:
+                      additionalProperties: false
+                      title: DebtPayment
+                      type: object
+                      required:
+                        - amount
+                        - date
+                        - note
+                      properties:
+                        amount:
+                          type: number
+                        date:
+                          type: string
+                        note:
+                          type: string
+                  createdAt:
+                    type: string
+                  isConsolidated:
+                    type: boolean
+                  manualAmount:
+                    type: number
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /api/v1/groups/{groupId}/debts/mark-paid:
+    post:
+      tags: *a4
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              type: object
+              required:
+                - debtIds
+              properties:
+                debtIds:
+                  minItems: 1
+                  type: array
+                  items:
+                    type: string
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  additionalProperties: false
+                  title: Debt
+                  type: object
+                  required:
+                    - id
+                    - fromPlayer
+                    - toPlayer
+                    - sessionId
+                    - sourceType
+                    - label
+                    - originalAmount
+                    - pendingAmount
+                    - status
+                    - payments
+                    - createdAt
+                    - isConsolidated
+                    - manualAmount
+                  properties:
+                    id:
+                      type: string
+                    fromPlayer:
+                      additionalProperties: false
+                      title: PlayerRef
+                      type: object
+                      required:
+                        - id
+                        - name
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+                    toPlayer:
+                      additionalProperties: false
+                      title: PlayerRef
+                      type: object
+                      required:
+                        - id
+                        - name
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+                    sessionId:
+                      type: string
+                      nullable: true
+                    sourceType:
+                      anyOf:
+                        - type: string
+                          enum:
+                            - session
+                        - type: string
+                          enum:
+                            - manual
+                        - type: string
+                          enum:
+                            - consolidated
+                    label:
+                      type: string
+                    originalAmount:
+                      type: number
+                    pendingAmount:
+                      type: number
+                    status:
+                      anyOf:
+                        - type: string
+                          enum:
+                            - pending
+                        - type: string
+                          enum:
+                            - partial
+                        - type: string
+                          enum:
+                            - paid
+                    payments:
+                      type: array
+                      items:
+                        additionalProperties: false
+                        title: DebtPayment
+                        type: object
+                        required:
+                          - amount
+                          - date
+                          - note
+                        properties:
+                          amount:
+                            type: number
+                          date:
+                            type: string
+                          note:
+                            type: string
+                    createdAt:
+                      type: string
+                    isConsolidated:
+                      type: boolean
+                    manualAmount:
+                      type: number
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /api/v1/groups/{groupId}/debts/manual:
+    post:
+      tags: *a4
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              type: object
+              required:
+                - fromPlayerId
+                - toPlayerId
+                - amount
+              properties:
+                fromPlayerId:
+                  type: string
+                toPlayerId:
+                  type: string
+                amount:
+                  exclusiveMinimum: 0
+                  maximum: 9999999999.99
+                  type: number
+                description:
+                  maxLength: 200
+                  type: string
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  additionalProperties: false
+                  title: Debt
+                  type: object
+                  required:
+                    - id
+                    - fromPlayer
+                    - toPlayer
+                    - sessionId
+                    - sourceType
+                    - label
+                    - originalAmount
+                    - pendingAmount
+                    - status
+                    - payments
+                    - createdAt
+                    - isConsolidated
+                    - manualAmount
+                  properties:
+                    id:
+                      type: string
+                    fromPlayer:
+                      additionalProperties: false
+                      title: PlayerRef
+                      type: object
+                      required:
+                        - id
+                        - name
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+                    toPlayer:
+                      additionalProperties: false
+                      title: PlayerRef
+                      type: object
+                      required:
+                        - id
+                        - name
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+                    sessionId:
+                      type: string
+                      nullable: true
+                    sourceType:
+                      anyOf:
+                        - type: string
+                          enum:
+                            - session
+                        - type: string
+                          enum:
+                            - manual
+                        - type: string
+                          enum:
+                            - consolidated
+                    label:
+                      type: string
+                    originalAmount:
+                      type: number
+                    pendingAmount:
+                      type: number
+                    status:
+                      anyOf:
+                        - type: string
+                          enum:
+                            - pending
+                        - type: string
+                          enum:
+                            - partial
+                        - type: string
+                          enum:
+                            - paid
+                    payments:
+                      type: array
+                      items:
+                        additionalProperties: false
+                        title: DebtPayment
+                        type: object
+                        required:
+                          - amount
+                          - date
+                          - note
+                        properties:
+                          amount:
+                            type: number
+                          date:
+                            type: string
+                          note:
+                            type: string
+                    createdAt:
+                      type: string
+                    isConsolidated:
+                      type: boolean
+                    manualAmount:
+                      type: number
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /api/v1/groups/{groupId}/debts/manual/{id}:
+    delete:
+      tags: *a4
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+        - schema:
+            type: string
+          in: path
+          name: id
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: Deleted
+                type: object
+                required:
+                  - deleted
+                properties:
+                  deleted:
+                    type: boolean
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /api/v1/groups/{groupId}/debts/renet:
+    post:
+      tags: *a4
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  additionalProperties: false
+                  title: Debt
+                  type: object
+                  required:
+                    - id
+                    - fromPlayer
+                    - toPlayer
+                    - sessionId
+                    - sourceType
+                    - label
+                    - originalAmount
+                    - pendingAmount
+                    - status
+                    - payments
+                    - createdAt
+                    - isConsolidated
+                    - manualAmount
+                  properties:
+                    id:
+                      type: string
+                    fromPlayer:
+                      additionalProperties: false
+                      title: PlayerRef
+                      type: object
+                      required:
+                        - id
+                        - name
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+                    toPlayer:
+                      additionalProperties: false
+                      title: PlayerRef
+                      type: object
+                      required:
+                        - id
+                        - name
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+                    sessionId:
+                      type: string
+                      nullable: true
+                    sourceType:
+                      anyOf:
+                        - type: string
+                          enum:
+                            - session
+                        - type: string
+                          enum:
+                            - manual
+                        - type: string
+                          enum:
+                            - consolidated
+                    label:
+                      type: string
+                    originalAmount:
+                      type: number
+                    pendingAmount:
+                      type: number
+                    status:
+                      anyOf:
+                        - type: string
+                          enum:
+                            - pending
+                        - type: string
+                          enum:
+                            - partial
+                        - type: string
+                          enum:
+                            - paid
+                    payments:
+                      type: array
+                      items:
+                        additionalProperties: false
+                        title: DebtPayment
+                        type: object
+                        required:
+                          - amount
+                          - date
+                          - note
+                        properties:
+                          amount:
+                            type: number
+                          date:
+                            type: string
+                          note:
+                            type: string
+                    createdAt:
+                      type: string
+                    isConsolidated:
+                      type: boolean
+                    manualAmount:
+                      type: number
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /api/v1/groups/{groupId}/debts/renet/undo:
+    post:
+      tags: *a4
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  additionalProperties: false
+                  title: Debt
+                  type: object
+                  required:
+                    - id
+                    - fromPlayer
+                    - toPlayer
+                    - sessionId
+                    - sourceType
+                    - label
+                    - originalAmount
+                    - pendingAmount
+                    - status
+                    - payments
+                    - createdAt
+                    - isConsolidated
+                    - manualAmount
+                  properties:
+                    id:
+                      type: string
+                    fromPlayer:
+                      additionalProperties: false
+                      title: PlayerRef
+                      type: object
+                      required:
+                        - id
+                        - name
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+                    toPlayer:
+                      additionalProperties: false
+                      title: PlayerRef
+                      type: object
+                      required:
+                        - id
+                        - name
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+                    sessionId:
+                      type: string
+                      nullable: true
+                    sourceType:
+                      anyOf:
+                        - type: string
+                          enum:
+                            - session
+                        - type: string
+                          enum:
+                            - manual
+                        - type: string
+                          enum:
+                            - consolidated
+                    label:
+                      type: string
+                    originalAmount:
+                      type: number
+                    pendingAmount:
+                      type: number
+                    status:
+                      anyOf:
+                        - type: string
+                          enum:
+                            - pending
+                        - type: string
+                          enum:
+                            - partial
+                        - type: string
+                          enum:
+                            - paid
+                    payments:
+                      type: array
+                      items:
+                        additionalProperties: false
+                        title: DebtPayment
+                        type: object
+                        required:
+                          - amount
+                          - date
+                          - note
+                        properties:
+                          amount:
+                            type: number
+                          date:
+                            type: string
+                          note:
+                            type: string
+                    createdAt:
+                      type: string
+                    isConsolidated:
+                      type: boolean
+                    manualAmount:
+                      type: number
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /api/v1/groups/{groupId}/backup/export:
+    get:
+      tags: &a5
+        - backup
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema: {}
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /api/v1/groups/{groupId}/backup/import:
+    post:
+      tags: *a5
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: true
+              title: BackupFile
+              type: object
+              required:
+                - data
+              properties:
+                exportedAt:
+                  type: string
+                appVersion:
+                  type: string
+                data:
+                  additionalProperties: true
+                  type: object
+                  required:
+                    - poker_players
+                    - poker_sessions
+                    - poker_debts
+                  properties:
+                    poker_players:
+                      type: array
+                      items: {}
+                    poker_sessions:
+                      type: array
+                      items: {}
+                    poker_debts:
+                      type: array
+                      items: {}
+                    poker_seasons:
+                      type: array
+                      items: {}
+      parameters:
+        - schema:
+            type: boolean
+          in: query
+          name: dryRun
+          required: false
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: ImportResult
+                type: object
+                required:
+                  - dryRun
+                  - counts
+                  - warnings
+                properties:
+                  dryRun:
+                    type: boolean
+                  counts:
+                    additionalProperties: false
+                    type: object
+                    required:
+                      - players
+                      - archivedPlayers
+                      - adjustments
+                      - seasons
+                      - sessions
+                      - debts
+                    properties:
+                      players:
+                        type: number
+                      archivedPlayers:
+                        type: number
+                      adjustments:
+                        type: number
+                      seasons:
+                        type: number
+                      sessions:
+                        type: number
+                      debts:
+                        type: number
+                  warnings:
+                    type: array
+                    items:
+                      type: string
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+security:
+  - bearerAuth: []
