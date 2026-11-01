@@ -9,6 +9,8 @@ const migrationsFolder = resolve(dirname(fileURLToPath(import.meta.url)), '../..
 
 export function connect(connectionString: string) {
   const pool = new pg.Pool({ connectionString });
+  // Neon corta las conexiones inactivas al suspenderse: sin este handler, el proceso se cae.
+  pool.on('error', err => console.error('Conexión inactiva perdida:', err.message));
   return { pool, db: drizzle(pool, { schema }) };
 }
 

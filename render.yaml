@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: pokercontrol-api
+    runtime: node
+    plan: free
+    region: virginia
+    branch: main
+    # Lo despliega deploy.yml, después de CI y de las migraciones.
+    autoDeployTrigger: off
+    buildCommand: npx --yes pnpm@12.16.1 install --prod --frozen-lockfile --filter "@pokercontrol/api..."
+    startCommand: cd apps/api && node_modules/.bin/tsx src/server.ts
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: TRUST_PROXY
+        value: "true"
+      - key: JWT_EXPIRES_IN
+        value: 30d
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false
+      - key: CORS_ORIGIN
+        sync: false
+      - key: GOOGLE_WEB_CLIENT_ID
+        sync: false
+      - key: GOOGLE_ANDROID_CLIENT_ID
+        sync: false

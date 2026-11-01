@@ -17,5 +17,7 @@ const app = await buildApp({
   corsOrigins: list(process.env.CORS_ORIGIN),
   googleClientIds: [...list(process.env.GOOGLE_WEB_CLIENT_ID), ...list(process.env.GOOGLE_ANDROID_CLIENT_ID)],
   logger: true,
+  // Detrás del proxy de Render: sin esto, todos los usuarios comparten el rate limit.
+  trustProxy: process.env.TRUST_PROXY === 'true',
 });
 await app.listen({ port: Number(process.env.PORT ?? 3000), host: '0.0.0.0' });

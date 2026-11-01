@@ -1,0 +1,88 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+# Dos merges seguidos no pueden migrar ni desplegar a la vez.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+    secrets: inherit
+
+  deploy:
+    needs: ci
+    # Apagado hasta que existan los servicios y los secretos: ver docs/deploy.md.
+    if: vars.DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Aplicar migraciones
+        run: pnpm db:migrate
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      - name: Desplegar la API en Render
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+        run: |
+          api="https://api.render.com/v1/services/$RENDER_SERVICE_ID/deploys"
+          deploy_id=$(curl -sS --fail-with-body -X POST "$api" \
+            -H "Authorization: Bearer $RENDER_API_KEY" \
+            -H 'Content-Type: application/json' \
+            -d "{\"commitId\":\"$GITHUB_SHA\"}" | jq -r .id)
+          echo "Deploy $deploy_id"
+          for _ in $(seq 1 90); do
+            status=$(curl -sS --fail-with-body "$api/$deploy_id" \
+              -H "Authorization: Bearer $RENDER_API_KEY" | jq -r .status)
+            echo "$status"
+            case "$status" in
+              live) exit 0 ;;
+              *failed|canceled|deactivated) exit 1 ;;
+            esac
+            sleep 10
+          done
+          echo 'Render no terminó a tiempo'
+          exit 1
+
+      - name: Compilar la web
+        run: pnpm --filter @pokercontrol/web build
+        env:
+          VITE_API_URL: ${{ vars.VITE_API_URL }}
+          VITE_GOOGLE_CLIENT_ID: ${{ vars.VITE_GOOGLE_CLIENT_ID }}
+
+      - name: Desplegar la web en Vercel
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          # Salida ya compilada: Vercel no instala nada. Toda ruta sin archivo cae en la SPA.
+          site="$RUNNER_TEMP/site"
+          mkdir -p "$site/.vercel/output"
+          cp -r apps/web/dist "$site/.vercel/output/static"
+          echo '{"version":3,"routes":[{"handle":"filesystem"},{"src":"/.*","dest":"/index.html"}]}' \
+            > "$site/.vercel/output/config.json"
+          cd "$site"
+          npx --yes vercel@65.9.0 deploy --prebuilt --prod --yes --token "$VERCEL_TOKEN"
+
+      - name: Verificar la API publicada
+        run: curl -sS --fail-with-body --retry 5 --retry-all-errors --max-time 90 "${{ vars.VITE_API_URL }}/health"
