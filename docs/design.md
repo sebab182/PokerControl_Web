@@ -11,18 +11,18 @@ Incluye las vistas de la APK, más login, onboarding y configuración. No incluy
 | Ruta | Vista | Origen en la APK |
 |---|---|---|
 | `/login`, `/onboarding` | Google, crear o unirse a un grupo | Nuevas |
-| `/` | Redirige a `/seasons` | `SeasonsScreen` es la inicial |
+| `/` | Redirige a `/ranking` | En la APK la inicial es `SeasonsScreen` |
 | `/seasons` | Temporadas | `SeasonsScreen` |
 | `/seasons/:seasonId` | Partidas | `HomeScreen` |
 | `/sessions/:sessionId` | Partida | `SessionScreen` |
 | `/sessions/:sessionId/debts` | Deudas de la partida | `DebtScreen` |
 | `/players` | Jugadores | `PlayersScreen` |
 | `/players/:playerId/stats?seasonId=` | Estadísticas | `StatsScreen` |
-| `/ranking?seasonId=` | Ranking | `RankingScreen` |
+| `/ranking?seasonId=` | Ranking: sin parámetro, la temporada activa (o el histórico si no hay); `seasonId=all`, el histórico | `RankingScreen` |
 | `/debts` | Deudas pendientes | `PendingDebtsScreen` |
 | `/settings` | Grupo, tema, backup, acerca de | `InfoModal` y nuevas |
 
-Navegación: barra lateral desde 768 px y barra inferior debajo, con Temporadas, Jugadores, Ranking, Deudas y Config.
+Navegación: barra lateral desde 768 px y barra inferior debajo, con Ranking, Temporadas, Jugadores, Deudas y Config.
 
 ## Cambios al sistema visual
 

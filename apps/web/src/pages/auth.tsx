@@ -116,7 +116,7 @@ export function OnboardingPage() {
       <p className="muted" style={{ marginBottom: 20 }}>
         {canEdit ? 'Para empezar, creá un grupo o unite a uno.' : 'Para entrar necesitás el código de invitación de tu grupo.'}
       </p>
-      <GroupChooser onDone={() => navigate('/seasons', { replace: true })} />
+      <GroupChooser onDone={() => navigate('/ranking', { replace: true })} />
       <Btn variant="text" onClick={signOut}>Cerrar sesión</Btn>
     </main>
   );

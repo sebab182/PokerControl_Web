@@ -42,7 +42,7 @@ async function createGroup(page: Page, name = 'Los viernes'): Promise<string> {
   await page.getByRole('button', { name: 'Crear grupo' }).click();
   const code = await page.getByTestId('invite-code').innerText();
   await page.getByRole('button', { name: 'Continuar' }).click();
-  await expect(page.getByRole('heading', { name: 'Temporadas' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Ranking', exact: true })).toBeVisible();
   return code;
 }
 
@@ -87,7 +87,7 @@ test('partida completa: grupo, compras, cierre con diferencia, pagos y stats', a
   await page2.getByLabel('Código de invitación').fill(code);
   await page2.getByRole('button', { name: 'Unirme' }).click();
   await page2.getByRole('button', { name: 'Soy Ana' }).click();
-  await expect(page2.getByRole('heading', { name: 'Temporadas' })).toBeVisible();
+  await expect(page2.getByRole('heading', { name: 'Ranking', exact: true })).toBeVisible();
   await page2.goto(page.url());
   await expect(page2.getByTestId('pot')).toHaveText('$251');
   await expect(page2.getByRole('button', { name: '+ Compra' })).toHaveCount(0);
@@ -204,6 +204,36 @@ test('importar backup, reorganizar y deshacer; bloqueo por pago', async ({ page 
   await expect(page.getByRole('button', { name: /bloqueado por pagos/ })).toBeDisabled();
 });
 
+test('el ranking es la vista inicial y arranca en la temporada activa', async ({ page }) => {
+  await login(page, 'Seba');
+  await createGroup(page);
+  await importBackup(page);
+  const scope = page.getByLabel('Alcance');
+  const selected = scope.locator('option:checked');
+
+  await page.goto('/');
+  await expect(page).toHaveURL(/\/ranking$/);
+  await expect(page.getByRole('heading', { name: 'Los viernes' })).toBeVisible();
+  await expect(selected).toHaveText('Importada');
+  await expect(page.locator('.podium')).toContainText('+$60');
+
+  // El histórico se mantiene al recargar; el menú vuelve a la temporada activa.
+  await scope.selectOption({ label: 'Histórico' });
+  await expect(page).toHaveURL(/seasonId=all$/);
+  await page.reload();
+  await expect(selected).toHaveText('Histórico');
+  await nav(page, 'Ranking');
+  await expect(selected).toHaveText('Importada');
+
+  // Sin temporada activa muestra el histórico.
+  await nav(page, 'Temporadas');
+  await page.getByRole('button', { name: 'Cerrar Importada' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Cerrar', exact: true }).click();
+  await expect(page.getByText('Cerrada')).toBeVisible();
+  await nav(page, 'Ranking');
+  await expect(selected).toHaveText('Histórico');
+});
+
 test('jugadores: archivar con historial, restaurar y renombrar', async ({ page }) => {
   await login(page, 'Seba');
   await createGroup(page);
@@ -293,6 +323,8 @@ test('roles: master, solo lectura con nick, promoción y archivados', async ({ p
   await reader.getByRole('button', { name: 'Crear mi jugador' }).click();
 
   // Ve datos, sin ningún control de edición.
+  await expect(reader.getByRole('heading', { name: 'Ranking', exact: true })).toBeVisible();
+  await nav(reader, 'Temporadas');
   await expect(reader.getByRole('heading', { name: 'Temporadas' })).toBeVisible();
   await expect(reader.getByRole('button', { name: '+ Nueva temporada' })).toHaveCount(0);
   await nav(reader, 'Jugadores');

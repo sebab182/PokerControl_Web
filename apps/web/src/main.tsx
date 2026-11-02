@@ -28,9 +28,9 @@ const queryClient = new QueryClient({
 });
 
 const NAV = [
+  { to: '/ranking', icon: '🏆', label: 'Ranking' },
   { to: '/seasons', icon: '🗓️', label: 'Temporadas' },
   { to: '/players', icon: '👥', label: 'Jugadores' },
-  { to: '/ranking', icon: '🏆', label: 'Ranking' },
   { to: '/debts', icon: '💳', label: 'Deudas' },
   { to: '/settings', icon: '⚙️', label: 'Config' },
 ];
@@ -93,9 +93,9 @@ function Shell() {
 function PublicOnly({ page }: { page: 'login' | 'onboarding' }) {
   const { me, group, loading } = useSession();
   if (loading) return <Loading />;
-  if (page === 'login') return me ? <Navigate to="/seasons" replace /> : <LoginPage />;
+  if (page === 'login') return me ? <Navigate to="/ranking" replace /> : <LoginPage />;
   if (!me) return <Navigate to="/login" replace />;
-  return group ? <Navigate to="/seasons" replace /> : <OnboardingPage />;
+  return group ? <Navigate to="/ranking" replace /> : <OnboardingPage />;
 }
 
 function App() {
@@ -105,7 +105,7 @@ function App() {
         <Route path="/login" element={<PublicOnly page="login" />} />
         <Route path="/onboarding" element={<PublicOnly page="onboarding" />} />
         <Route element={<Shell />}>
-          <Route index element={<Navigate to="/seasons" replace />} />
+          <Route index element={<Navigate to="/ranking" replace />} />
           <Route path="/seasons" element={<SeasonsPage />} />
           <Route path="/seasons/:seasonId" element={<SeasonSessionsPage />} />
           <Route path="/sessions/:sessionId" element={<SessionPage />} />

@@ -488,14 +488,28 @@ export function StatsPage() {
   );
 }
 
+/** Sin parámetro el ranking muestra la temporada activa, así que el histórico necesita el suyo. */
+const HISTORIC = 'all';
+
 export function RankingPage() {
   const [params, setParams] = useSearchParams();
-  const seasonId = params.get('seasonId') ?? '';
-  const { path, key } = useGroup();
+  const param = params.get('seasonId');
+  const { group, path, key } = useGroup();
+  const seasons = useQuery({ queryKey: key('seasons'), queryFn: () => api<ApiSeason[]>(path('/seasons')) });
+  const waitingSeasons = param === null && !seasons.data;
+  const seasonId = param === HISTORIC ? '' : param ?? seasons.data?.find(s => s.status === 'active')?.id ?? '';
   const query = useQuery({
     queryKey: key('ranking', seasonId),
     queryFn: () => api<ApiRankingEntry[]>(path(`/ranking${seasonId ? `?seasonId=${seasonId}` : ''}`)),
+    enabled: !waitingSeasons,
   });
+
+  if (waitingSeasons) {
+    return seasons.error
+      ? <QueryError error={seasons.error} onRetry={() => { void seasons.refetch(); }} />
+      : <Loading />;
+  }
+
   const statsLink = (id: string) => `/players/${id}/stats${seasonId ? `?seasonId=${seasonId}` : ''}`;
   const value = (r: ApiRankingEntry) => (seasonId ? r.sessionBalance : r.totalBalance);
   const ranking = query.data ?? [];
@@ -506,8 +520,9 @@ export function RankingPage() {
 
   return (
     <>
-      <h1 style={{ marginBottom: 12 }}>Ranking</h1>
-      <SeasonSelect value={seasonId} onChange={id => setParams(id ? { seasonId: id } : {}, { replace: true })} />
+      <h1 className="ellipsis">{group.name}</h1>
+      <h2 style={{ marginBottom: 12 }}>Ranking</h2>
+      <SeasonSelect value={seasonId} onChange={id => setParams({ seasonId: id || HISTORIC }, { replace: true })} />
       {query.isLoading && <Loading />}
       {query.error && <QueryError error={query.error} onRetry={() => { void query.refetch(); }} />}
       {query.data && ranking.length === 0 && (
