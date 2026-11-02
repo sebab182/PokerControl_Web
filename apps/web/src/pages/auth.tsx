@@ -1,10 +1,11 @@
-import type { ApiAuthResponse, ApiGroup, ApiGroupRef } from '@pokercontrol/contracts';
+import type { ApiAuthResponse, ApiGroup, ApiGroupRef, ApiPlayer } from '@pokercontrol/contracts';
 import { GoogleLogin } from '@react-oauth/google';
+import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, setToken } from '../api';
-import { Btn, Emoji, TextField, useAction, useFeedback } from '../components/ui';
-import { useSession } from '../context';
+import { Avatar, Btn, Emoji, Loading, QueryError, TextField, useAction, useFeedback } from '../components/ui';
+import { useGroup, useSession } from '../context';
 
 export function LoginPage() {
   const { signIn } = useSession();
@@ -40,7 +41,7 @@ export function LoginPage() {
 
 /** Crear o unirse a un grupo. Se usa en el primer ingreso y desde Configuración. */
 export function GroupChooser({ onDone }: { onDone: () => void }) {
-  const { refreshMe, selectGroup } = useSession();
+  const { refreshMe, selectGroup, canEdit } = useSession();
   const create = useAction();
   const join = useAction();
   const { notify } = useFeedback();
@@ -56,7 +57,7 @@ export function GroupChooser({ onDone }: { onDone: () => void }) {
         <p className="big num" data-testid="invite-code">{created.inviteCode}</p>
         <div className="modal-actions" style={{ justifyContent: 'center' }}>
           <Btn variant="ghost" onClick={() => {
-            void navigator.clipboard.writeText(created.inviteCode).then(() => notify('Código copiado.'));
+            void navigator.clipboard.writeText(created.inviteCode ?? '').then(() => notify('Código copiado.'));
           }}>Copiar</Btn>
           {/* Refrescar antes desmontaría esta vista: el onboarding redirige al tener grupo. */}
           <Btn busy={create.busy} onClick={() => {
@@ -73,7 +74,7 @@ export function GroupChooser({ onDone }: { onDone: () => void }) {
 
   return (
     <div className="stack">
-      <form className="card" onSubmit={e => {
+      {canEdit && <form className="card" onSubmit={e => {
         e.preventDefault();
         if (!name.trim()) return notify('Ingresá un nombre para el grupo.');
         void create.run(async () => {
@@ -87,7 +88,7 @@ export function GroupChooser({ onDone }: { onDone: () => void }) {
         <h2 style={{ marginBottom: 12 }}>Crear un grupo nuevo</h2>
         <TextField label="Nombre del grupo" value={name} onChange={setName} placeholder="Ej: Los viernes" maxLength={120} />
         <Btn type="submit" block busy={create.busy}>Crear grupo</Btn>
-      </form>
+      </form>}
       <form className="card" onSubmit={e => {
         e.preventDefault();
         if (!code.trim()) return notify('Ingresá el código de invitación.');
@@ -108,12 +109,75 @@ export function GroupChooser({ onDone }: { onDone: () => void }) {
 
 export function OnboardingPage() {
   const navigate = useNavigate();
-  const { signOut, me } = useSession();
+  const { signOut, me, canEdit } = useSession();
   return (
     <main className="main" style={{ maxWidth: 480 }}>
       <h1 style={{ marginBottom: 4 }}>Hola, {me?.user.name}</h1>
-      <p className="muted" style={{ marginBottom: 20 }}>Para empezar, creá un grupo o unite a uno.</p>
+      <p className="muted" style={{ marginBottom: 20 }}>
+        {canEdit ? 'Para empezar, creá un grupo o unite a uno.' : 'Para entrar necesitás el código de invitación de tu grupo.'}
+      </p>
       <GroupChooser onDone={() => navigate('/seasons', { replace: true })} />
+      <Btn variant="text" onClick={signOut}>Cerrar sesión</Btn>
+    </main>
+  );
+}
+
+/** Asocia al usuario con su jugador del grupo activo: elige uno libre o crea uno con su nick. */
+export function NickChooser() {
+  const { path, key, invalidate } = useGroup();
+  const { refreshMe } = useSession();
+  const { busy, run } = useAction();
+  const { notify } = useFeedback();
+  const [nick, setNick] = useState('');
+  const query = useQuery({ queryKey: key('players'), queryFn: () => api<ApiPlayer[]>(path('/players')) });
+
+  const claim = (body: { playerId: string } | { name: string }) => {
+    void run(async () => {
+      await api(path('/me/player'), { method: 'POST', body });
+      await invalidate();
+      await refreshMe();
+    });
+  };
+
+  if (query.isLoading) return <Loading />;
+  if (query.error) return <QueryError error={query.error} onRetry={() => { void query.refetch(); }} />;
+  const free = (query.data ?? []).filter(p => !p.linked);
+
+  return (
+    <>
+      {free.length > 0 && (
+        <div className="card">
+          <h2 style={{ marginBottom: 8 }}>Soy uno de estos jugadores</h2>
+          {free.map(p => (
+            <div className="list-row" key={p.id}>
+              <Avatar name={p.name} />
+              <span className="grow ellipsis">{p.name}</span>
+              <Btn variant="ghost" busy={busy} onClick={() => claim({ playerId: p.id })}>Soy {p.name}</Btn>
+            </div>
+          ))}
+        </div>
+      )}
+      <form className="card" onSubmit={e => {
+        e.preventDefault();
+        if (!nick.trim()) return notify('Ingresá tu nick.');
+        claim({ name: nick.trim() });
+      }}>
+        <h2 style={{ marginBottom: 12 }}>{free.length > 0 ? 'No estoy en la lista' : 'Creá tu jugador'}</h2>
+        <TextField label="Tu nick" value={nick} onChange={setNick} maxLength={120} />
+        <Btn type="submit" variant="ghost" block busy={busy}>Crear mi jugador</Btn>
+      </form>
+    </>
+  );
+}
+
+export function NickPage() {
+  const { signOut } = useSession();
+  const { group } = useGroup();
+  return (
+    <main className="main" style={{ maxWidth: 480 }}>
+      <h1 style={{ marginBottom: 4 }}>¿Quién sos en {group.name}?</h1>
+      <p className="muted" style={{ marginBottom: 20 }}>Elegí tu jugador para ver tus resultados y deudas.</p>
+      <NickChooser />
       <Btn variant="text" onClick={signOut}>Cerrar sesión</Btn>
     </main>
   );

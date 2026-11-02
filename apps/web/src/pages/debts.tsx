@@ -9,7 +9,7 @@ import { useGroup } from '../context';
 import { shareText } from '../share';
 
 export function PendingDebtsPage() {
-  const { path, key, invalidate } = useGroup();
+  const { path, key, invalidate, canEdit } = useGroup();
   const { confirm, notify } = useFeedback();
   const { busy, run } = useAction();
   const groups = useQuery({
@@ -48,7 +48,7 @@ export function PendingDebtsPage() {
 
   const reorganizeControl = () => {
     const s = status.data;
-    if (!s) return null;
+    if (!s || !canEdit) return null;
     if (s.canUndo) return <Btn variant="ghost" block busy={busy} onClick={() => { void undo(); }}>↩ Deshacer reorganización</Btn>;
     if (s.reason === 'has_payments') return <Btn variant="ghost" block disabled><Emoji>🔒</Emoji> Reorganizar (bloqueado por pagos)</Btn>;
     if (!s.canReorganize) return <Btn variant="ghost" block disabled>✓ No hay deudas para reorganizar</Btn>;

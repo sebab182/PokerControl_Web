@@ -15,6 +15,8 @@ interface Session {
   retry: () => void;
   signIn: (token: string) => void;
   signOut: () => void;
+  /** Master o admin: puede modificar datos. La API lo exige igual en cada escritura. */
+  canEdit: boolean;
   group: ApiGroupRef | null;
   selectGroup: (id: string) => void;
   refreshMe: () => Promise<unknown>;
@@ -61,6 +63,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       retry: () => { void meQuery.refetch(); },
       signIn: t => { setToken(t); setTokenState(t); },
       signOut,
+      canEdit: me?.user.role === 'master' || me?.user.role === 'admin',
       group: groups.find(g => g.id === groupId) ?? groups[0] ?? null,
       selectGroup: id => { storageSet(GROUP_KEY, id); setGroupId(id); },
       refreshMe: () => meQuery.refetch(),
@@ -78,11 +81,12 @@ export function useSession(): Session {
 
 /** Grupo activo; solo se usa dentro de rutas que ya exigen tener uno. */
 export function useGroup() {
-  const { group } = useSession();
+  const { group, canEdit } = useSession();
   if (!group) throw new Error('Sin grupo activo');
   const qc = useQueryClient();
   return {
     group,
+    canEdit,
     path: (rest: string) => `/groups/${group.id}${rest}`,
     key: (...parts: unknown[]) => [group.id, ...parts],
     invalidate: () => qc.invalidateQueries({ queryKey: [group.id] }),

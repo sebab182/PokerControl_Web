@@ -9,7 +9,20 @@ Contrato completo: [`openapi.yaml`](./openapi.yaml), o Swagger en `/docs`. Base:
 3. En la APK, `@react-native-google-signin/google-signin` con `webClientId` igual al Client ID Web, para obtener un `idToken`.
 4. `POST /auth/google` con `{ idToken }` devuelve `{ token, user, groups }`.
 5. Enviar `Authorization: Bearer <token>`. El JWT dura 30 días; `POST /auth/refresh` lo renueva. Guardarlo en almacenamiento seguro.
-6. Si `groups` está vacío, ofrecer `POST /groups` o `POST /groups/join`.
+6. Si `groups` está vacío, ofrecer `POST /groups/join`, y también `POST /groups` si el rol lo permite.
+7. Si el rol es `reader` y el grupo activo trae `playerId: null`, pedir el nick antes de mostrar datos: `GET /groups/:groupId/players` lista los jugadores (`linked: false` son los libres) y `POST /groups/:groupId/me/player` recibe `{ playerId }` o `{ name }`.
+
+## Roles
+
+`user.role` viene en `/auth/google` y `/me`, y se valida en cada request.
+
+| Rol | Permisos |
+|---|---|
+| `master` | Los de admin, más `/admin/users` y `/admin/admins`. Es el primer usuario que ingresó |
+| `admin` | Ve todos los grupos y modifica datos, aunque no sea miembro |
+| `reader` | Solo lee los grupos donde es miembro. Solo escribe al unirse, abandonar y elegir su jugador |
+
+Una escritura sin permiso responde 403 `read_only`. A `reader`, `Group.inviteCode` le llega `null` y `members[].email` no le llega.
 
 ## Convenciones
 
@@ -60,6 +73,6 @@ Al reintentar tras un timeout, reusá la misma clave: si ya se aplicó, la API d
 | Deudas de partida | `GET /sessions/:id/debts`; `state: "merged"` indica que se combinó con otras |
 | Deudas pendientes | `GET /debts/pending-by-debtor`, `GET /debts/reorganize-status` |
 | Stats | `GET /players/:id/stats`, `/report`, `/debts` |
-| Ranking | `GET /ranking?seasonId=` |
+| Ranking | `GET /ranking?seasonId=`; no incluye jugadores archivados, igual que el líder de temporada |
 
 Los informes (`Reports`) no están expuestos todavía: la APK sigue calculándolos localmente hasta la etapa de informes.

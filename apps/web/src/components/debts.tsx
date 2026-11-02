@@ -2,7 +2,7 @@ import type { ApiDebt } from '@pokercontrol/contracts';
 import { formatMoney, parseAmount } from '@pokercontrol/core';
 import { useState } from 'react';
 import { api } from '../api';
-import { useGroup } from '../context';
+import { useGroup, useSession } from '../context';
 import { Btn, Emoji, Modal, Money, StatusBadge, TextField, useAction, useFeedback } from './ui';
 
 export function PaymentModal({ debt, onClose }: { debt: ApiDebt | null; onClose: () => void }) {
@@ -69,6 +69,7 @@ export function PaymentModal({ debt, onClose }: { debt: ApiDebt | null; onClose:
 export function DebtDetail({ debt, onPay, showPlayers }: { debt: ApiDebt; onPay: (d: ApiDebt) => void; showPlayers?: boolean }) {
   const paidPct = Math.round(((debt.originalAmount - debt.pendingAmount) / debt.originalAmount) * 100);
   const paid = debt.status === 'paid';
+  const { canEdit } = useSession();
   return (
     <div className="card">
       <div className="row-between">
@@ -97,7 +98,7 @@ export function DebtDetail({ debt, onPay, showPlayers }: { debt: ApiDebt; onPay:
           <span className="xs muted">{new Date(p.date).toLocaleDateString('es-AR', { day: '2-digit', month: 'short' })}</span>
         </div>
       ))}
-      {!paid && <Btn variant="ghost" block style={{ marginTop: 10 }} onClick={() => onPay(debt)}>+ Registrar pago</Btn>}
+      {!paid && canEdit && <Btn variant="ghost" block style={{ marginTop: 10 }} onClick={() => onPay(debt)}>+ Registrar pago</Btn>}
     </div>
   );
 }

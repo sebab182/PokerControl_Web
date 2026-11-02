@@ -83,7 +83,7 @@ export function playerStats(
 
 /**
  * Sin temporada: histórico por totalBalance. Con temporada: por sessionBalance
- * y solo quienes jugaron en ella. Incluye jugadores archivados.
+ * y solo quienes jugaron en ella. Excluye a los jugadores archivados.
  */
 export function globalRanking(
   players: Player[],
@@ -92,11 +92,12 @@ export function globalRanking(
   seasonId?: string,
 ): RankingEntry[] {
   const ranked = players
+    .filter(p => !p.archivedAt)
     .map((p): RankingEntry | null => {
       const stats = playerStats(p, p.id, sessions, debts, seasonId);
       if (!stats) return null;
       if (seasonId && stats.totalGames === 0) return null;
-      return { playerId: p.id, name: p.name, archived: !!p.archivedAt, ...stats };
+      return { playerId: p.id, name: p.name, ...stats };
     })
     .filter((r): r is RankingEntry => r !== null);
   return seasonId

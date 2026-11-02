@@ -1,6 +1,7 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { parse } from 'yaml';
 import { buildApp } from './app';
 import { ApiError } from './errors';
 import { connect, runMigrations } from './db/client';
@@ -80,8 +81,13 @@ async function login(sub: string): Promise<Client> {
   return c;
 }
 
+async function promote(sub: string) {
+  await conn.pool.query(`update users set role = 'admin' where google_sub = $1 and role = 'reader'`, [sub]);
+}
+
 async function withGroup(sub = 'ana') {
   const c = await login(sub);
+  await promote(sub);
   const group = await c.ok('POST', '/groups', { name: 'Mesa', timezone: 'America/Argentina/Buenos_Aires' });
   c.groupId = group.id;
   return { c, group };
@@ -145,7 +151,8 @@ describe('grupos', () => {
     expect((await b.call('POST', '/groups/join', { inviteCode: 'NOEXISTE' })).body.error).toBe('invalid_code');
     await b.ok('POST', '/groups/join', { inviteCode: group.inviteCode.toLowerCase() });
     expect((await b.call('POST', '/groups/join', { inviteCode: group.inviteCode })).body.error).toBe('already_member');
-    await b.ok('POST', '/groups', { name: 'Otro' });
+    const { group: other } = await withGroup('caro');
+    await b.ok('POST', '/groups/join', { inviteCode: other.inviteCode });
     expect(await b.ok('GET', '/groups')).toHaveLength(2);
   });
   it('rotar invitación invalida el código anterior', async () => {
@@ -160,8 +167,11 @@ describe('grupos', () => {
     expect((await c.call('DELETE', '/g/members/me')).body.error).toBe('last_member');
     const b = await login('beto');
     await b.ok('POST', '/groups/join', { inviteCode: group.inviteCode });
-    await c.ok('DELETE', '/g/members/me');
-    expect((await c.call('GET', '/g/seasons')).status).toBe(403);
+    b.groupId = group.id;
+    await b.ok('POST', '/g/me/player', { name: 'Beto' });
+    await b.ok('DELETE', '/g/members/me');
+    expect((await b.call('GET', '/g/seasons')).status).toBe(403);
+    expect((await c.ok('GET', '/g/players'))[0].linked).toBe(false);
   });
   it('limita los intentos de unirse', async () => {
     const limited = await buildApp({ db: conn.db, jwtSecret: 'test-secret', rateLimitMax: 3, verifier });
@@ -603,17 +613,24 @@ describe('reorganizar y deshacer', () => {
 });
 
 describe('jugadores', () => {
-  it('sin historial se borra; con historial se archiva y sigue en ranking', async () => {
+  it('sin historial se borra; con historial se archiva y sale del ranking y del líder', async () => {
     const { c } = await withGroup();
     const { season, ana, beto } = await seed(c);
     const caro = await c.ok('POST', '/g/players', { name: 'Caro' });
     expect((await c.ok('DELETE', `/g/players/${caro.id}`)).archived).toBe(false);
-    await closedSession(c, season.id, ana, beto);
-    expect((await c.ok('DELETE', `/g/players/${beto.id}`)).archived).toBe(true);
-    expect((await c.ok('GET', '/g/players')).map((p: { id: string }) => p.id)).toEqual([ana.id]);
+    const sessionId = await closedSession(c, season.id, ana, beto);
+    // Ana va primera: al archivarla, el líder pasa a ser Beto.
+    expect((await c.ok('DELETE', `/g/players/${ana.id}`)).archived).toBe(true);
+    expect((await c.ok('GET', '/g/players')).map((p: { id: string }) => p.id)).toEqual([beto.id]);
     expect(await c.ok('GET', '/g/players?includeArchived=true')).toHaveLength(2);
     const ranking = await c.ok('GET', '/g/ranking');
-    expect(ranking.find((r: { playerId: string }) => r.playerId === beto.id).archived).toBe(true);
+    expect(ranking.map((r: { playerId: string }) => r.playerId)).toEqual([beto.id]);
+    expect((await c.ok('GET', '/g/seasons'))[0].leader.playerId).toBe(beto.id);
+    // Sigue visible en la partida, en sus estadísticas y en las deudas.
+    const session = await c.ok('GET', `/g/sessions/${sessionId}`);
+    expect(session.participants.map((p: { playerId: string }) => p.playerId)).toContain(ana.id);
+    expect((await c.ok('GET', `/g/players/${ana.id}/stats`)).sessionBalance).toBe(50);
+    expect((await c.ok('GET', `/g/players/${ana.id}/debts`)).owed).toHaveLength(1);
   });
   it('un archivado no entra en partidas ni deudas, hasta desarchivarlo', async () => {
     const { c } = await withGroup();
@@ -762,7 +779,7 @@ describe('backup', () => {
     const { c: copy } = await withGroup('otro');
     await copy.ok('POST', '/g/backup/import', file);
     const again = await copy.ok('GET', '/g/ranking');
-    const key = (r: { name: string; totalBalance: number; archived: boolean; totalGames: number }) => [r.name, r.totalBalance, r.archived, r.totalGames];
+    const key = (r: { name: string; totalBalance: number; totalGames: number }) => [r.name, r.totalBalance, r.totalGames];
     expect(again.map(key)).toEqual(ranking.map(key));
     const [debt] = await copy.ok('GET', '/g/debts');
     expect(debt).toMatchObject({ manualAmount: 25, pendingAmount: 75, isConsolidated: true });
@@ -775,6 +792,234 @@ describe('contrato', () => {
   });
   it('health no requiere autenticación', async () => {
     expect((await app.inject({ url: '/health' })).json()).toEqual({ ok: true });
+  });
+});
+
+describe('roles', () => {
+  /** Master con grupo y un miembro de solo lectura. */
+  async function withReader() {
+    const { c: master, group } = await withGroup('master');
+    const reader = await login('lector');
+    await reader.ok('POST', '/groups/join', { inviteCode: group.inviteCode });
+    reader.groupId = group.id;
+    return { master, reader, group };
+  }
+
+  it('el primer login es master, incluso con dos simultáneos', async () => {
+    const results = await Promise.all(['uno', 'dos', 'tres'].map(async sub => (await login(sub)).ok('GET', '/me')));
+    expect(results.map(r => r.user.role).sort()).toEqual(['master', 'reader', 'reader']);
+    expect((await login('uno')).token).toBeTruthy();
+    const { rows } = await conn.pool.query(`select count(*)::int as n from users where role = 'master'`);
+    expect(rows[0].n).toBe(1);
+  });
+  it('la migración hace master al usuario más antiguo', async () => {
+    const migration = readdirSync(resolve(__dirname, '../../../db/migrations')).find(f => f.startsWith('0001_')) as string;
+    const backfill = readFileSync(resolve(__dirname, '../../../db/migrations', migration), 'utf8')
+      .split('--> statement-breakpoint').at(-1) as string;
+    await conn.pool.query(`insert into users (id, google_sub, email, name, created_at) values
+      ('nuevo', 'a', 'a@x.com', 'A', '2026-02-01'), ('viejo', 'b', 'b@x.com', 'B', '2026-01-01')`);
+    await conn.pool.query(backfill);
+    const { rows } = await conn.pool.query('select id, role from users order by id');
+    expect(rows).toEqual([{ id: 'nuevo', role: 'reader' }, { id: 'viejo', role: 'master' }]);
+  });
+  it('solo el master administra roles', async () => {
+    const { reader } = await withReader();
+    const admin = await login('admin');
+    await promote('admin');
+    for (const c of [reader, admin]) {
+      expect((await c.call('GET', '/admin/users')).body.error).toBe('not_master');
+      expect((await c.call('POST', '/admin/admins', { email: 'x@x.com' })).body.error).toBe('not_master');
+    }
+  });
+  it('nombrado por email antes del primer login, sin distinguir mayúsculas', async () => {
+    const master = await login('master');
+    const r = await master.ok('POST', '/admin/admins', { email: 'Nuevo@X.com' });
+    expect(r.pending.map((p: { email: string }) => p.email)).toEqual(['nuevo@x.com']);
+    const nuevo = await login('nuevo');
+    expect((await nuevo.ok('GET', '/me')).user.role).toBe('admin');
+    expect((await master.ok('GET', '/admin/users')).pending).toEqual([]);
+    await nuevo.ok('POST', '/groups', { name: 'Suyo' });
+  });
+  it('promover después del login y quitar rigen en la request siguiente', async () => {
+    const { master, reader, group } = await withReader();
+    expect((await reader.call('POST', '/g/players', { name: 'x' })).body.error).toBe('read_only');
+    await master.ok('POST', '/admin/admins', { email: 'lector@x.com' });
+    await reader.ok('POST', '/g/players', { name: 'x' });
+    expect((await reader.ok('GET', '/g')).inviteCode).toBe(group.inviteCode);
+    await master.ok('DELETE', '/admin/admins/lector%40x.com');
+    expect((await reader.call('POST', '/g/players', { name: 'y' })).body.error).toBe('read_only');
+  });
+  it('el master no se puede quitar, y quitar a alguien inexistente da 404', async () => {
+    const master = await login('master');
+    expect((await master.call('DELETE', '/admin/admins/master%40x.com')).body.error).toBe('cannot_remove_master');
+    expect((await master.call('DELETE', '/admin/admins/nadie%40x.com')).status).toBe(404);
+  });
+  it('rechaza un email inválido', async () => {
+    const master = await login('master');
+    expect((await master.call('POST', '/admin/admins', { email: 'sin-arroba' })).status).toBe(400);
+  });
+  it('solo lectura no crea grupos ni ve invitación, emails ni backup', async () => {
+    const { reader } = await withReader();
+    expect((await reader.call('POST', '/groups', { name: 'x' })).body.error).toBe('read_only');
+    const group = await reader.ok('GET', '/g');
+    expect(group.inviteCode).toBeNull();
+    expect(group.members[0].email).toBeUndefined();
+    expect((await reader.call('GET', '/g/backup/export')).body.error).toBe('read_only');
+  });
+  it('solo lectura recibe 403 en todas las escrituras y puede leer', async () => {
+    const { master, reader } = await withReader();
+    const { season, ana, beto } = await seed(master);
+    const sessionId = await closedSession(master, season.id, ana, beto);
+    for (const [method, path] of [
+      ['PATCH', '/g'], ['POST', '/g/invite/rotate'],
+      ['POST', '/g/players'], ['PATCH', `/g/players/${ana.id}`], ['DELETE', `/g/players/${ana.id}`],
+      ['POST', `/g/players/${ana.id}/unarchive`], ['POST', `/g/players/${ana.id}/user`],
+      ['POST', `/g/players/${ana.id}/adjustments`], ['PATCH', `/g/players/${ana.id}/adjustments/x`], ['DELETE', `/g/players/${ana.id}/adjustments/x`],
+      ['POST', '/g/seasons'], ['PATCH', `/g/seasons/${season.id}`], ['DELETE', `/g/seasons/${season.id}`],
+      ['POST', `/g/seasons/${season.id}/close`], ['POST', `/g/seasons/${season.id}/reopen`], ['POST', `/g/seasons/${season.id}/sessions`],
+      ['DELETE', `/g/sessions/${sessionId}`], ['POST', `/g/sessions/${sessionId}/buys`], ['POST', `/g/sessions/${sessionId}/close`],
+      ['POST', `/g/sessions/${sessionId}/participants`], ['PATCH', `/g/sessions/${sessionId}/participants/${ana.id}`], ['DELETE', `/g/sessions/${sessionId}/participants/${ana.id}`],
+      ['DELETE', `/g/sessions/${sessionId}/buys/x`],
+      ['POST', '/g/debts/manual'], ['DELETE', '/g/debts/manual/x'], ['POST', '/g/debts/mark-paid'],
+      ['POST', '/g/debts/x/payments'], ['POST', '/g/debts/x/mark-paid'], ['POST', '/g/debts/renet'], ['POST', '/g/debts/renet/undo'],
+      ['POST', '/g/backup/import'],
+    ] as const) {
+      const r = await reader.call(method, path, method === 'DELETE' ? undefined : {}, 'clave-de-prueba');
+      expect([path, r.status, r.body.error]).toEqual([path, 403, 'read_only']);
+    }
+    for (const path of ['/g', '/g/players', '/g/seasons', `/g/sessions/${sessionId}`, '/g/debts', '/g/ranking', `/g/players/${ana.id}/stats`]) {
+      await reader.ok('GET', path);
+    }
+  });
+  it('todas las rutas de escritura del OpenAPI están bajo alguna regla de permisos', async () => {
+    const paths = parse(await generateOpenApi()).paths as Record<string, Record<string, unknown>>;
+    const open = Object.entries(paths)
+      .flatMap(([path, ops]) => Object.keys(ops).filter(m => m !== 'get').map(m => `${m.toUpperCase()} ${path}`))
+      .filter(route => !route.includes('/admin/') && !route.includes('/auth/'));
+    const { master, reader } = await withReader();
+    const { ana } = await seed(master);
+    const allowed = new Set([
+      'POST /api/v1/groups/join', 'DELETE /api/v1/groups/{groupId}/members/me', 'POST /api/v1/groups/{groupId}/me/player',
+    ]);
+    for (const route of open.filter(r => !allowed.has(r))) {
+      const [method, path] = route.split(' ');
+      const url = path.replace('/api/v1', '').replace('{groupId}', reader.groupId).replace(/\{\w+\}/g, ana.id);
+      const r = await reader.call(method as 'POST', url, method === 'DELETE' ? undefined : {}, 'clave-de-prueba');
+      expect([route, r.body.error]).toEqual([route, 'read_only']);
+    }
+  });
+  it('un admin entra a un grupo ajeno; solo lectura sigue con 403', async () => {
+    const { group } = await withGroup('dueño');
+    const admin = await login('admin');
+    const reader = await login('lector');
+    await promote('admin');
+    admin.groupId = group.id;
+    reader.groupId = group.id;
+    expect((await admin.ok('GET', '/groups')).map((g: { id: string }) => g.id)).toEqual([group.id]);
+    await admin.ok('POST', '/g/players', { name: 'x' });
+    expect((await admin.ok('GET', '/g')).isMember).toBe(false);
+    expect((await admin.call('DELETE', '/g/members/me')).body.error).toBe('not_a_member');
+    expect(await reader.ok('GET', '/groups')).toEqual([]);
+    expect((await reader.call('GET', '/g')).status).toBe(403);
+  });
+});
+
+describe('nick', () => {
+  async function withReader() {
+    const { c: master, group } = await withGroup('master');
+    const reader = await login('lector');
+    await reader.ok('POST', '/groups/join', { inviteCode: group.inviteCode });
+    reader.groupId = group.id;
+    return { master, reader, group };
+  }
+  const myGroup = async (c: Client) => (await c.ok('GET', '/me')).groups[0];
+
+  it('elige un jugador libre, y queda visible en /me y en la lista', async () => {
+    const { master, reader } = await withReader();
+    const { ana } = await seed(master);
+    expect((await myGroup(reader)).playerId).toBeNull();
+    expect((await reader.ok('POST', '/g/me/player', { playerId: ana.id })).linked).toBe(true);
+    expect((await myGroup(reader)).playerId).toBe(ana.id);
+    expect((await reader.call('POST', '/g/me/player', { name: 'Otro' })).body.error).toBe('already_linked');
+  });
+  it('crea un jugador nuevo; un nombre activo repetido da 409', async () => {
+    const { master, reader } = await withReader();
+    await seed(master);
+    expect((await reader.call('POST', '/g/me/player', { name: 'ANA' })).body.error).toBe('player_name_taken');
+    const created = await reader.ok('POST', '/g/me/player', { name: 'Lector' });
+    expect((await myGroup(reader)).playerId).toBe(created.id);
+  });
+  it('dos usuarios que reclaman el mismo jugador: uno recibe 409', async () => {
+    const { master, reader, group } = await withReader();
+    const { ana } = await seed(master);
+    const other = await login('otro');
+    await other.ok('POST', '/groups/join', { inviteCode: group.inviteCode });
+    other.groupId = group.id;
+    const results = await Promise.all([reader, other].map(c => c.call('POST', '/g/me/player', { playerId: ana.id })));
+    expect(results.map(r => r.status).sort()).toEqual([200, 409]);
+    expect(results.find(r => r.status === 409)?.body.error).toBe('player_taken');
+  });
+  it('rechaza un jugador archivado, de otro grupo, y pedir nada o las dos cosas', async () => {
+    const { master, reader } = await withReader();
+    const { ana, beto } = await seed(master);
+    await master.ok('POST', `/g/players/${beto.id}/adjustments`, { description: 'x', amount: 1 });
+    await master.ok('DELETE', `/g/players/${beto.id}`);
+    expect((await reader.call('POST', '/g/me/player', { playerId: beto.id })).body.error).toBe('player_archived');
+    expect((await reader.call('POST', '/g/me/player', { playerId: 'ajeno' })).status).toBe(404);
+    expect((await reader.call('POST', '/g/me/player', {})).body.error).toBe('invalid_claim');
+    expect((await reader.call('POST', '/g/me/player', { playerId: ana.id, name: 'x' })).body.error).toBe('invalid_claim');
+  });
+  it('archivar conserva la asociación; borrar la libera', async () => {
+    const { master, reader } = await withReader();
+    const { season, ana, beto } = await seed(master);
+    await reader.ok('POST', '/g/me/player', { playerId: beto.id });
+    await closedSession(master, season.id, ana, beto);
+    await master.ok('DELETE', `/g/players/${beto.id}`);
+    expect((await myGroup(reader)).playerId).toBe(beto.id);
+
+    const { reader: other } = await withReader2(master);
+    const created = await other.ok('POST', '/g/me/player', { name: 'Sin historial' });
+    await master.ok('DELETE', `/g/players/${created.id}`);
+    expect((await myGroup(other)).playerId).toBeNull();
+  });
+  async function withReader2(master: Client) {
+    const { inviteCode } = await master.ok('GET', '/g');
+    const reader = await login('segundo');
+    await reader.ok('POST', '/groups/join', { inviteCode });
+    reader.groupId = master.groupId;
+    return { reader };
+  }
+  it('un admin corrige la asociación, incluso quitarla o moverla', async () => {
+    const { master, reader } = await withReader();
+    const { ana, beto } = await seed(master);
+    const { id } = (await reader.ok('GET', '/me')).user;
+    await reader.ok('POST', '/g/me/player', { playerId: ana.id });
+    await master.ok('POST', `/g/players/${beto.id}/user`, { userId: id });
+    expect((await myGroup(reader)).playerId).toBe(beto.id);
+    expect((await master.ok('GET', '/g/players')).find((p: { id: string }) => p.id === ana.id).linked).toBe(false);
+    await master.ok('POST', `/g/players/${beto.id}/user`, { userId: null });
+    expect((await myGroup(reader)).playerId).toBeNull();
+    const stranger = await login('ajeno');
+    const strangerId = (await stranger.ok('GET', '/me')).user.id;
+    expect((await master.call('POST', `/g/players/${beto.id}/user`, { userId: strangerId })).body.error).toBe('invalid_user');
+  });
+  it('importar conserva la asociación si coincide el nombre y avisa si se pierde', async () => {
+    const { master, reader } = await withReader();
+    const { ana } = await seed(master);
+    await reader.ok('POST', '/g/me/player', { playerId: ana.id });
+    const other = (await withReader2(master)).reader;
+    await other.ok('POST', '/g/me/player', { name: 'NoEstá' });
+    const data = { poker_players: [{ id: 'p1', name: 'ana', createdAt: '2025-01-01T00:00:00.000Z' }], poker_sessions: [], poker_debts: [] };
+
+    const preview = await master.ok('POST', '/g/backup/import?dryRun=true', { data });
+    expect(preview.warnings.join()).toContain('1 usuario(s) pierden la asociación');
+    expect((await myGroup(reader)).playerId).toBe(ana.id);
+
+    await master.ok('POST', '/g/backup/import', { data });
+    const players = await master.ok('GET', '/g/players');
+    expect((await myGroup(reader)).playerId).toBe(players[0].id);
+    expect((await myGroup(other)).playerId).toBeNull();
+    expect(JSON.stringify(await master.ok('GET', '/g/backup/export'))).not.toContain('userId');
   });
 });
 

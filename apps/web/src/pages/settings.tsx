@@ -1,10 +1,10 @@
-import type { ApiGroup, ApiImportResult } from '@pokercontrol/contracts';
+import type { ApiAdminOverview, ApiGroup, ApiImportResult, ApiPlayer } from '@pokercontrol/contracts';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
 import { api } from '../api';
 import { Avatar, Btn, Emoji, Loading, Modal, QueryError, TextField, useAction, useFeedback } from '../components/ui';
 import { useGroup, useSession, useTheme, type Theme } from '../context';
-import { GroupChooser } from './auth';
+import { GroupChooser, NickChooser } from './auth';
 
 const THEMES: { value: Theme; label: string }[] = [
   { value: 'system', label: 'Sistema' }, { value: 'light', label: 'Claro' }, { value: 'dark', label: 'Oscuro' },
@@ -89,14 +89,77 @@ function BackupCard() {
   );
 }
 
+const ROLE_LABEL = { master: 'Master', admin: 'Admin', reader: 'Solo lectura' };
+
+function AdminsCard() {
+  const { confirm } = useFeedback();
+  const { busy, run } = useAction();
+  const qc = useQueryClient();
+  const queryKey = ['admin-users'];
+  const query = useQuery({ queryKey, queryFn: () => api<ApiAdminOverview>('/admin/users') });
+  const [email, setEmail] = useState('');
+
+  const grant = (target: string) => run(async () => {
+    qc.setQueryData(queryKey, await api<ApiAdminOverview>('/admin/admins', { method: 'POST', body: { email: target } }));
+    setEmail('');
+  });
+  const revoke = async (target: string) => {
+    const ok = await confirm({
+      title: 'Quitar administrador', danger: true, confirmLabel: 'Quitar',
+      message: `${target} va a pasar a solo lectura.`,
+    });
+    if (!ok) return;
+    void run(async () => {
+      qc.setQueryData(queryKey, await api<ApiAdminOverview>(`/admin/admins/${encodeURIComponent(target)}`, { method: 'DELETE' }));
+    });
+  };
+
+  return (
+    <div className="card" data-testid="admins-card">
+      <h2>Administradores</h2>
+      <p className="small muted" style={{ margin: '4px 0 12px' }}>
+        Pueden crear grupos, invitar y modificar datos. Si todavía no ingresó, queda nombrado para su primer login.
+      </p>
+      <form onSubmit={e => {
+        e.preventDefault();
+        if (email.trim()) void grant(email.trim());
+      }}>
+        <TextField label="Email de Google" value={email} onChange={setEmail} maxLength={320} placeholder="nombre@gmail.com" />
+        <Btn type="submit" variant="ghost" busy={busy} disabled={!email.trim()}>Nombrar admin</Btn>
+      </form>
+      {query.isLoading && <Loading />}
+      {query.error && <QueryError error={query.error} onRetry={() => { void query.refetch(); }} />}
+      {query.data?.pending.map(p => (
+        <div className="list-row" key={p.email}>
+          <div className="grow ellipsis">{p.email}</div>
+          <span className="badge badge-amber">Pendiente</span>
+          <Btn variant="text" aria-label={`Quitar a ${p.email}`} onClick={() => { void revoke(p.email); }}>Quitar</Btn>
+        </div>
+      ))}
+      {query.data?.users.map(u => (
+        <div className="list-row" key={u.id}>
+          <div className="grow">
+            <div className="ellipsis">{u.name}</div>
+            <div className="xs muted ellipsis">{u.email}</div>
+          </div>
+          <span className="badge badge-muted">{ROLE_LABEL[u.role]}</span>
+          {u.role === 'reader' && <Btn variant="text" busy={busy} aria-label={`Hacer admin a ${u.name}`} onClick={() => { void grant(u.email); }}>Hacer admin</Btn>}
+          {u.role === 'admin' && <Btn variant="text" aria-label={`Quitar a ${u.name}`} onClick={() => { void revoke(u.email); }}>Quitar</Btn>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function SettingsPage() {
-  const { path, key, invalidate } = useGroup();
+  const { path, key, invalidate, canEdit, group: activeGroup } = useGroup();
   const { signOut, me, refreshMe, selectGroup } = useSession();
   const qc = useQueryClient();
   const { confirm, notify } = useFeedback();
   const { busy, run } = useAction();
   const [theme, setTheme] = useTheme();
   const query = useQuery({ queryKey: key('group-details'), queryFn: () => api<ApiGroup>(path('')) });
+  const players = useQuery({ queryKey: key('players', 'all'), queryFn: () => api<ApiPlayer[]>(path('/players?includeArchived=true')) });
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState('');
   const [timezone, setTimezone] = useState('');
@@ -106,6 +169,19 @@ export function SettingsPage() {
   if (query.error || !query.data) return <QueryError error={query.error} onRetry={() => { void query.refetch(); }} />;
   const group = query.data;
   const groups = me?.groups ?? [];
+  const inviteCode = group.inviteCode;
+  const allPlayers = players.data ?? [];
+  const playerName = (id: string | null) => allPlayers.find(p => p.id === id)?.name;
+
+  /** Corrige a qué jugador está asociado un miembro. */
+  const relink = (userId: string, current: string | null, next: string) => {
+    void run(async () => {
+      if (next) await api(path(`/players/${next}/user`), { method: 'POST', body: { userId } });
+      else if (current) await api(path(`/players/${current}/user`), { method: 'POST', body: { userId: null } });
+      await invalidate();
+      await refreshMe();
+    });
+  };
 
   const rotate = async () => {
     const ok = await confirm({
@@ -144,16 +220,20 @@ export function SettingsPage() {
             <h2 className="ellipsis">{group.name}</h2>
             <p className="small muted">Zona horaria: {group.timezone}</p>
           </div>
-          <Btn variant="ghost" onClick={() => { setName(group.name); setTimezone(group.timezone); setEditing(true); }}>Editar</Btn>
+          {canEdit && <Btn variant="ghost" onClick={() => { setName(group.name); setTimezone(group.timezone); setEditing(true); }}>Editar</Btn>}
         </div>
-        <h3 style={{ marginTop: 16 }}>Código de invitación</h3>
-        <p className="big num" style={{ fontSize: 28 }} data-testid="settings-invite">{group.inviteCode}</p>
-        <div className="row-wrap" style={{ marginTop: 8 }}>
-          <Btn variant="ghost" onClick={() => {
-            void navigator.clipboard.writeText(group.inviteCode).then(() => notify('Código copiado.'));
-          }}>Copiar</Btn>
-          <Btn variant="ghost" busy={busy} onClick={() => { void rotate(); }}>Regenerar</Btn>
-        </div>
+        {inviteCode && (
+          <>
+            <h3 style={{ marginTop: 16 }}>Código de invitación</h3>
+            <p className="big num" style={{ fontSize: 28 }} data-testid="settings-invite">{inviteCode}</p>
+            <div className="row-wrap" style={{ marginTop: 8 }}>
+              <Btn variant="ghost" onClick={() => {
+                void navigator.clipboard.writeText(inviteCode).then(() => notify('Código copiado.'));
+              }}>Copiar</Btn>
+              <Btn variant="ghost" busy={busy} onClick={() => { void rotate(); }}>Regenerar</Btn>
+            </div>
+          </>
+        )}
       </div>
 
       <div className="card">
@@ -163,14 +243,35 @@ export function SettingsPage() {
             <Avatar name={m.name} />
             <div className="grow">
               <div className="ellipsis">{m.name}</div>
-              <div className="xs muted ellipsis">{m.email}</div>
+              {m.email && <div className="xs muted ellipsis">{m.email}</div>}
+              {!canEdit && m.playerId && <div className="xs muted ellipsis">Juega como {playerName(m.playerId)}</div>}
             </div>
+            {canEdit && (
+              <select value={m.playerId ?? ''} disabled={busy} aria-label={`Jugador de ${m.name}`}
+                style={{ maxWidth: '45%' }} onChange={e => relink(m.id, m.playerId, e.target.value)}>
+                <option value="">Sin jugador</option>
+                {allPlayers.filter(p => p.id === m.playerId || (!p.linked && !p.archivedAt)).map(p => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            )}
           </div>
         ))}
-        <Btn variant="danger" style={{ marginTop: 12 }} busy={busy} disabled={group.members.length <= 1}
-          onClick={() => { void leave(); }}>Abandonar grupo</Btn>
-        {group.members.length <= 1 && <p className="xs muted" style={{ marginTop: 6 }}>Sos el único miembro: no podés abandonar el grupo.</p>}
+        {group.isMember && (
+          <Btn variant="danger" style={{ marginTop: 12 }} busy={busy} disabled={group.members.length <= 1}
+            onClick={() => { void leave(); }}>Abandonar grupo</Btn>
+        )}
+        {group.isMember && group.members.length <= 1 && <p className="xs muted" style={{ marginTop: 6 }}>Sos el único miembro: no podés abandonar el grupo.</p>}
       </div>
+
+      {canEdit && !activeGroup.playerId && (
+        <>
+          <h2 className="section-title">Mi jugador en este grupo</h2>
+          <NickChooser />
+        </>
+      )}
+
+      {me?.user.role === 'master' && <AdminsCard />}
 
       <div className="card">
         <h2 style={{ marginBottom: 12 }}>Mis grupos</h2>
@@ -182,7 +283,7 @@ export function SettingsPage() {
             </select>
           </label>
         )}
-        <Btn variant="ghost" onClick={() => setChooser(true)}>Crear o unirme a otro grupo</Btn>
+        <Btn variant="ghost" onClick={() => setChooser(true)}>{canEdit ? 'Crear o unirme a otro grupo' : 'Unirme a otro grupo'}</Btn>
       </div>
 
       <div className="card">
@@ -194,7 +295,7 @@ export function SettingsPage() {
         </div>
       </div>
 
-      <BackupCard />
+      {canEdit && <BackupCard />}
 
       <div className="card">
         <h2><Emoji>♠</Emoji> PokerControl</h2>

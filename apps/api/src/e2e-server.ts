@@ -14,7 +14,15 @@ if (process.env.NODE_ENV === 'production' || !url) {
 
 await runMigrations(url);
 const { db, pool } = connect(url);
-await pool.query('TRUNCATE users, groups CASCADE');
+
+/** Cada test arranca sin grupos: master y admins ven todos los de la base. */
+async function reset(): Promise<void> {
+  await pool.query('TRUNCATE users, groups CASCADE');
+  await pool.query(
+    `insert into users (id, google_sub, email, name, role) values ('e2e-master', 'e2e-master', 'master@x.com', 'Master', 'master')`,
+  );
+}
+await reset();
 
 const app = await buildApp({
   db,
@@ -25,5 +33,9 @@ const app = await buildApp({
     const [, sub, email, name] = idToken.split(':');
     return { sub, email, name, emailVerified: true, picture: null };
   },
+});
+app.post('/e2e/reset', async () => {
+  await reset();
+  return { ok: true };
 });
 await app.listen({ port: 3100, host: '127.0.0.1' });

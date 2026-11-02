@@ -2,17 +2,38 @@ import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 
 const API = 'http://127.0.0.1:3100/api/v1';
+const MASTER_TOKEN = 'test:e2e-master:master@x.com:Master';
 let userSeq = 0;
 
+// Cada test arranca sin grupos: master y admins ven todos los de la base.
+test.beforeEach(async ({ request }) => {
+  await request.post('http://127.0.0.1:3100/e2e/reset');
+});
+
+async function apiLogin(page: Page, idToken: string): Promise<string> {
+  const res = await page.request.post(`${API}/auth/google`, { data: { idToken } });
+  return (await res.json()).token;
+}
+
 /** Google se reemplaza por el verificador de test: nunca existe en el build de producción. */
-async function login(page: Page, name: string): Promise<string> {
+async function login(page: Page, name: string, role: 'master' | 'admin' | 'reader' = 'admin'): Promise<string> {
   const sub = `${name}-${Date.now()}-${++userSeq}`;
-  const res = await page.request.post(`${API}/auth/google`, {
-    data: { idToken: `test:${sub}:${sub}@x.com:${name}` },
-  });
-  const { token } = await res.json();
+  const email = `${sub}@x.com`.toLowerCase();
+  if (role === 'admin') {
+    const master = await apiLogin(page, MASTER_TOKEN);
+    await page.request.post(`${API}/admin/admins`, { headers: { authorization: `Bearer ${master}` }, data: { email } });
+  }
+  const token = await apiLogin(page, role === 'master' ? MASTER_TOKEN : `test:${sub}:${email}:${name}`);
   await page.addInitScript(t => localStorage.setItem('pc_token', t), token);
   return token;
+}
+
+async function checkPage(page: Page, where: string) {
+  await page.waitForLoadState('networkidle');
+  const { violations } = await new AxeBuilder({ page }).analyze();
+  expect(violations.filter(v => ['serious', 'critical'].includes(v.impact ?? '')).map(v => `${where}: ${v.id}: ${v.nodes[0]?.html}`)).toEqual([]);
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
+  expect(overflow, `${where}: scroll horizontal`).toBe(false);
 }
 
 async function createGroup(page: Page, name = 'Los viernes'): Promise<string> {
@@ -61,13 +82,15 @@ test('partida completa: grupo, compras, cierre con diferencia, pagos y stats', a
   // Un segundo miembro ve la misma mesa.
   const context2 = await browser.newContext();
   const page2 = await context2.newPage();
-  await login(page2, 'Ana');
+  await login(page2, 'Ana', 'reader');
   await page2.goto('/');
   await page2.getByLabel('Código de invitación').fill(code);
   await page2.getByRole('button', { name: 'Unirme' }).click();
+  await page2.getByRole('button', { name: 'Soy Ana' }).click();
   await expect(page2.getByRole('heading', { name: 'Temporadas' })).toBeVisible();
   await page2.goto(page.url());
   await expect(page2.getByTestId('pot')).toHaveText('$251');
+  await expect(page2.getByRole('button', { name: '+ Compra' })).toHaveCount(0);
   await context2.close();
 
   // Resultados con faltante de 21.
@@ -222,7 +245,7 @@ test('varios grupos: el selector aísla los datos', async ({ page, isMobile }) =
   } else {
     await page.getByTestId('group-switcher').selectOption({ label: 'Grupo A' });
   }
-  await expect(page.getByText('SoloEnA')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Estadísticas de SoloEnA' })).toBeVisible();
 });
 
 test('errores: partida ajena, ruta inexistente y sesión inválida', async ({ page }) => {
@@ -238,8 +261,75 @@ test('errores: partida ajena, ruta inexistente y sesión inválida', async ({ pa
   await expect(page.getByText('Compras, resultados y deudas')).toBeVisible();
 });
 
+test('roles: master, solo lectura con nick, promoción y archivados', async ({ page, browser }) => {
+  await login(page, 'Master', 'master');
+  const code = await createGroup(page);
+  await importBackup(page);
+
+  // Un archivado sale del ranking y sigue en la partida pasada.
+  await nav(page, 'Ranking');
+  await expect(page.locator('.podium')).toBeVisible();
+  await expect(page.getByText('Fantasma')).toHaveCount(0);
+  await nav(page, 'Temporadas');
+  await page.getByRole('link', { name: 'Ver partidas' }).click();
+  await page.getByRole('link', { name: /Noche uno/ }).click();
+  await expect(page.getByTestId('player-Fantasma')).toBeVisible();
+
+  // Solo lectura: necesita invitación y elegir su nick.
+  const context2 = await browser.newContext();
+  const reader = await context2.newPage();
+  await login(reader, 'Caro', 'reader');
+  await reader.goto('/');
+  await expect(reader.getByLabel('Nombre del grupo')).toHaveCount(0);
+  await reader.getByLabel('Código de invitación').fill(code);
+  await reader.getByRole('button', { name: 'Unirme' }).click();
+  await expect(reader.getByRole('heading', { name: '¿Quién sos en Los viernes?' })).toBeVisible();
+  await expect(reader.getByRole('button', { name: 'Soy Fantasma' })).toHaveCount(0);
+  await checkPage(reader, 'nick');
+  await reader.getByLabel('Tu nick').fill('ana');
+  await reader.getByRole('button', { name: 'Crear mi jugador' }).click();
+  await expect(reader.getByRole('alert')).toContainText('Ya existe un jugador');
+  await reader.getByLabel('Tu nick').fill('Caro');
+  await reader.getByRole('button', { name: 'Crear mi jugador' }).click();
+
+  // Ve datos, sin ningún control de edición.
+  await expect(reader.getByRole('heading', { name: 'Temporadas' })).toBeVisible();
+  await expect(reader.getByRole('button', { name: '+ Nueva temporada' })).toHaveCount(0);
+  await nav(reader, 'Jugadores');
+  await expect(reader.getByText('Caro', { exact: true })).toBeVisible();
+  await expect(reader.getByRole('button', { name: '+ Agregar' })).toHaveCount(0);
+  await expect(reader.getByRole('button', { name: 'Eliminar a Ana' })).toHaveCount(0);
+  await nav(reader, 'Deudas');
+  await expect(reader.getByTestId('debtor-Beto')).toBeVisible();
+  await expect(reader.getByRole('button', { name: '+ Registrar pago' })).toHaveCount(0);
+  await expect(reader.getByRole('button', { name: /Reorganizar/ })).toHaveCount(0);
+  await nav(reader, 'Config');
+  await expect(reader.getByRole('heading', { name: 'Miembros (2)' })).toBeVisible();
+  await expect(reader.getByTestId('settings-invite')).toHaveCount(0);
+  await expect(reader.getByRole('heading', { name: 'Backup' })).toHaveCount(0);
+  await expect(reader.getByTestId('admins-card')).toHaveCount(0);
+  await checkPage(reader, 'configuración de solo lectura');
+
+  // El master lo promueve, y nombra por email a alguien que todavía no ingresó.
+  await nav(page, 'Config');
+  const admins = page.getByTestId('admins-card');
+  await admins.getByLabel('Email de Google').fill('Nuevo@x.com');
+  await admins.getByRole('button', { name: 'Nombrar admin' }).click();
+  await expect(admins.getByText('nuevo@x.com')).toBeVisible();
+  await expect(admins.getByText('Pendiente')).toBeVisible();
+  await admins.getByRole('button', { name: 'Hacer admin a Caro' }).click();
+  await expect(admins.getByRole('button', { name: 'Hacer admin a Caro' })).toHaveCount(0);
+  await reader.goto('/seasons');
+  await expect(reader.getByRole('button', { name: '+ Nueva temporada' })).toBeVisible();
+  await context2.close();
+
+  const token = await apiLogin(page, 'test:nuevo:nuevo@x.com:Nuevo');
+  const me = await page.request.get(`${API}/me`, { headers: { authorization: `Bearer ${token}` } });
+  expect((await me.json()).user.role).toBe('admin');
+});
+
 test('accesibilidad y responsive en cada vista, en ambos temas', async ({ page }) => {
-  await login(page, 'Seba');
+  await login(page, 'Master', 'master');
   await createGroup(page);
   await importBackup(page);
 
@@ -248,13 +338,7 @@ test('accesibilidad y responsive en cada vista, en ambos temas', async ({ page }
   });
   expect(seasons.ok()).toBe(true);
 
-  const check = async (where: string) => {
-    await page.waitForLoadState('networkidle');
-    const { violations } = await new AxeBuilder({ page }).analyze();
-    expect(violations.filter(v => ['serious', 'critical'].includes(v.impact ?? '')).map(v => `${where}: ${v.id}: ${v.nodes[0]?.html}`)).toEqual([]);
-    const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
-    expect(overflow, `${where}: scroll horizontal`).toBe(false);
-  };
+  const check = (where: string) => checkPage(page, where);
 
   for (const scheme of ['light', 'dark'] as const) {
     await page.emulateMedia({ colorScheme: scheme });

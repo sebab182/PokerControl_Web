@@ -144,7 +144,6 @@ export interface PlayerStats {
 export interface RankingEntry extends PlayerStats {
   playerId: string;
   name: string;
-  archived: boolean;
 }
 
 /** Dependencias no deterministas, inyectadas para que el dominio sea puro. */

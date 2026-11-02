@@ -9,7 +9,7 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import * as schema from '../db/schema';
 import { ApiError } from '../errors';
 import { ctx, type Conn } from '../repo';
-import { userGroups } from './auth';
+import { userGroups, userRole, type Role } from './auth';
 
 type Params = { Params: Static<typeof GroupParams> };
 
@@ -29,43 +29,71 @@ function assertTimezone(timezone: string): void {
   }
 }
 
+const isEditor = (role: Role | null) => role === 'master' || role === 'admin';
+
+/** Master y admins entran a cualquier grupo; solo lectura, a aquellos donde es miembro. */
 export async function requireMembership(req: FastifyRequest): Promise<void> {
   const { groupId } = req.params as { groupId: string };
-  const [row] = await req.server.db.select({ id: schema.groups.id, timezone: schema.groups.timezone })
-    .from(schema.groupMembers)
-    .innerJoin(schema.groups, eq(schema.groups.id, schema.groupMembers.groupId))
-    .where(and(eq(schema.groupMembers.groupId, groupId), eq(schema.groupMembers.userId, req.user.sub)));
-  if (!row) throw new ApiError(403, 'not_a_member', 'No pertenecés a este grupo.');
-  req.group = row;
+  const role = await userRole(req.server.db, req.user.sub);
+  const db = req.server.db;
+  const [group] = await db.select({ id: schema.groups.id, timezone: schema.groups.timezone })
+    .from(schema.groups).where(eq(schema.groups.id, groupId));
+  const [member] = group
+    ? await db.select({ userId: schema.groupMembers.userId }).from(schema.groupMembers)
+      .where(and(eq(schema.groupMembers.groupId, groupId), eq(schema.groupMembers.userId, req.user.sub)))
+    : [];
+  if (!group || (!member && !isEditor(role))) throw new ApiError(403, 'not_a_member', 'No pertenecés a este grupo.');
+  req.group = group;
+  req.role = role ?? 'reader';
 }
 
-async function loadGroup(db: Conn, groupId: string) {
+/** Corre después de requireMembership. */
+export async function requireEditor(req: FastifyRequest): Promise<void> {
+  if (!isEditor(req.role)) throw new ApiError(403, 'read_only', 'Tu usuario es de solo lectura.');
+}
+
+async function loadGroup(db: Conn, groupId: string, viewer: { id: string; role: Role | null }) {
   const [group] = await db.select().from(schema.groups).where(eq(schema.groups.id, groupId));
   const members = await db.select({
-    id: schema.users.id, name: schema.users.name, email: schema.users.email, joinedAt: schema.groupMembers.joinedAt,
+    id: schema.users.id,
+    name: schema.users.name,
+    email: schema.users.email,
+    joinedAt: schema.groupMembers.joinedAt,
+    playerId: schema.players.id,
   }).from(schema.groupMembers)
     .innerJoin(schema.users, eq(schema.users.id, schema.groupMembers.userId))
+    .leftJoin(schema.players, and(eq(schema.players.groupId, groupId), eq(schema.players.userId, schema.users.id)))
     .where(eq(schema.groupMembers.groupId, groupId))
     .orderBy(schema.groupMembers.joinedAt);
+  const editor = isEditor(viewer.role);
   return {
     id: group.id,
     name: group.name,
-    inviteCode: group.inviteCode,
+    inviteCode: editor ? group.inviteCode : null,
     timezone: group.timezone,
     createdAt: group.createdAt.toISOString(),
-    members: members.map(m => ({ ...m, joinedAt: m.joinedAt.toISOString() })),
+    isMember: members.some(m => m.id === viewer.id),
+    members: members.map(({ email, ...m }) => ({
+      ...m, joinedAt: m.joinedAt.toISOString(), ...(editor ? { email } : {}),
+    })),
   };
 }
 
 export async function groupRoutes(app: FastifyInstance) {
-  const scoped = { preHandler: requireMembership };
+  const scoped = { preValidation: requireMembership };
+  const editors = { preValidation: [requireMembership, requireEditor] };
   const err = { '4xx': ErrorResponse };
+  const viewer = (req: FastifyRequest) => ({ id: req.user.sub, role: req.role });
 
   app.get('/groups', {
     schema: { tags: ['groups'], response: { 200: { type: 'array', items: GroupRef }, ...err } },
   }, async req => userGroups(app.db, req.user.sub));
 
   app.post<{ Body: Static<typeof CreateGroupBody> }>('/groups', {
+    preValidation: async req => {
+      req.role = await userRole(app.db, req.user.sub) ?? 'reader';
+      await requireEditor(req);
+    },
     schema: { tags: ['groups'], body: CreateGroupBody, response: { 200: Group, ...err } },
   }, async req => {
     const timezone = req.body.timezone ?? DEFAULT_TIMEZONE;
@@ -82,7 +110,7 @@ export async function groupRoutes(app: FastifyInstance) {
       await tx.insert(schema.seasons).values({
         id: created.id, groupId, name: created.name, status: 'active', createdAt: new Date(created.createdAt),
       });
-      return loadGroup(tx, groupId);
+      return loadGroup(tx, groupId, viewer(req));
     });
   });
 
@@ -97,16 +125,17 @@ export async function groupRoutes(app: FastifyInstance) {
       .values({ groupId: group.id, userId: req.user.sub })
       .onConflictDoNothing().returning();
     if (inserted.length === 0) throw new ApiError(409, 'already_member', 'Ya sos miembro de este grupo.');
-    return group;
+    const refs = await userGroups(app.db, req.user.sub);
+    return refs.find(g => g.id === group.id) ?? { ...group, playerId: null };
   });
 
   app.get<Params>('/groups/:groupId', {
     ...scoped,
     schema: { tags: ['groups'], params: GroupParams, response: { 200: Group, ...err } },
-  }, async req => loadGroup(app.db, req.group.id));
+  }, async req => loadGroup(app.db, req.group.id, viewer(req)));
 
   app.patch<Params & { Body: Static<typeof UpdateGroupBody> }>('/groups/:groupId', {
-    ...scoped,
+    ...editors,
     schema: { tags: ['groups'], params: GroupParams, body: UpdateGroupBody, response: { 200: Group, ...err } },
   }, async req => {
     const { name, timezone } = req.body;
@@ -118,15 +147,15 @@ export async function groupRoutes(app: FastifyInstance) {
         .set({ ...(trimmed ? { name: trimmed } : {}), ...(timezone ? { timezone } : {}) })
         .where(eq(schema.groups.id, req.group.id));
     }
-    return loadGroup(app.db, req.group.id);
+    return loadGroup(app.db, req.group.id, viewer(req));
   });
 
   app.post<Params>('/groups/:groupId/invite/rotate', {
-    ...scoped,
+    ...editors,
     schema: { tags: ['groups'], params: GroupParams, response: { 200: Group, ...err } },
   }, async req => {
     await app.db.update(schema.groups).set({ inviteCode: newInviteCode() }).where(eq(schema.groups.id, req.group.id));
-    return loadGroup(app.db, req.group.id);
+    return loadGroup(app.db, req.group.id, viewer(req));
   });
 
   app.delete<Params>('/groups/:groupId/members/me', {
@@ -134,13 +163,18 @@ export async function groupRoutes(app: FastifyInstance) {
     schema: { tags: ['groups'], params: GroupParams, response: { 200: Ok, ...err } },
   }, async req => app.db.transaction(async tx => {
     await tx.select({ id: schema.groups.id }).from(schema.groups).where(eq(schema.groups.id, req.group.id)).for('no key update');
+    const membership = and(
+      eq(schema.groupMembers.groupId, req.group.id),
+      eq(schema.groupMembers.userId, req.user.sub),
+    );
+    const [member] = await tx.select({ userId: schema.groupMembers.userId }).from(schema.groupMembers).where(membership);
+    if (!member) throw new ApiError(409, 'not_a_member', 'No figurás como miembro de este grupo.');
     const [{ value }] = await tx.select({ value: count() }).from(schema.groupMembers)
       .where(eq(schema.groupMembers.groupId, req.group.id));
     if (value <= 1) throw new ApiError(409, 'last_member', 'Sos el último miembro: no podés abandonar el grupo.');
-    await tx.delete(schema.groupMembers).where(and(
-      eq(schema.groupMembers.groupId, req.group.id),
-      eq(schema.groupMembers.userId, req.user.sub),
-    ));
+    await tx.delete(schema.groupMembers).where(membership);
+    await tx.update(schema.players).set({ userId: null })
+      .where(and(eq(schema.players.groupId, req.group.id), eq(schema.players.userId, req.user.sub)));
     return { ok: true };
   }));
 }

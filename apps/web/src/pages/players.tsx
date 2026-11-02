@@ -15,7 +15,7 @@ import { useGroup } from '../context';
 const date = (iso: string) => new Date(iso).toLocaleDateString('es-AR');
 
 export function PlayersPage() {
-  const { path, key, invalidate } = useGroup();
+  const { path, key, invalidate, canEdit } = useGroup();
   const { confirm, notify } = useFeedback();
   const { busy, run } = useAction();
   const [showArchived, setShowArchived] = useState(false);
@@ -62,19 +62,19 @@ export function PlayersPage() {
     <>
       <div className="page-head">
         <h1 className="grow">Jugadores</h1>
-        <Btn onClick={() => { setName(''); setAdding(true); }}>+ Agregar</Btn>
+        {canEdit && <Btn onClick={() => { setName(''); setAdding(true); }}>+ Agregar</Btn>}
       </div>
       <Link className="btn btn-ghost btn-block" to="/debts" style={{ marginBottom: 12 }}><Emoji>💳</Emoji> Ver deudas pendientes</Link>
 
-      {active.length === 0 && <Empty icon="👥" title="No hay jugadores"><p>Agregá a los jugadores del grupo.</p></Empty>}
+      {active.length === 0 && <Empty icon="👥" title="No hay jugadores">{canEdit && <p>Agregá a los jugadores del grupo.</p>}</Empty>}
       <div className="grid-2">
         {active.map(p => (
           <div className="card row" key={p.id}>
             <Avatar name={p.name} />
             <span className="grow ellipsis strong">{p.name}</span>
             <Link className="icon-btn" to={`/players/${p.id}/stats`} aria-label={`Estadísticas de ${p.name}`}><Emoji>📊</Emoji></Link>
-            <button type="button" className="icon-btn" aria-label={`Renombrar a ${p.name}`} onClick={() => { setRenaming(p); setName(p.name); }}><Emoji>✏️</Emoji></button>
-            <button type="button" className="icon-btn" aria-label={`Eliminar a ${p.name}`} onClick={() => { void remove(p); }}><Emoji>🗑</Emoji></button>
+            {canEdit && <button type="button" className="icon-btn" aria-label={`Renombrar a ${p.name}`} onClick={() => { setRenaming(p); setName(p.name); }}><Emoji>✏️</Emoji></button>}
+            {canEdit && <button type="button" className="icon-btn" aria-label={`Eliminar a ${p.name}`} onClick={() => { void remove(p); }}><Emoji>🗑</Emoji></button>}
           </div>
         ))}
       </div>
@@ -89,12 +89,12 @@ export function PlayersPage() {
           <Avatar name={p.name} />
           <span className="grow ellipsis muted">{p.name}</span>
           <Link className="icon-btn" to={`/players/${p.id}/stats`} aria-label={`Estadísticas de ${p.name}`}><Emoji>📊</Emoji></Link>
-          <Btn variant="ghost" busy={busy} onClick={() => {
+          {canEdit && <Btn variant="ghost" busy={busy} onClick={() => {
             void run(async () => {
               await api(path(`/players/${p.id}/unarchive`), { method: 'POST' });
               await invalidate();
             });
-          }}>Restaurar</Btn>
+          }}>Restaurar</Btn>}
         </div>
       ))}
 
@@ -128,7 +128,7 @@ function SeasonSelect({ value, onChange }: { value: string; onChange: (id: strin
 }
 
 function PlayerDebtsSection({ playerId, debts }: { playerId: string; debts: ApiPlayerDebts }) {
-  const { path, invalidate } = useGroup();
+  const { path, invalidate, canEdit } = useGroup();
   const { confirm } = useFeedback();
   const { busy, run } = useAction();
 
@@ -163,8 +163,10 @@ function PlayerDebtsSection({ playerId, debts }: { playerId: string; debts: ApiP
         <div className="list-row" key={id}>
           <span className="grow ellipsis">{c.name}</span>
           <Money amount={c.total} className="neg strong" />
-          <button type="button" className="icon-btn" disabled={busy} aria-label={`Saldar deudas con ${c.name}`}
-            onClick={() => { void settle(c.name, c.total, c.ids); }}>✓</button>
+          {canEdit && (
+            <button type="button" className="icon-btn" disabled={busy} aria-label={`Saldar deudas con ${c.name}`}
+              onClick={() => { void settle(c.name, c.total, c.ids); }}>✓</button>
+          )}
         </div>
       ))}
       {owed.length > 0 && <h3 style={{ marginTop: owes.length > 0 ? 12 : 0 }}>Le deben</h3>}
@@ -182,7 +184,7 @@ export function StatsPage() {
   const { playerId = '' } = useParams();
   const [params, setParams] = useSearchParams();
   const seasonId = params.get('seasonId') ?? '';
-  const { path, key, invalidate } = useGroup();
+  const { path, key, invalidate, canEdit } = useGroup();
   const { confirm, notify } = useFeedback();
   const { busy, run } = useAction();
   const qs = seasonId ? `?seasonId=${seasonId}` : '';
@@ -378,7 +380,7 @@ export function StatsPage() {
 
       <div className="row-between section-title">
         <h2>Deudas previas</h2>
-        {!player?.archivedAt && <Btn variant="ghost" onClick={openManual}>+ Agregar</Btn>}
+        {canEdit && !player?.archivedAt && <Btn variant="ghost" onClick={openManual}>+ Agregar</Btn>}
       </div>
       {seasonId && <p className="small muted" style={{ marginBottom: 8 }}>No dependen de la temporada, son siempre globales.</p>}
       {manualDebts.length === 0 && <p className="small muted" style={{ marginBottom: 12 }}>Sin deudas previas registradas</p>}
@@ -392,8 +394,8 @@ export function StatsPage() {
               <div className="xs muted ellipsis">{d.label}</div>
             </div>
             <Money amount={iAmOwed ? d.pendingAmount : -d.pendingAmount} signed tone className="strong" />
-            {!iAmOwed && <button type="button" className="icon-btn" aria-label="Saldar deuda previa" onClick={() => { void payManual(d); }}>✓</button>}
-            {!d.isConsolidated && <button type="button" className="icon-btn" aria-label="Eliminar deuda previa" onClick={() => { void deleteManual(d); }}><Emoji>🗑</Emoji></button>}
+            {canEdit && !iAmOwed && <button type="button" className="icon-btn" aria-label="Saldar deuda previa" onClick={() => { void payManual(d); }}>✓</button>}
+            {canEdit && !d.isConsolidated && <button type="button" className="icon-btn" aria-label="Eliminar deuda previa" onClick={() => { void deleteManual(d); }}><Emoji>🗑</Emoji></button>}
           </div>
         );
       })}
@@ -408,13 +410,15 @@ export function StatsPage() {
                 <div className="xs muted">{date(a.date)}</div>
               </div>
               <Money amount={a.amount} signed tone className="strong" />
-              <button type="button" className="icon-btn" aria-label="Editar ajuste" onClick={() => {
-                setEditing(a);
-                setEditDirection(a.amount < 0 ? 'deuda' : 'cobro');
-                setEditDescription(a.description);
-                setEditAmount(String(Math.abs(a.amount)));
-              }}><Emoji>✏️</Emoji></button>
-              <button type="button" className="icon-btn" aria-label="Eliminar ajuste" onClick={() => { void deleteAdjustment(a); }}><Emoji>🗑</Emoji></button>
+              {canEdit && (
+                <button type="button" className="icon-btn" aria-label="Editar ajuste" onClick={() => {
+                  setEditing(a);
+                  setEditDirection(a.amount < 0 ? 'deuda' : 'cobro');
+                  setEditDescription(a.description);
+                  setEditAmount(String(Math.abs(a.amount)));
+                }}><Emoji>✏️</Emoji></button>
+              )}
+              {canEdit && <button type="button" className="icon-btn" aria-label="Eliminar ajuste" onClick={() => { void deleteAdjustment(a); }}><Emoji>🗑</Emoji></button>}
             </div>
           ))}
         </>
@@ -538,9 +542,7 @@ export function RankingPage() {
             <Link to={statsLink(r.playerId)} key={r.playerId} className="list-row" style={{ color: 'inherit', textDecoration: 'none' }}>
               <span className="muted num" style={{ width: 24 }}>{idx + (hasPodium ? 4 : 1)}</span>
               <Avatar name={r.name} />
-              <span className="grow ellipsis">
-                {r.name} {r.archived && <span className="badge badge-muted">Archivado</span>}
-              </span>
+              <span className="grow ellipsis">{r.name}</span>
               <Money amount={value(r)} signed tone className="strong" />
             </Link>
           ))}
