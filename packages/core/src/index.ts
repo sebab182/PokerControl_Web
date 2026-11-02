@@ -6,3 +6,4 @@ export * from './stats';
 export * from './playerReport';
 export * from './seasons';
 export * from './share';
+export * from './holdem';

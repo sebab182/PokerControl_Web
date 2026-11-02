@@ -450,3 +450,59 @@ test('accesibilidad y responsive en cada vista, en ambos temas', async ({ page }
     await check('configuración');
   }
 });
+
+test('mesa online: sala de espera, iniciar, jugar una mano y cerrar', async ({ page, browser }) => {
+  await login(page, 'Seba');
+  const code = await createGroup(page);
+  await nav(page, 'Mesa');
+  await page.getByLabel('Tu nick').fill('Seba');
+  await page.getByRole('button', { name: 'Crear mi jugador' }).click();
+  await expect(page.getByRole('heading', { name: 'Mesa', exact: true })).toBeVisible();
+  await expect(page.getByText('Todavía no hay nadie sentado.').or(page.getByText('Seba (vos)'))).toBeVisible();
+  await expect(page.getByRole('button', { name: /Iniciar partida/ })).toBeDisabled();
+
+  // Un miembro de solo lectura también se sienta.
+  const context2 = await browser.newContext();
+  const page2 = await context2.newPage();
+  await login(page2, 'Nico', 'reader');
+  await page2.goto('/');
+  await page2.getByLabel('Código de invitación').fill(code);
+  await page2.getByRole('button', { name: 'Unirme' }).click();
+  await page2.getByLabel('Tu nick').fill('Nico');
+  await page2.getByRole('button', { name: 'Crear mi jugador' }).click();
+  await nav(page2, 'Mesa');
+  await expect(page2.getByText('Nico (vos)')).toBeVisible();
+
+  await expect(page.getByText('Nico', { exact: true })).toBeVisible({ timeout: 10000 });
+  await checkPage(page, 'mesa: sala de espera');
+  const start = page.getByRole('button', { name: /Iniciar partida \(2 jugadores\)/ });
+  await expect(start).toBeEnabled();
+  await start.click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Iniciar partida' }).click();
+
+  // Los dos ven la mano; solo cada uno ve sus cartas.
+  await expect(page.getByTestId('felt')).toBeVisible();
+  await expect(page.getByTestId('pot')).toHaveText('Pozo $30');
+  await expect(page.getByTestId('my-hand').getByRole('img')).toHaveCount(2);
+  await expect(page2.getByTestId('my-hand').getByRole('img')).toHaveCount(2, { timeout: 10000 });
+  await expect(page.getByRole('img', { name: 'Carta oculta' })).toHaveCount(0);
+  await checkPage(page, 'mesa: partida');
+  await checkPage(page2, 'mesa: partida (lector)');
+
+  // Quien tiene el turno se retira: la mano termina y el otro cobra.
+  const actor = (await page.getByRole('button', { name: 'Retirarme' }).count()) > 0 ? page : page2;
+  const other = actor === page ? page2 : page;
+  await actor.getByRole('button', { name: 'Retirarme' }).click();
+  await expect(actor.getByTestId('last-action')).toContainText('te retiraste');
+  await expect(other.getByTestId('last-action')).toContainText('se retiró', { timeout: 10000 });
+  await expect(page.getByRole('status').filter({ hasText: 'ganó' }).or(page.getByRole('status').filter({ hasText: 'ganaste' }))).toBeVisible({ timeout: 10000 });
+  await checkPage(page, 'mesa: fin de mano');
+
+  // Cierre: se genera la partida con su deuda.
+  await page.getByRole('button', { name: 'Cerrar partida' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Cerrar partida' }).click();
+  await expect(page.getByRole('link', { name: 'Ver resultados y deudas' })).toBeVisible();
+  await page.getByRole('link', { name: 'Ver resultados y deudas' }).click();
+  await expect(page.getByText('✓ Partida cerrada')).toBeVisible();
+  await context2.close();
+});

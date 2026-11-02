@@ -200,6 +200,64 @@ export const BuyParams = Obj({ groupId: T.String(), id: T.String(), buyId: T.Str
 export const Ok = Obj({ ok: T.Boolean() }, 'Ok');
 export const Deleted = Obj({ deleted: T.Boolean() }, 'Deleted');
 
+// ─── Mesa online (Texas Hold'em) ─────────────────────────────────────────────
+const Chips = T.Integer({ minimum: 1, maximum: 1_000_000_000 });
+export const TableStatus = T.Union([T.Literal('waiting'), T.Literal('playing')]);
+export const TableSeat = Obj({
+  playerId: T.String(), name: T.String(), stack: T.Integer(),
+  status: T.Union([T.Literal('sitting'), T.Literal('out')]),
+  /** Conectado: renovó su presencia hace pocos segundos. */
+  online: T.Boolean(), isYou: T.Boolean(),
+}, 'TableSeat');
+export const HandPlayerView = Obj({
+  playerId: T.String(), stack: T.Integer(), bet: T.Integer(), totalBet: T.Integer(),
+  folded: T.Boolean(), allIn: T.Boolean(),
+  /** Tus cartas, las mostradas en el showdown, o "??" si están ocultas. */
+  hole: T.Array(T.String()),
+}, 'HandPlayerView');
+export const LegalActionsView = Obj({
+  toCall: T.Integer(), canCheck: T.Boolean(), canCall: T.Boolean(), callAmount: T.Integer(),
+  canRaise: T.Boolean(), minRaiseTo: T.Integer(), maxRaiseTo: T.Integer(),
+}, 'LegalActions');
+export const HandView = Obj({
+  handNo: T.Integer(),
+  street: T.Union([T.Literal('preflop'), T.Literal('flop'), T.Literal('turn'), T.Literal('river'), T.Literal('done')]),
+  board: T.Array(T.String()), pot: T.Integer(), currentBet: T.Integer(), minRaise: T.Integer(),
+  button: T.Integer(), toActPlayerId: Nullable(T.String()),
+  players: T.Array(HandPlayerView),
+  /** Solo viene si es tu turno. */
+  legal: Nullable(LegalActionsView),
+  /** Última jugada de la mano. amount: lo igualado (call) o el total al que subió (raise, allin). */
+  lastAction: Nullable(Obj({
+    playerId: T.String(),
+    type: T.Union([T.Literal('fold'), T.Literal('check'), T.Literal('call'), T.Literal('raise'), T.Literal('allin')]),
+    amount: T.Optional(T.Integer()),
+  })),
+  payouts: T.Array(Obj({ playerId: T.String(), amount: T.Integer() })),
+  showdown: T.Array(Obj({ playerId: T.String(), hole: T.Array(T.String()), handName: T.String() })),
+}, 'HandView');
+export const TableView = Obj({
+  id: T.String(), status: TableStatus, sessionId: Nullable(T.String()),
+  smallBlind: T.Integer(), bigBlind: T.Integer(), buyIn: T.Integer(),
+  /** Cambia con cada acción: se envía de vuelta en POST /table/action. */
+  version: T.Integer(),
+  seats: T.Array(TableSeat),
+  /** Tu jugador en este grupo; null si todavía no elegiste nick. */
+  myPlayerId: Nullable(T.String()),
+  hand: Nullable(HandView),
+}, 'TableView');
+export const StartTableBody = Obj({
+  smallBlind: T.Optional(Chips), bigBlind: T.Optional(Chips), buyIn: T.Optional(Chips),
+});
+export const TableActionBody = Obj({
+  version: T.Integer(),
+  action: T.Union([
+    Obj({ type: T.Literal('fold') }), Obj({ type: T.Literal('check') }), Obj({ type: T.Literal('call') }),
+    Obj({ type: T.Literal('allin') }), Obj({ type: T.Literal('raise'), to: Chips }),
+  ]),
+});
+export const CloseTableResponse = Obj({ sessionId: T.String(), table: TableView }, 'CloseTableResponse');
+
 // ─── Tipos para clientes ─────────────────────────────────────────────────────
 export type ApiRole = Static<typeof Role>;
 export type ApiAdminOverview = Static<typeof AdminOverview>;
@@ -223,3 +281,6 @@ export type ApiReorganizeStatus = Static<typeof ReorganizeStatus>;
 export type ApiSessionDebtsView = Static<typeof SessionDebtsView>;
 export type ApiImportResult = Static<typeof ImportResult>;
 export type ApiCloseSessionResponse = Static<typeof CloseSessionResponse>;
+export type ApiTableView = Static<typeof TableView>;
+export type ApiHandView = Static<typeof HandView>;
+export type ApiTableAction = Static<typeof TableActionBody>['action'];

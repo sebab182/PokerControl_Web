@@ -900,6 +900,8 @@ describe('roles', () => {
     const { ana } = await seed(master);
     const allowed = new Set([
       'POST /api/v1/groups/join', 'DELETE /api/v1/groups/{groupId}/members/me', 'POST /api/v1/groups/{groupId}/me/player',
+      // La mesa online la juega cualquier miembro.
+      ...['join', 'leave', 'start', 'deal', 'action', 'rebuy', 'close'].map(a => `POST /api/v1/groups/{groupId}/table/${a}`),
     ]);
     for (const route of open.filter(r => !allowed.has(r))) {
       const [method, path] = route.split(' ');
@@ -1031,5 +1033,196 @@ describe('conexión', () => {
     await new Promise(r => setTimeout(r, 200));
     expect((await other.pool.query('SELECT 1 AS ok')).rows[0].ok).toBe(1);
     await other.pool.end();
+  });
+});
+
+describe('mesa online', () => {
+  async function setup(extra = 0) {
+    const { c: a, group } = await withGroup('master');
+    const clients: Client[] = [a];
+    for (let i = 0; i <= extra; i++) {
+      const c = await login(i === 0 ? 'lector' : `extra${i}`);
+      await c.ok('POST', '/groups/join', { inviteCode: group.inviteCode });
+      c.groupId = group.id;
+      clients.push(c);
+    }
+    const pid: Record<number, string> = {};
+    for (const [i, c] of clients.entries()) pid[i] = (await c.ok('POST', '/g/me/player', { name: `J${i}` })).id;
+    const byPlayer = (id: string) => clients[Object.values(pid).indexOf(id)];
+    return { a, b: clients[1], clients, pid, byPlayer };
+  }
+  const view = (c: Client) => c.ok('GET', '/g/table');
+  const act = (c: Client, v: { version: number }, action: object) => c.ok('POST', '/g/table/action', { version: v.version, action });
+
+  it('flujo completo: sentarse, iniciar (lector), jugar, cerrar y generar deudas', async () => {
+    const { a, b, pid, byPlayer } = await setup();
+    const empty = await view(a);
+    expect([empty.status, empty.seats, empty.hand]).toEqual(['waiting', [], null]);
+
+    expect((await b.call('POST', '/g/table/start', {}, 'start-key-0001')).body.error).toBe('not_seated');
+    await a.ok('POST', '/g/table/join');
+    expect((await b.call('POST', '/g/table/start', {}, 'start-key-0002')).body.error).toBe('not_seated');
+    await b.ok('POST', '/g/table/join');
+    expect((await a.ok('GET', '/g/table')).seats.map((s: { online: boolean }) => s.online)).toEqual([true, true]);
+
+    // Inicia un miembro de solo lectura; la mesa crea la partida.
+    const started = await b.idem('/g/table/start', { buyIn: 1000 });
+    expect(started).toMatchObject({ status: 'playing', buyIn: 1000, myPlayerId: pid[1] });
+    expect(started.hand).toMatchObject({ handNo: 1, street: 'preflop', pot: 30 });
+    expect(JSON.stringify(started)).not.toContain('"deck"');
+    const sess = await a.ok('GET', `/g/sessions/${started.sessionId}`);
+    expect(sess.status).toBe('active');
+    expect(sess.participants.map((p: { buys: unknown[] }) => p.buys.length)).toEqual([1, 1]);
+
+    // Cartas: las mías visibles, las ajenas ocultas.
+    const mine = started.hand.players.find((p: { playerId: string }) => p.playerId === pid[1]);
+    const other = started.hand.players.find((p: { playerId: string }) => p.playerId === pid[0]);
+    expect(mine.hole.every((c: string) => c !== '??')).toBe(true);
+    expect(other.hole).toEqual(['??', '??']);
+
+    // Turno equivocado, estado viejo y acción ilegal.
+    const actor = byPlayer(started.hand.toActPlayerId);
+    const waiter = actor === a ? b : a;
+    expect((await waiter.call('POST', '/g/table/action', { version: started.version, action: { type: 'call' } })).body.error).toBe('illegal_action');
+    expect((await actor.call('POST', '/g/table/action', { version: started.version - 1, action: { type: 'call' } })).body.error).toBe('stale_state');
+    expect((await actor.call('POST', '/g/table/action', { version: started.version, action: { type: 'check' } })).body.error).toBe('illegal_action');
+    expect((await actor.call('POST', '/g/table/action', { version: started.version, action: { type: 'raise', to: 21 } })).body.error).toBe('illegal_action');
+    expect((await actor.call('POST', '/g/table/deal')).body.error).toBe('hand_in_progress');
+    expect((await actor.call('POST', '/g/table/close', {}, 'close-key-0001')).body.error).toBe('hand_in_progress');
+
+    // Se levanta con la mano en curso: no puede; el que foldea sí.
+    expect((await actor.call('POST', '/g/table/leave')).body.error).toBe('in_hand');
+    expect(started.hand.lastAction).toBeNull();
+    const done = await act(actor, started, { type: 'fold' });
+    expect(done.hand.lastAction).toEqual({ playerId: started.hand.toActPlayerId, type: 'fold' });
+    expect(done.hand.street).toBe('done');
+    expect(done.hand.payouts).toHaveLength(1);
+    expect(done.seats.map((s: { stack: number }) => s.stack).sort((x: number, y: number) => x - y)).toEqual([990, 1010]);
+
+    const closed = await a.idem('/g/table/close');
+    expect(closed.table.status).toBe('waiting');
+    expect(closed.table.seats).toEqual([]);
+    const debts = await a.ok('GET', `/g/sessions/${closed.sessionId}/debts`);
+    expect(debts.sessionStatus).toBe('closed');
+    expect(debts.items).toHaveLength(1);
+    expect(debts.items[0].amount).toBe(10);
+    // Se puede jugar otra partida en la misma mesa.
+    await a.ok('POST', '/g/table/join');
+    await b.ok('POST', '/g/table/join');
+    expect((await b.idem('/g/table/start', {})).hand.handNo).toBe(2);
+  });
+
+  it('juega manos hasta el showdown conservando las fichas', async () => {
+    const { a, b, byPlayer } = await setup();
+    await a.ok('POST', '/g/table/join');
+    await b.ok('POST', '/g/table/join');
+    let v = await a.idem('/g/table/start', {});
+    for (let hand = 1; hand <= 6; hand++) {
+      if (hand > 1) v = await a.ok('POST', '/g/table/deal');
+      expect(v.hand.handNo).toBe(hand);
+      for (let i = 0; v.hand.street !== 'done'; i++) {
+        if (i > 50) throw new Error('mano infinita');
+        const c = byPlayer(v.hand.toActPlayerId);
+        const mine = await view(c);
+        const { canCheck, callAmount } = mine.hand.legal;
+        v = await act(c, mine, canCheck ? { type: 'check' } : { type: 'call' });
+        expect(v.hand.lastAction).toEqual(canCheck
+          ? { playerId: mine.hand.toActPlayerId, type: 'check' }
+          : { playerId: mine.hand.toActPlayerId, type: 'call', amount: callAmount });
+      }
+      expect(v.hand.board).toHaveLength(5);
+      expect(v.hand.showdown).toHaveLength(2);
+      expect(v.seats.reduce((x: number, s: { stack: number }) => x + s.stack, 0)).toBe(2000);
+    }
+    const closed = await b.idem('/g/table/close');
+    const sess = await a.ok('GET', `/g/sessions/${closed.sessionId}`);
+    expect(sess.status).toBe('closed');
+  });
+
+  it('informa la última jugada, con el monto de subidas y all-in', async () => {
+    const { a, b, byPlayer } = await setup();
+    await a.ok('POST', '/g/table/join');
+    await b.ok('POST', '/g/table/join');
+    let v = await a.idem('/g/table/start', {});
+    const first = byPlayer(v.hand.toActPlayerId);
+    v = await act(first, v, { type: 'raise', to: 60 });
+    expect(v.hand.lastAction).toEqual({ playerId: v.hand.players.find((p: { bet: number }) => p.bet === 60).playerId, type: 'raise', amount: 60 });
+    // Lo ve también el otro jugador.
+    const other = first === a ? b : a;
+    expect((await view(other)).hand.lastAction).toMatchObject({ type: 'raise', amount: 60 });
+    v = await act(other, v, { type: 'allin' });
+    expect(v.hand.lastAction).toEqual({ playerId: expect.any(String), type: 'allin', amount: 1000 });
+    v = await act(first, v, { type: 'call' });
+    expect(v.hand.street).toBe('done');
+    expect(v.hand.lastAction).toMatchObject({ type: 'call', amount: 940 });
+  });
+
+  it('valida requisitos para iniciar', async () => {
+    const { a, b } = await setup();
+    const noNick = await login('sin-nick');
+    expect((await noNick.call('GET', '/g/table')).status).toBe(403);
+    await a.ok('POST', '/g/table/join');
+    expect((await a.call('POST', '/g/table/start', {}, 'start-key-0003')).body.error).toBe('not_enough_players');
+    await b.ok('POST', '/g/table/join');
+    // Un asiento sin presencia reciente no cuenta.
+    await conn.pool.query(`update poker_seats set last_seen_at = now() - interval '5 minutes' where user_id = (select id from users where google_sub = 'lector')`);
+    expect((await a.call('POST', '/g/table/start', {}, 'start-key-0004')).body.error).toBe('not_enough_players');
+    await b.ok('POST', '/g/table/join');
+    expect((await a.call('POST', '/g/table/start', { smallBlind: 50, bigBlind: 20 }, 'start-key-0005')).body.error).toBe('invalid_blinds');
+    expect((await a.call('POST', '/g/table/start', { buyIn: 30 }, 'start-key-0006')).body.error).toBe('invalid_buy_in');
+    expect((await a.call('POST', '/g/table/start', { buyIn: 0 }, 'start-key-0007')).status).toBe(400);
+    await conn.pool.query(`update seasons set status = 'closed', closed_at = now()`);
+    expect((await a.call('POST', '/g/table/start', {}, 'start-key-0008')).body.error).toBe('no_active_season');
+  });
+
+  it('sin nick no se puede jugar; la clave de idempotencia evita iniciar dos veces', async () => {
+    const { c: a, group } = await withGroup('master');
+    const l = await login('lector');
+    await l.ok('POST', '/groups/join', { inviteCode: group.inviteCode });
+    l.groupId = group.id;
+    expect((await l.call('POST', '/g/table/join')).body.error).toBe('no_player');
+    await a.ok('POST', '/g/me/player', { name: 'Ana' });
+    await l.ok('POST', '/g/me/player', { name: 'Lector' });
+    await a.ok('POST', '/g/table/join');
+    await l.ok('POST', '/g/table/join');
+    const first = await a.ok('POST', '/g/table/start', {}, 'misma-clave-1');
+    const again = await a.ok('POST', '/g/table/start', {}, 'misma-clave-1');
+    expect(again.sessionId).toBe(first.sessionId);
+    expect((await a.call('POST', '/g/table/start', {}, 'otra-clave-22')).body.error).toBe('already_playing');
+    expect((await conn.pool.query('select count(*)::int as n from sessions')).rows[0].n).toBe(1);
+  });
+
+  it('suma jugadores con la partida en curso, recompra y se levanta', async () => {
+    const { a, b, clients, pid, byPlayer } = await setup(1);
+    const c = clients[2];
+    await a.ok('POST', '/g/table/join');
+    await b.ok('POST', '/g/table/join');
+    let v = await a.idem('/g/table/start', {});
+    expect(v.seats).toHaveLength(2);
+
+    // Se suma una vez iniciada: entra con la entrada y juega desde la próxima mano.
+    const late = await c.ok('POST', '/g/table/join');
+    expect(late.seats).toHaveLength(3);
+    expect(late.hand.players).toHaveLength(2);
+    expect((await c.call('POST', '/g/table/rebuy', {}, 'rebuy-key-0001')).body.error).toBe('has_chips');
+    const sess = await a.ok('GET', `/g/sessions/${v.sessionId}`);
+    expect(sess.participants).toHaveLength(3);
+
+    // El que foldea puede levantarse; sus fichas siguen en la mesa.
+    const actor = byPlayer(v.hand.toActPlayerId);
+    v = await act(actor, v, { type: 'fold' });
+    const left = await actor.ok('POST', '/g/table/leave');
+    expect(left.seats.find((s: { isYou: boolean }) => s.isYou)).toMatchObject({ status: 'out' });
+
+    // Sin fichas, recompra (suma una compra a la partida).
+    await conn.pool.query(`update poker_seats set stack = 0 where player_id = $1`, [pid[2]]);
+    const rebuy = await c.idem('/g/table/rebuy');
+    expect(rebuy.seats.find((s: { playerId: string }) => s.playerId === pid[2]).stack).toBe(1000);
+    const after = await a.ok('GET', `/g/sessions/${v.sessionId}`);
+    expect(after.participants.find((p: { playerId: string }) => p.playerId === pid[2]).buys).toHaveLength(2);
+
+    // Siguiente mano: juegan los que están sentados con fichas.
+    const next = await (actor === a ? b : a).ok('POST', '/g/table/deal');
+    expect(next.hand.players.length).toBe(2);
   });
 });

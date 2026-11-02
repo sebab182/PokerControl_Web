@@ -12,6 +12,7 @@ import { PlayersPage, RankingPage, StatsPage } from './pages/players';
 import { SeasonSessionsPage, SeasonsPage } from './pages/seasons';
 import { SessionDebtsPage, SessionPage } from './pages/session';
 import { SettingsPage } from './pages/settings';
+import { TablePage } from './pages/table';
 import './styles.css';
 
 applyStoredTheme();
@@ -30,6 +31,7 @@ const queryClient = new QueryClient({
 const NAV = [
   { to: '/ranking', icon: '🏆', label: 'Ranking' },
   { to: '/seasons', icon: '🗓️', label: 'Temporadas' },
+  { to: '/table', icon: '🃏', label: 'Mesa' },
   { to: '/players', icon: '👥', label: 'Jugadores' },
   { to: '/debts', icon: '💳', label: 'Deudas' },
   { to: '/settings', icon: '⚙️', label: 'Config' },
@@ -111,6 +113,7 @@ function App() {
           <Route path="/seasons/:seasonId" element={<SeasonSessionsPage />} />
           <Route path="/sessions/:sessionId" element={<SessionPage />} />
           <Route path="/sessions/:sessionId/debts" element={<SessionDebtsPage />} />
+          <Route path="/table" element={<TablePage />} />
           <Route path="/players" element={<PlayersPage />} />
           <Route path="/players/:playerId/stats" element={<StatsPage />} />
           <Route path="/ranking" element={<RankingPage />} />
