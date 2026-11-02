@@ -49,6 +49,8 @@ export interface HandState {
   pots: Pot[];
   payouts: Payout[];
   showdown: ShowdownEntry[];
+  /** Cartas (índices 0 y 1 de `hole`) que un jugador eligió mostrar al terminar la mano, sin showdown. */
+  revealed?: Record<string, number[]>;
 }
 
 export type Action =
@@ -316,11 +318,44 @@ function seatDistance(s: HandState, id: string): number {
  */
 export function publicView(s: HandState, viewerId: string | string[] | null): Omit<HandState, 'deck'> {
   const own = new Set(Array.isArray(viewerId) ? viewerId : viewerId ? [viewerId] : []);
-  const shown = new Set(s.showdown.map((e) => e.playerId));
   const { deck: _deck, ...rest } = clone(s);
   void _deck;
   return {
     ...rest,
-    players: rest.players.map((p) => (own.has(p.id) || shown.has(p.id) ? p : { ...p, hole: p.hole.map(() => '??') })),
+    players: rest.players.map((p) => {
+      if (own.has(p.id)) return p;
+      const shown = shownCards(s, p.id);
+      return { ...p, hole: p.hole.map((c, i) => (shown.includes(i) ? c : '??')) };
+    }),
   };
+}
+
+/** Índices de las cartas de `hole` que ven todos: las del showdown (ambas) o las que el jugador decidió mostrar. */
+export function shownCards(s: HandState, playerId: string): number[] {
+  if (s.showdown.some((e) => e.playerId === playerId)) return [0, 1];
+  return s.revealed?.[playerId] ?? [];
+}
+
+/** ¿Quedó un único jugador sin retirarse? Entonces ganó sin showdown y decide qué mostrar. */
+export function isUncontested(s: HandState): boolean {
+  return s.street === 'done' && s.showdown.length === 0 && s.players.filter((p) => !p.folded).length === 1;
+}
+
+/**
+ * Muestra cartas al terminar la mano. Cualquiera que jugó la mano puede mostrar las dos; mostrar
+ * solo una está reservado a quien ganó porque todos los demás se retiraron.
+ */
+export function revealCards(prev: HandState, playerId: string, cards: number[] = [0, 1]): HandState {
+  const s = clone(prev);
+  const p = s.players.find((x) => x.id === playerId);
+  if (s.street !== 'done') throw new HoldemError('Las cartas se muestran cuando termina la mano');
+  if (!p) throw new HoldemError('El jugador no jugó esta mano');
+  const idx = [...new Set(cards)].sort();
+  if (idx.length === 0 || idx.some((i) => i !== 0 && i !== 1)) throw new HoldemError('Carta inválida');
+  if (s.showdown.some((e) => e.playerId === playerId)) throw new HoldemError('Tus cartas ya se mostraron');
+  if (idx.length === 1 && !(isUncontested(s) && !p.folded)) {
+    throw new HoldemError('Solo quien queda como único jugador puede mostrar una carta');
+  }
+  s.revealed = { ...s.revealed, [playerId]: [...new Set([...(s.revealed?.[playerId] ?? []), ...idx])].sort() };
+  return s;
 }

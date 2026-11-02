@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   type Action, applyAction, computePots, evaluate, HoldemError, type HandState, legalActions, newDeck,
-  publicView, shuffle, startHand,
+  publicView, revealCards, shownCards, shuffle, startHand,
 } from './index';
 
 const cards = (s: string) => s.split(' ');
@@ -209,5 +209,39 @@ describe('fuzz: conservación de fichas', () => {
   it('shuffle conserva las 52 cartas', () => {
     const d = shuffle(newDeck(), rng(7));
     expect(new Set(d).size).toBe(52);
+  });
+
+  describe('mostrar cartas', () => {
+    const start = () => startHand([{ id: 'a', stack: 100 }, { id: 'b', stack: 100 }], { button: 0, smallBlind: 1, bigBlind: 2, randomInt: rng(3) });
+    const foldedHand = () => {
+      const s = start();
+      return applyAction(s, legalActions(s)!.playerId, { type: 'fold' });
+    };
+
+    it('el único que queda puede mostrar una carta o las dos', () => {
+      const s = foldedHand();
+      const winner = s.players.find((p) => !p.folded)!;
+      const one = revealCards(s, winner.id, [1]);
+      expect(shownCards(one, winner.id)).toEqual([1]);
+      const view = publicView(one, null).players.find((p) => p.id === winner.id)!;
+      expect(view.hole).toEqual(['??', winner.hole[1]]);
+      expect(shownCards(revealCards(one, winner.id), winner.id)).toEqual([0, 1]);
+    });
+
+    it('quien se retiró solo puede mostrar las dos, y nadie antes de que termine', () => {
+      const s = foldedHand();
+      const loser = s.players.find((p) => p.folded)!;
+      expect(() => revealCards(s, loser.id, [0])).toThrow(HoldemError);
+      expect(shownCards(revealCards(s, loser.id), loser.id)).toEqual([0, 1]);
+      expect(() => revealCards(start(), 'a')).toThrow(HoldemError);
+    });
+
+    it('en un showdown ya se ven las dos y no se puede repetir', () => {
+      let s = start();
+      while (s.street !== 'done') s = applyAction(s, legalActions(s)!.playerId, legalActions(s)!.canCheck ? { type: 'check' } : { type: 'call' });
+      expect(s.showdown).toHaveLength(2);
+      expect(shownCards(s, 'a')).toEqual([0, 1]);
+      expect(() => revealCards(s, 'a')).toThrow(HoldemError);
+    });
   });
 });

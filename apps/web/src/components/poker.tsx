@@ -6,6 +6,11 @@ const SUIT = { s: { sym: '♠', name: 'picas', red: false }, h: { sym: '♥', na
   d: { sym: '♦', name: 'diamantes', red: true }, c: { sym: '♣', name: 'tréboles', red: false } } as const;
 const RANK_NAME: Record<string, string> = { A: 'as', K: 'rey', Q: 'reina', J: 'jota', T: '10' };
 
+/** Texto corto de una carta, p. ej. "10♠". */
+export function cardText(card: string): string {
+  return `${card[0] === 'T' ? '10' : card[0]}${SUIT[card[1] as keyof typeof SUIT].sym}`;
+}
+
 /** Carta con su nombre accesible. "??" es una carta oculta (dorso). */
 export function PokerCard({ card, size = 'md' }: { card: string; size?: 'sm' | 'md' | 'lg' }) {
   if (card === '??') {
@@ -46,7 +51,9 @@ export function PlayerSeat({ view, hand, playerId, offset, total, showCards }: {
     <div className={`pseat ${turn ? 'pseat-turn' : ''} ${p.folded ? 'pseat-folded' : ''} ${won ? 'pseat-won' : ''}`}
       style={seatPosition(offset, total)} data-testid={`seat-${seat.name}`}>
       <div className="pseat-cards">
-        {!p.folded && showCards && p.hole.map((c, i) => <PokerCard key={i} card={c} size="sm" />)}
+        {p.hole.map((c, i) => c !== '??' && ((!p.folded && showCards) || p.shown.includes(i))
+          ? <PokerCard key={i} card={c} size="sm" />
+          : null)}
       </div>
       <Avatar name={seat.name} />
       <div className="pseat-name ellipsis">{seat.isYou ? 'Vos' : seat.name}{dealer && <span className="dealer" title="Botón"> D</span>}</div>

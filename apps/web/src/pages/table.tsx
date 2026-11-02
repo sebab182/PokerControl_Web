@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ApiRequestError, api } from '../api';
-import { EmptyCard, PlayerSeat, PokerCard } from '../components/poker';
+import { EmptyCard, PlayerSeat, PokerCard, cardText } from '../components/poker';
 import {
   Avatar, Btn, Emoji, Loading, Modal, QueryError, TextField, useAction, useFeedback,
 } from '../components/ui';
@@ -101,7 +101,7 @@ function TableView() {
       const next = await api<ApiTableView>(path(`/table/seats/${playerId}`), { method: 'DELETE' });
       qc.setQueryData(queryKey, next);
     }),
-    rebuy: (playerId: string) => run(async () => { await post(`seats/${playerId}/rebuy`, undefined, { idempotent: true }); }),
+    rebuy: (playerId: string) => run(async () => { await post(`seats/${playerId}/rebuy`, {}, { idempotent: true }); }),
   };
   const close = async () => {
     const ok = await confirm({
@@ -132,7 +132,10 @@ function TableView() {
       )}
       {view.status === 'waiting'
         ? <Waiting view={view} canEdit={canEdit} standing={standing} busy={busy} onJoin={join} onLeave={leave} onStart={() => setStartOpen(true)} />
-        : <Playing view={view} canEdit={canEdit} updatedAt={query.dataUpdatedAt} busy={busy} onJoin={join} onDeal={deal} onClose={close}
+        : <Playing view={view} canEdit={canEdit} updatedAt={query.dataUpdatedAt} busy={busy} onJoin={join} onLeave={leave} onDeal={deal} onClose={close}
+          onReveal={(playerId, cards) => run(() => post('reveal', {
+            ...(cards ? { cards } : {}), ...(playerId !== view.myPlayerId ? { playerId } : {}),
+          }))}
           onAction={action => run(async () => {
             try {
               // Si el turno es de un jugador sin usuario que manejás, se juega por él.
@@ -144,7 +147,7 @@ function TableView() {
               else throw e;
             }
           })}
-          onRebuy={() => run(() => post('rebuy', undefined, { idempotent: true }))} />}
+          onRebuy={amount => run(() => post('rebuy', { amount }, { idempotent: true }))} />}
       {canEdit && !group.playerId && (
         <details className="card" style={{ marginTop: 16 }}>
           <summary className="strong" style={{ cursor: 'pointer', minHeight: 44, display: 'flex', alignItems: 'center' }}>Quiero jugar yo también</summary>
@@ -235,13 +238,17 @@ function StartModal({ view, open, onClose, onStart, busy }: {
 }
 
 // ─── Partida en curso ────────────────────────────────────────────────────────
-function Playing({ view, canEdit, updatedAt, busy, onJoin, onDeal, onClose, onAction, onRebuy }: {
-  view: ApiTableView; canEdit: boolean; updatedAt: number; busy: boolean; onJoin: () => void; onDeal: () => void; onClose: () => void;
-  onAction: (a: ApiTableAction) => void; onRebuy: () => void;
+function Playing({ view, canEdit, updatedAt, busy, onJoin, onLeave, onDeal, onClose, onAction, onRebuy, onReveal }: {
+  view: ApiTableView; canEdit: boolean; updatedAt: number; busy: boolean; onJoin: () => void; onLeave: () => void; onDeal: () => void;
+  onClose: () => void; onAction: (a: ApiTableAction) => void; onRebuy: (amount: number) => void;
+  onReveal: (playerId: string, cards?: number[]) => void;
 }) {
   const me = view.seats.find(s => s.isYou);
   const hand = view.hand;
   const live = !!hand && hand.street !== 'done';
+  // Sin fichas se puede recomprar entre manos o si ya te retiraste de la que está en juego.
+  const myPlayer = hand?.players.find(p => p.playerId === me?.playerId);
+  const canRebuy = !!me && me.stack === 0 && (!live || !myPlayer || myPlayer.folded);
   const waitingSeats = view.seats.filter(s => !hand?.players.some(p => p.playerId === s.playerId));
 
   return (
@@ -251,6 +258,9 @@ function Playing({ view, canEdit, updatedAt, busy, onJoin, onDeal, onClose, onAc
       {hand && view.seats.filter(s => s.isYou || s.managed).map(s => (
         <MyHand key={s.playerId} hand={hand} playerId={s.playerId} you={s.isYou} label={s.isYou ? 'Tus cartas' : `Cartas de ${s.name}`} />
       ))}
+      {hand?.street === 'done' && view.seats.filter(s => s.isYou || s.managed).map(s => (
+        <ShowCards key={s.playerId} hand={hand} playerId={s.playerId} you={s.isYou} name={s.name} busy={busy} onReveal={onReveal} />
+      ))}
       {live && hand?.legal && <Controls hand={hand} busy={busy} onAction={onAction} />}
 
       {waitingSeats.length > 0 && (
@@ -259,18 +269,79 @@ function Playing({ view, canEdit, updatedAt, busy, onJoin, onDeal, onClose, onAc
         </p>
       )}
 
+      {canRebuy && me && <NoChips view={view} sitting={me.status === 'sitting'} busy={busy} onLeave={onLeave} onRebuy={onRebuy} />}
+
       <div className="stack">
         {!live && (me?.status === 'sitting' || canEdit) && (
           <Btn block busy={busy} onClick={onDeal}>{hand ? 'Repartir próxima mano' : 'Repartir'}</Btn>
-        )}
-        {!live && me && me.stack === 0 && (
-          <Btn variant="ghost" block busy={busy} onClick={onRebuy}>Recomprar por {formatMoney(view.buyIn)}</Btn>
         )}
         {!me && view.myPlayerId && <Btn variant="ghost" block busy={busy} onClick={onJoin}>Sumarme a la mesa por {formatMoney(view.buyIn)}</Btn>}
         {me?.status === 'out' && <Btn variant="ghost" block busy={busy} onClick={onJoin}>Volver a sentarme</Btn>}
         {(me || canEdit) && !live && <Btn variant="danger" block busy={busy} onClick={onClose}>Cerrar partida</Btn>}
       </div>
     </>
+  );
+}
+
+/** Sin saldo: levantarse o recomprar hasta la mitad de lo que tiene quien más fichas tiene. */
+function NoChips({ view, sitting, busy, onLeave, onRebuy }: {
+  view: ApiTableView; sitting: boolean; busy: boolean; onLeave: () => void; onRebuy: (amount: number) => void;
+}) {
+  const { notify } = useFeedback();
+  const max = view.maxRebuy;
+  const [text, setText] = useState<string | null>(null);
+  const value = text ?? String(Math.min(view.buyIn, max));
+  const submit = () => {
+    const amount = parseAmount(value);
+    if (amount === null || !Number.isInteger(amount) || amount < 1) return notify('Ingresá un monto entero mayor a 0.');
+    if (amount > max) return notify(`Podés recomprar hasta ${formatMoney(max)}.`);
+    onRebuy(amount);
+    setText(null);
+  };
+  return (
+    <section className="card" aria-labelledby="no-chips" style={{ marginBottom: 12 }} data-testid="no-chips">
+      <h2 id="no-chips" style={{ marginBottom: 4 }}>Te quedaste sin saldo</h2>
+      {max >= 1 ? (
+        <>
+          <p className="muted small" style={{ marginBottom: 8 }}>
+            Podés recomprar hasta {formatMoney(max)}, la mitad de lo que tiene quien más fichas tiene en la mesa.
+          </p>
+          <div className="row-wrap" style={{ marginBottom: 8 }}>
+            <Btn variant="ghost" className="btn-chip" onClick={() => setText(String(Math.min(view.buyIn, max)))}>Entrada</Btn>
+            <Btn variant="ghost" className="btn-chip" onClick={() => setText(String(max))}>Máximo</Btn>
+          </div>
+          <TextField label="Fichas a recomprar" value={value} onChange={setText} decimal />
+        </>
+      ) : <p className="muted small" style={{ marginBottom: 8 }}>No hay fichas suficientes en la mesa para recomprar.</p>}
+      <div className="stack">
+        {max >= 1 && <Btn block busy={busy} onClick={submit}>Recomprar</Btn>}
+        {sitting && <Btn variant="ghost" block busy={busy} onClick={onLeave}>Levantarme</Btn>}
+      </div>
+    </section>
+  );
+}
+
+/** Al terminar la mano: mostrar las cartas a la mesa. Una sola carta, si todos los demás se retiraron. */
+function ShowCards({ hand, playerId, you, name, busy, onReveal }: {
+  hand: Hand; playerId: string; you: boolean; name: string; busy: boolean; onReveal: (playerId: string, cards?: number[]) => void;
+}) {
+  const p = hand.players.find(x => x.playerId === playerId);
+  if (!p || p.hole.length < 2 || p.hole.includes('??') || p.shown.length >= 2) return null;
+  // Quedó solo porque los demás se retiraron: no hay showdown y decide qué enseñar.
+  const alone = hand.showdown.length === 0 && !p.folded && hand.players.filter(x => !x.folded).length === 1;
+  return (
+    <div className="card" data-testid="show-cards" style={{ marginBottom: 12 }}>
+      <div className="reveal-actions">
+        <Btn variant="ghost" busy={busy} onClick={() => onReveal(playerId)}>
+          {you ? 'Mostrar mis cartas' : `Mostrar cartas de ${name}`}
+        </Btn>
+        {alone && p.hole.map((c, i) => !p.shown.includes(i) && (
+          <Btn key={i} variant="ghost" busy={busy} aria-label={`Mostrar una carta: ${cardText(c)}`} onClick={() => onReveal(playerId, [i])}>
+            Mostrar una carta ({cardText(c)})
+          </Btn>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -292,7 +363,7 @@ function Felt({ view, hand }: { view: ApiTableView; hand: Hand }) {
         {players.map((p, i) => (
           <PlayerSeat key={p.playerId} view={view} hand={hand} playerId={p.playerId}
             offset={(i - myIdx + players.length) % players.length} total={players.length}
-            showCards={(showdown || !!view.seats.find(x => x.playerId === p.playerId)?.managed) && !p.hole.includes('??')} />
+            showCards={showdown || !!view.seats.find(x => x.playerId === p.playerId)?.managed} />
         ))}
       </div>
     </div>
@@ -434,7 +505,7 @@ function AdminSeats({ view, busy, onAddOpen, add, remove, rebuy }: {
   view: ApiTableView; busy: boolean; onAddOpen: () => void;
   add: (id: string) => unknown; remove: (id: string) => unknown; rebuy: (id: string) => unknown;
 }) {
-  const inHand = new Set(view.hand && view.hand.street !== 'done' ? view.hand.players.map(p => p.playerId) : []);
+  const inHand = new Set(view.hand && view.hand.street !== 'done' ? view.hand.players.filter(p => !p.folded).map(p => p.playerId) : []);
   const playing = view.status === 'playing';
   return (
     <section className="card" aria-labelledby="admin-table" style={{ marginTop: 16 }}>

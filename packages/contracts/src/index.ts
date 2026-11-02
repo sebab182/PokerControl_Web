@@ -239,6 +239,8 @@ export const HandPlayerView = Obj({
   folded: T.Boolean(), allIn: T.Boolean(),
   /** Tus cartas, las mostradas en el showdown, o "??" si están ocultas. */
   hole: T.Array(T.String()),
+  /** Índices de `hole` que ven todos los de la mesa: el showdown o lo que el jugador decidió mostrar. */
+  shown: T.Array(T.Integer()),
 }, 'HandPlayerView');
 export const LegalActionsView = Obj({
   toCall: T.Integer(), canCheck: T.Boolean(), canCall: T.Boolean(), callAmount: T.Integer(),
@@ -276,6 +278,8 @@ export const TableView = Obj({
   /** Hora del servidor, para calcular la cuenta regresiva sin depender del reloj del cliente. */
   serverTime: T.String(),
   seats: T.Array(TableSeat),
+  /** Tope de una recompra: la mitad de las fichas de quien más tiene en la mesa. */
+  maxRebuy: T.Integer(),
   /** Tu jugador en este grupo; null si todavía no elegiste nick. */
   myPlayerId: Nullable(T.String()),
   hand: Nullable(HandView),
@@ -293,6 +297,16 @@ export const TableActionBody = Obj({
     Obj({ type: T.Literal('fold') }), Obj({ type: T.Literal('check') }), Obj({ type: T.Literal('call') }),
     Obj({ type: T.Literal('allin') }), Obj({ type: T.Literal('raise'), to: Chips }),
   ]),
+});
+export const RebuyBody = Obj({
+  /** Fichas a comprar (hasta `maxRebuy`); si falta, la entrada o el tope si es menor. */
+  amount: T.Optional(Chips),
+});
+export const RevealBody = Obj({
+  /** Qué cartas mostrar (0 y/o 1); si falta, las dos. Mostrar una sola es solo del único jugador que queda. */
+  cards: T.Optional(T.Array(T.Integer({ minimum: 0, maximum: 1 }), { minItems: 1, maxItems: 2, uniqueItems: true })),
+  /** Solo administradores: mostrar las cartas de un jugador sin usuario. */
+  playerId: T.Optional(T.String()),
 });
 export const CloseTableResponse = Obj({ sessionId: T.String(), table: TableView }, 'CloseTableResponse');
 

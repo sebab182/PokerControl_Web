@@ -1303,6 +1303,7 @@ paths:
                   - turnDeadline
                   - serverTime
                   - seats
+                  - maxRebuy
                   - myPlayerId
                   - hand
                 properties:
@@ -1369,6 +1370,8 @@ paths:
                           type: boolean
                         managed:
                           type: boolean
+                  maxRebuy:
+                    type: integer
                   myPlayerId:
                     type: string
                     nullable: true
@@ -1440,6 +1443,7 @@ paths:
                             - folded
                             - allIn
                             - hole
+                            - shown
                           properties:
                             playerId:
                               type: string
@@ -1457,6 +1461,10 @@ paths:
                               type: array
                               items:
                                 type: string
+                            shown:
+                              type: array
+                              items:
+                                type: integer
                       legal:
                         additionalProperties: false
                         title: LegalActions
@@ -1597,6 +1605,7 @@ paths:
                   - turnDeadline
                   - serverTime
                   - seats
+                  - maxRebuy
                   - myPlayerId
                   - hand
                 properties:
@@ -1663,6 +1672,8 @@ paths:
                           type: boolean
                         managed:
                           type: boolean
+                  maxRebuy:
+                    type: integer
                   myPlayerId:
                     type: string
                     nullable: true
@@ -1734,6 +1745,7 @@ paths:
                             - folded
                             - allIn
                             - hole
+                            - shown
                           properties:
                             playerId:
                               type: string
@@ -1751,6 +1763,10 @@ paths:
                               type: array
                               items:
                                 type: string
+                            shown:
+                              type: array
+                              items:
+                                type: integer
                       legal:
                         additionalProperties: false
                         title: LegalActions
@@ -1891,6 +1907,7 @@ paths:
                   - turnDeadline
                   - serverTime
                   - seats
+                  - maxRebuy
                   - myPlayerId
                   - hand
                 properties:
@@ -1957,6 +1974,8 @@ paths:
                           type: boolean
                         managed:
                           type: boolean
+                  maxRebuy:
+                    type: integer
                   myPlayerId:
                     type: string
                     nullable: true
@@ -2028,6 +2047,7 @@ paths:
                             - folded
                             - allIn
                             - hole
+                            - shown
                           properties:
                             playerId:
                               type: string
@@ -2045,6 +2065,10 @@ paths:
                               type: array
                               items:
                                 type: string
+                            shown:
+                              type: array
+                              items:
+                                type: integer
                       legal:
                         additionalProperties: false
                         title: LegalActions
@@ -2190,6 +2214,7 @@ paths:
                   - turnDeadline
                   - serverTime
                   - seats
+                  - maxRebuy
                   - myPlayerId
                   - hand
                 properties:
@@ -2256,6 +2281,8 @@ paths:
                           type: boolean
                         managed:
                           type: boolean
+                  maxRebuy:
+                    type: integer
                   myPlayerId:
                     type: string
                     nullable: true
@@ -2327,6 +2354,7 @@ paths:
                             - folded
                             - allIn
                             - hole
+                            - shown
                           properties:
                             playerId:
                               type: string
@@ -2344,6 +2372,10 @@ paths:
                               type: array
                               items:
                                 type: string
+                            shown:
+                              type: array
+                              items:
+                                type: integer
                       legal:
                         additionalProperties: false
                         title: LegalActions
@@ -2488,6 +2520,7 @@ paths:
                   - turnDeadline
                   - serverTime
                   - seats
+                  - maxRebuy
                   - myPlayerId
                   - hand
                 properties:
@@ -2554,6 +2587,8 @@ paths:
                           type: boolean
                         managed:
                           type: boolean
+                  maxRebuy:
+                    type: integer
                   myPlayerId:
                     type: string
                     nullable: true
@@ -2625,6 +2660,7 @@ paths:
                             - folded
                             - allIn
                             - hole
+                            - shown
                           properties:
                             playerId:
                               type: string
@@ -2642,6 +2678,10 @@ paths:
                               type: array
                               items:
                                 type: string
+                            shown:
+                              type: array
+                              items:
+                                type: integer
                       legal:
                         additionalProperties: false
                         title: LegalActions
@@ -2755,6 +2795,18 @@ paths:
   /api/v1/groups/{groupId}/table/seats/{playerId}/rebuy:
     post:
       tags: *a3
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              type: object
+              properties:
+                amount:
+                  minimum: 1
+                  maximum: 1000000000
+                  type: integer
       parameters:
         - schema:
             type: string
@@ -2787,6 +2839,7 @@ paths:
                   - turnDeadline
                   - serverTime
                   - seats
+                  - maxRebuy
                   - myPlayerId
                   - hand
                 properties:
@@ -2853,6 +2906,8 @@ paths:
                           type: boolean
                         managed:
                           type: boolean
+                  maxRebuy:
+                    type: integer
                   myPlayerId:
                     type: string
                     nullable: true
@@ -2924,6 +2979,7 @@ paths:
                             - folded
                             - allIn
                             - hole
+                            - shown
                           properties:
                             playerId:
                               type: string
@@ -2941,6 +2997,10 @@ paths:
                               type: array
                               items:
                                 type: string
+                            shown:
+                              type: array
+                              items:
+                                type: integer
                       legal:
                         additionalProperties: false
                         title: LegalActions
@@ -3105,6 +3165,7 @@ paths:
                   - turnDeadline
                   - serverTime
                   - seats
+                  - maxRebuy
                   - myPlayerId
                   - hand
                 properties:
@@ -3171,6 +3232,8 @@ paths:
                           type: boolean
                         managed:
                           type: boolean
+                  maxRebuy:
+                    type: integer
                   myPlayerId:
                     type: string
                     nullable: true
@@ -3242,6 +3305,7 @@ paths:
                             - folded
                             - allIn
                             - hole
+                            - shown
                           properties:
                             playerId:
                               type: string
@@ -3259,6 +3323,10 @@ paths:
                               type: array
                               items:
                                 type: string
+                            shown:
+                              type: array
+                              items:
+                                type: integer
                       legal:
                         additionalProperties: false
                         title: LegalActions
@@ -3399,6 +3467,7 @@ paths:
                   - turnDeadline
                   - serverTime
                   - seats
+                  - maxRebuy
                   - myPlayerId
                   - hand
                 properties:
@@ -3465,6 +3534,8 @@ paths:
                           type: boolean
                         managed:
                           type: boolean
+                  maxRebuy:
+                    type: integer
                   myPlayerId:
                     type: string
                     nullable: true
@@ -3536,6 +3607,7 @@ paths:
                             - folded
                             - allIn
                             - hole
+                            - shown
                           properties:
                             playerId:
                               type: string
@@ -3553,6 +3625,10 @@ paths:
                               type: array
                               items:
                                 type: string
+                            shown:
+                              type: array
+                              items:
+                                type: integer
                       legal:
                         additionalProperties: false
                         title: LegalActions
@@ -3760,6 +3836,7 @@ paths:
                   - turnDeadline
                   - serverTime
                   - seats
+                  - maxRebuy
                   - myPlayerId
                   - hand
                 properties:
@@ -3826,6 +3903,8 @@ paths:
                           type: boolean
                         managed:
                           type: boolean
+                  maxRebuy:
+                    type: integer
                   myPlayerId:
                     type: string
                     nullable: true
@@ -3897,6 +3976,7 @@ paths:
                             - folded
                             - allIn
                             - hole
+                            - shown
                           properties:
                             playerId:
                               type: string
@@ -3914,6 +3994,331 @@ paths:
                               type: array
                               items:
                                 type: string
+                            shown:
+                              type: array
+                              items:
+                                type: integer
+                      legal:
+                        additionalProperties: false
+                        title: LegalActions
+                        type: object
+                        required:
+                          - toCall
+                          - canCheck
+                          - canCall
+                          - callAmount
+                          - canRaise
+                          - minRaiseTo
+                          - maxRaiseTo
+                        properties:
+                          toCall:
+                            type: integer
+                          canCheck:
+                            type: boolean
+                          canCall:
+                            type: boolean
+                          callAmount:
+                            type: integer
+                          canRaise:
+                            type: boolean
+                          minRaiseTo:
+                            type: integer
+                          maxRaiseTo:
+                            type: integer
+                        nullable: true
+                      actingPlayerId:
+                        type: string
+                        nullable: true
+                      lastAction:
+                        additionalProperties: false
+                        type: object
+                        required:
+                          - playerId
+                          - type
+                        properties:
+                          playerId:
+                            type: string
+                          type:
+                            anyOf:
+                              - type: string
+                                enum:
+                                  - fold
+                              - type: string
+                                enum:
+                                  - check
+                              - type: string
+                                enum:
+                                  - call
+                              - type: string
+                                enum:
+                                  - raise
+                              - type: string
+                                enum:
+                                  - allin
+                          amount:
+                            type: integer
+                          auto:
+                            type: boolean
+                        nullable: true
+                      payouts:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - playerId
+                            - amount
+                          properties:
+                            playerId:
+                              type: string
+                            amount:
+                              type: integer
+                      showdown:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - playerId
+                            - hole
+                            - handName
+                          properties:
+                            playerId:
+                              type: string
+                            hole:
+                              type: array
+                              items:
+                                type: string
+                            handName:
+                              type: string
+                    nullable: true
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /api/v1/groups/{groupId}/table/reveal:
+    post:
+      tags: *a3
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              type: object
+              properties:
+                cards:
+                  minItems: 1
+                  maxItems: 2
+                  uniqueItems: true
+                  type: array
+                  items:
+                    minimum: 0
+                    maximum: 1
+                    type: integer
+                playerId:
+                  type: string
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: TableView
+                type: object
+                required:
+                  - id
+                  - status
+                  - sessionId
+                  - smallBlind
+                  - bigBlind
+                  - buyIn
+                  - version
+                  - turnSeconds
+                  - turnDeadline
+                  - serverTime
+                  - seats
+                  - maxRebuy
+                  - myPlayerId
+                  - hand
+                properties:
+                  id:
+                    type: string
+                  status:
+                    anyOf:
+                      - type: string
+                        enum:
+                          - waiting
+                      - type: string
+                        enum:
+                          - playing
+                  sessionId:
+                    type: string
+                    nullable: true
+                  smallBlind:
+                    type: integer
+                  bigBlind:
+                    type: integer
+                  buyIn:
+                    type: integer
+                  version:
+                    type: integer
+                  turnSeconds:
+                    type: integer
+                  turnDeadline:
+                    type: string
+                    nullable: true
+                  serverTime:
+                    type: string
+                  seats:
+                    type: array
+                    items:
+                      additionalProperties: false
+                      title: TableSeat
+                      type: object
+                      required:
+                        - playerId
+                        - name
+                        - stack
+                        - status
+                        - online
+                        - isYou
+                        - managed
+                      properties:
+                        playerId:
+                          type: string
+                        name:
+                          type: string
+                        stack:
+                          type: integer
+                        status:
+                          anyOf:
+                            - type: string
+                              enum:
+                                - sitting
+                            - type: string
+                              enum:
+                                - out
+                        online:
+                          type: boolean
+                        isYou:
+                          type: boolean
+                        managed:
+                          type: boolean
+                  maxRebuy:
+                    type: integer
+                  myPlayerId:
+                    type: string
+                    nullable: true
+                  hand:
+                    additionalProperties: false
+                    title: HandView
+                    type: object
+                    required:
+                      - handNo
+                      - street
+                      - board
+                      - pot
+                      - currentBet
+                      - minRaise
+                      - button
+                      - toActPlayerId
+                      - players
+                      - legal
+                      - actingPlayerId
+                      - lastAction
+                      - payouts
+                      - showdown
+                    properties:
+                      handNo:
+                        type: integer
+                      street:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - preflop
+                          - type: string
+                            enum:
+                              - flop
+                          - type: string
+                            enum:
+                              - turn
+                          - type: string
+                            enum:
+                              - river
+                          - type: string
+                            enum:
+                              - done
+                      board:
+                        type: array
+                        items:
+                          type: string
+                      pot:
+                        type: integer
+                      currentBet:
+                        type: integer
+                      minRaise:
+                        type: integer
+                      button:
+                        type: integer
+                      toActPlayerId:
+                        type: string
+                        nullable: true
+                      players:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          title: HandPlayerView
+                          type: object
+                          required:
+                            - playerId
+                            - stack
+                            - bet
+                            - totalBet
+                            - folded
+                            - allIn
+                            - hole
+                            - shown
+                          properties:
+                            playerId:
+                              type: string
+                            stack:
+                              type: integer
+                            bet:
+                              type: integer
+                            totalBet:
+                              type: integer
+                            folded:
+                              type: boolean
+                            allIn:
+                              type: boolean
+                            hole:
+                              type: array
+                              items:
+                                type: string
+                            shown:
+                              type: array
+                              items:
+                                type: integer
                       legal:
                         additionalProperties: false
                         title: LegalActions
@@ -4027,6 +4432,18 @@ paths:
   /api/v1/groups/{groupId}/table/rebuy:
     post:
       tags: *a3
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              type: object
+              properties:
+                amount:
+                  minimum: 1
+                  maximum: 1000000000
+                  type: integer
       parameters:
         - schema:
             type: string
@@ -4054,6 +4471,7 @@ paths:
                   - turnDeadline
                   - serverTime
                   - seats
+                  - maxRebuy
                   - myPlayerId
                   - hand
                 properties:
@@ -4120,6 +4538,8 @@ paths:
                           type: boolean
                         managed:
                           type: boolean
+                  maxRebuy:
+                    type: integer
                   myPlayerId:
                     type: string
                     nullable: true
@@ -4191,6 +4611,7 @@ paths:
                             - folded
                             - allIn
                             - hole
+                            - shown
                           properties:
                             playerId:
                               type: string
@@ -4208,6 +4629,10 @@ paths:
                               type: array
                               items:
                                 type: string
+                            shown:
+                              type: array
+                              items:
+                                type: integer
                       legal:
                         additionalProperties: false
                         title: LegalActions
@@ -4358,6 +4783,7 @@ paths:
                       - turnDeadline
                       - serverTime
                       - seats
+                      - maxRebuy
                       - myPlayerId
                       - hand
                     properties:
@@ -4424,6 +4850,8 @@ paths:
                               type: boolean
                             managed:
                               type: boolean
+                      maxRebuy:
+                        type: integer
                       myPlayerId:
                         type: string
                         nullable: true
@@ -4495,6 +4923,7 @@ paths:
                                 - folded
                                 - allIn
                                 - hole
+                                - shown
                               properties:
                                 playerId:
                                   type: string
@@ -4512,6 +4941,10 @@ paths:
                                   type: array
                                   items:
                                     type: string
+                                shown:
+                                  type: array
+                                  items:
+                                    type: integer
                           legal:
                             additionalProperties: false
                             title: LegalActions

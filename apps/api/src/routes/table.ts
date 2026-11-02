@@ -8,10 +8,10 @@
 
 import { randomInt, randomUUID } from 'node:crypto';
 import {
-  CloseTableResponse, ErrorResponse, GroupParams, SeatParams, StartTableBody, TableActionBody, TableView,
+  CloseTableResponse, ErrorResponse, GroupParams, RebuyBody, RevealBody, SeatParams, StartTableBody, TableActionBody, TableView,
   type ApiTableView,
 } from '@pokercontrol/contracts';
-import { HoldemError, applyAction, legalActions, publicView, startHand, type Action, type HandState } from '@pokercontrol/core';
+import { HoldemError, applyAction, legalActions, publicView, revealCards, shownCards, startHand, type Action, type HandState } from '@pokercontrol/core';
 import { type Static } from '@sinclair/typebox';
 import { and, asc, desc, eq, gt, isNotNull, lte, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
@@ -78,6 +78,15 @@ const viewerOf = (req: { user: { sub: string }; role: Role }): Viewer => ({ user
 const isPresent = (seat: SeatRow, now = Date.now()) =>
   seat.addedBy !== null || seat.userId === null || now - seat.lastSeenAt.getTime() < ONLINE_MS;
 
+/** Tope de una recompra: la mitad de las fichas de quien más tiene en la mesa (lo apostado en la mano cuenta). */
+function maxRebuy(seats: SeatRow[], live: HandState | undefined): number {
+  const richest = Math.max(0, ...seats.map(seat => {
+    const p = live?.players.find(x => x.id === seat.playerId);
+    return p ? p.stack + p.totalBet : seat.stack;
+  }));
+  return Math.floor(richest / 2);
+}
+
 async function buildView(db: Conn, table: TableRow, viewer: Viewer): Promise<ApiTableView> {
   const me = await myPlayer(db, table.groupId, viewer.userId);
   const myId = me?.id ?? null;
@@ -110,6 +119,7 @@ async function buildView(db: Conn, table: TableRow, viewer: Viewer): Promise<Api
       toActPlayerId: v.toAct >= 0 ? v.players[v.toAct].id : null,
       players: v.players.map(p => ({
         playerId: p.id, stack: p.stack, bet: p.bet, totalBet: p.totalBet, folded: p.folded, allIn: p.allIn, hole: p.hole,
+        shown: shownCards(state, p.id),
       })),
       actingPlayerId: legal ? actingFor : null,
       legal: legal
@@ -141,6 +151,7 @@ async function buildView(db: Conn, table: TableRow, viewer: Viewer): Promise<Api
     turnSeconds: table.turnSeconds,
     turnDeadline: live && table.turnDeadline ? table.turnDeadline.toISOString() : null,
     serverTime: new Date(now).toISOString(),
+    maxRebuy: maxRebuy(seats.map(x => x.seat), live),
     myPlayerId: myId,
     hand,
     seats: seats.map(({ seat, name }) => ({
@@ -344,21 +355,49 @@ async function standPlayer(tx: Tx, table: TableRow, playerId: string): Promise<v
   await tx.update(schema.pokerSeats).set({ status: 'out' }).where(key);
 }
 
-/** Recompra: solo sin fichas y fuera de una mano. Suma una compra a la partida. */
-async function rebuyPlayer(tx: Tx, table: TableRow, playerId: string): Promise<void> {
+/**
+ * Recompra: solo sin fichas, y entre manos o tras haberse retirado de la que está en juego. Suma una
+ * compra a la partida por `amount` fichas (hasta maxRebuy; por defecto la entrada o el tope si es menor).
+ */
+async function rebuyPlayer(tx: Tx, table: TableRow, playerId: string, amount?: number): Promise<void> {
   if (table.status !== 'playing') throw new ApiError(409, 'not_playing', 'No hay una partida en juego.');
-  const seat = (await loadSeats(tx, table.id)).map(s => s.seat).find(s => s.playerId === playerId);
+  const seats = (await loadSeats(tx, table.id)).map(s => s.seat);
+  const seat = seats.find(s => s.playerId === playerId);
   if (!seat) throw notFound('Asiento');
   const hand = await activeHand(tx, table.id);
-  if ((hand?.state as HandState | undefined)?.players.some(p => p.id === playerId)) {
-    throw new ApiError(409, 'in_hand', 'Esperá a que termine la mano.');
-  }
-  if (seat.stack > 0) throw new ApiError(409, 'has_chips', 'Solo se puede recomprar sin fichas.');
+  const state = hand?.state as HandState | undefined;
+  const inHand = state?.players.find(p => p.id === playerId);
+  if (inHand && !inHand.folded) throw new ApiError(409, 'in_hand', 'Esperá a que termine la mano.');
+  if ((inHand ? inHand.stack : seat.stack) > 0) throw new ApiError(409, 'has_chips', 'Solo se puede recomprar sin fichas.');
+  const max = maxRebuy(seats, state);
+  if (max < 1) throw new ApiError(422, 'rebuy_unavailable', 'No hay fichas suficientes en la mesa para recomprar.');
+  const chips = amount ?? Math.min(table.buyIn, max);
+  if (chips > max) throw new ApiError(422, 'rebuy_too_high', `Podés recomprar hasta ${max} fichas (la mitad de quien más tiene).`);
   const [participant] = await tx.select({ id: schema.sessionParticipants.id }).from(schema.sessionParticipants)
     .where(and(eq(schema.sessionParticipants.sessionId, table.sessionId as string), eq(schema.sessionParticipants.playerId, playerId)));
-  await tx.insert(schema.buys).values({ participantId: participant.id, amount: table.buyIn, occurredAt: new Date() });
-  await tx.update(schema.pokerSeats).set({ stack: table.buyIn, status: 'sitting' })
+  await tx.insert(schema.buys).values({ participantId: participant.id, amount: chips, occurredAt: new Date() });
+  await tx.update(schema.pokerSeats).set({ stack: chips, status: 'sitting' })
     .where(and(eq(schema.pokerSeats.tableId, table.id), eq(schema.pokerSeats.playerId, playerId)));
+  if (hand && state && inHand) {
+    // Retirado de la mano en juego: las fichas nuevas viajan en el estado, que se vuelca a la mesa al terminar.
+    inHand.stack = chips;
+    await tx.update(schema.pokerHands).set({ state }).where(eq(schema.pokerHands.id, hand.id));
+  }
+  await tx.update(schema.pokerTables).set({ version: bump }).where(eq(schema.pokerTables.id, table.id));
+}
+
+/** Muestra cartas de la última mano, ya terminada (con otra en juego ya no se puede). */
+async function revealPlayer(tx: Tx, table: TableRow, playerId: string, cards?: number[]): Promise<void> {
+  const row = await latestHand(tx, table.id);
+  if (!row || row.status !== 'done') throw new ApiError(409, 'hand_in_progress', 'Podés mostrar tus cartas cuando termine la mano.');
+  let next: HandState;
+  try {
+    next = revealCards(row.state as HandState, playerId, cards);
+  } catch (e) {
+    if (e instanceof HoldemError) throw new ApiError(422, 'illegal_reveal', e.message);
+    throw e;
+  }
+  await tx.update(schema.pokerHands).set({ state: next }).where(eq(schema.pokerHands.id, row.id));
   await tx.update(schema.pokerTables).set({ version: bump }).where(eq(schema.pokerTables.id, table.id));
 }
 
@@ -437,12 +476,14 @@ export async function tableRoutes(app: FastifyInstance) {
     return mutate(req, async (tx, table) => standPlayer(tx, table, req.params.playerId));
   });
 
-  app.post<S>('/table/seats/:playerId/rebuy', { schema: seatRoute }, async req => {
+  app.post<S & { Body: Static<typeof RebuyBody> }>('/table/seats/:playerId/rebuy', {
+    schema: { ...seatRoute, body: RebuyBody },
+  }, async req => {
     await requireEditor(req);
     const groupId = req.group.id;
     return announce(groupId, await idempotent(req, async tx => {
       const table = await ensureTable(tx, groupId, true);
-      await rebuyPlayer(tx, table, req.params.playerId);
+      await rebuyPlayer(tx, table, req.params.playerId, req.body.amount);
       const [fresh] = await tx.select().from(schema.pokerTables).where(eq(schema.pokerTables.id, table.id));
       return buildView(tx, fresh, viewerOf(req));
     }));
@@ -534,14 +575,24 @@ export async function tableRoutes(app: FastifyInstance) {
     await playAction(tx, table, hand, playerId, req.body.action, false);
   }));
 
-  // Recompra: solo con 0 fichas y fuera de una mano. Suma una compra a la partida.
-  app.post<G>('/table/rebuy', {
-    schema: { ...base, response: { 200: TableView, ...err } },
+  // Mostrar cartas: al terminar la mano; una sola carta, solo el único jugador que queda.
+  app.post<G & { Body: Static<typeof RevealBody> }>('/table/reveal', {
+    schema: { ...base, body: RevealBody, response: { 200: TableView, ...err } },
+  }, async req => mutate(req, async (tx, table) => {
+    const playerId = req.body.playerId
+      ? await managedPlayerId(tx, req, table, req.body.playerId)
+      : await requirePlayer(tx, req.group.id, req.user.sub);
+    await revealPlayer(tx, table, playerId, req.body.cards);
+  }));
+
+  // Recompra: solo con 0 fichas, entre manos o tras retirarse. Suma una compra a la partida.
+  app.post<G & { Body: Static<typeof RebuyBody> }>('/table/rebuy', {
+    schema: { ...base, body: RebuyBody, response: { 200: TableView, ...err } },
   }, async req => {
     const groupId = req.group.id;
     return announce(groupId, await idempotent(req, async tx => {
       const table = await ensureTable(tx, groupId, true);
-      await rebuyPlayer(tx, table, await requirePlayer(tx, groupId, req.user.sub));
+      await rebuyPlayer(tx, table, await requirePlayer(tx, groupId, req.user.sub), req.body.amount);
       const [fresh] = await tx.select().from(schema.pokerTables).where(eq(schema.pokerTables.id, table.id));
       return buildView(tx, fresh, viewerOf(req));
     }));

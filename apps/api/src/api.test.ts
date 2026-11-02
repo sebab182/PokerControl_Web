@@ -936,7 +936,7 @@ describe('roles', () => {
       // Pagos: se autorizan por dueño del pagador, no por rol (ver test de pagos a nombre propio).
       'POST /api/v1/groups/{groupId}/payments', 'DELETE /api/v1/groups/{groupId}/payments/{paymentId}',
       // La mesa online la juega cualquier miembro.
-      ...['join', 'leave', 'start', 'deal', 'action', 'rebuy', 'close'].map(a => `POST /api/v1/groups/{groupId}/table/${a}`),
+      ...['join', 'leave', 'start', 'deal', 'action', 'rebuy', 'reveal', 'close'].map(a => `POST /api/v1/groups/{groupId}/table/${a}`),
     ]);
     for (const route of open.filter(r => !allowed.has(r))) {
       const [method, path] = route.split(' ');
@@ -1227,6 +1227,41 @@ describe('mesa online', () => {
     expect((await conn.pool.query('select count(*)::int as n from sessions')).rows[0].n).toBe(1);
   });
 
+  it('al terminar la mano se muestran las cartas, una sola si quedó un único jugador', async () => {
+    const { a, b, byPlayer } = await setup();
+    await a.ok('POST', '/g/table/join');
+    await b.ok('POST', '/g/table/join');
+    let v = await a.idem('/g/table/start', {});
+    // En medio de la mano no se muestra nada.
+    expect((await a.call('POST', '/g/table/reveal', {})).body.error).toBe('hand_in_progress');
+    const folder = byPlayer(v.hand.toActPlayerId);
+    const winner = folder === a ? b : a;
+    v = await act(folder, await view(folder), { type: 'fold' });
+    expect(v.hand.street).toBe('done');
+    expect(v.hand.showdown).toHaveLength(0);
+
+    // Quien se retiró no puede mostrar una sola carta, pero sí las dos.
+    expect((await folder.call('POST', '/g/table/reveal', { cards: [0] })).body.error).toBe('illegal_reveal');
+    const before = (await view(folder)).hand.players.find((p: { hole: string[] }) => p.hole.every(c => c === '??'));
+    expect(before.shown).toEqual([]);
+
+    // El único que queda muestra una carta: el rival ve solo esa.
+    const own = (await view(winner)).hand.players.find((p: { hole: string[] }) => !p.hole.includes('??'));
+    await winner.ok('POST', '/g/table/reveal', { cards: [1] });
+    const seen = (await view(folder)).hand.players.find((p: { playerId: string }) => p.playerId === own.playerId);
+    expect(seen.shown).toEqual([1]);
+    expect(seen.hole).toEqual(['??', own.hole[1]]);
+    // Después muestra la otra, y quien se retiró muestra las suyas.
+    await winner.ok('POST', '/g/table/reveal', {});
+    await folder.ok('POST', '/g/table/reveal', {});
+    const all = (await view(winner)).hand.players;
+    expect(all.every((p: { shown: number[]; hole: string[] }) => p.shown.length === 2 && !p.hole.includes('??'))).toBe(true);
+
+    // Con la mano siguiente en juego, la anterior ya no se muestra.
+    await a.ok('POST', '/g/table/deal');
+    expect((await winner.call('POST', '/g/table/reveal', {})).body.error).toBe('hand_in_progress');
+  });
+
   it('suma jugadores con la partida en curso, recompra y se levanta', async () => {
     const { a, b, clients, pid, byPlayer } = await setup(1);
     const c = clients[2];
@@ -1251,8 +1286,11 @@ describe('mesa online', () => {
 
     // Sin fichas, recompra (suma una compra a la partida).
     await conn.pool.query(`update poker_seats set stack = 0 where player_id = $1`, [pid[2]]);
-    const rebuy = await c.idem('/g/table/rebuy');
-    expect(rebuy.seats.find((s: { playerId: string }) => s.playerId === pid[2]).stack).toBe(1000);
+    // Tope: la mitad de quien más tiene en la mesa (1010 con lo apostado en la mano).
+    expect(v.maxRebuy).toBe(505);
+    expect((await c.call('POST', '/g/table/rebuy', { amount: 506 }, 'rebuy-key-0002')).body.error).toBe('rebuy_too_high');
+    const rebuy = await c.idem('/g/table/rebuy', { amount: 300 });
+    expect(rebuy.seats.find((s: { playerId: string }) => s.playerId === pid[2]).stack).toBe(300);
     const after = await a.ok('GET', `/g/sessions/${v.sessionId}`);
     expect(after.participants.find((p: { playerId: string }) => p.playerId === pid[2]).buys).toHaveLength(2);
 
@@ -1272,6 +1310,26 @@ describe('mesa online', () => {
       reader.groupId = group.id;
       return { admin, reader, players };
     }
+
+    it('quien se retiró de la mano en juego sin fichas puede recomprar', async () => {
+      const { admin, players } = await adminTable(3);
+      for (const p of players) await admin.ok('POST', `/g/table/seats/${p.id}`);
+      let v = await admin.idem('/g/table/start', {});
+      expect(v.hand.players).toHaveLength(3);
+      const folder = v.hand.toActPlayerId;
+      v = await admin.ok('POST', '/g/table/action', { version: v.version, playerId: folder, action: { type: 'fold' } });
+      expect(v.hand.street).not.toBe('done');
+      // Sigue la mano de los otros dos; el que se retiró se quedó sin saldo.
+      const idx = v.hand.players.findIndex((p: { playerId: string }) => p.playerId === folder);
+      await conn.pool.query(`update poker_hands set state = jsonb_set(state, '{players,${idx},stack}', '0') where status = 'active'`);
+      const rebuy = await admin.ok('POST', `/g/table/seats/${folder}/rebuy`, { amount: 200 }, 'folded-rebuy-1');
+      expect(rebuy.seats.find((s: { playerId: string }) => s.playerId === folder).stack).toBe(200);
+      // Al terminar la mano las fichas recompradas siguen ahí.
+      const next = rebuy.hand.toActPlayerId;
+      v = await admin.ok('POST', '/g/table/action', { version: rebuy.version, playerId: next, action: { type: 'fold' } });
+      expect(v.hand.street).toBe('done');
+      expect(v.seats.find((s: { playerId: string }) => s.playerId === folder).stack).toBe(200);
+    });
 
     it('un administrador sienta jugadores sin usuario, que cuentan como presentes', async () => {
       const { admin, reader, players } = await adminTable();
@@ -1370,7 +1428,8 @@ describe('mesa online', () => {
       // Sin fichas, el administrador recompra por él.
       await conn.pool.query(`update poker_seats set stack = 0 where player_id = $1`, [players[2].id]);
       const rebuy = await admin.ok('POST', `/g/table/seats/${players[2].id}/rebuy`, {}, 'manual-rebuy-2');
-      expect(rebuy.seats.find((s: { playerId: string }) => s.playerId === players[2].id).stack).toBe(1000);
+      // Sin monto, la entrada o el tope si es menor.
+      expect(rebuy.seats.find((s: { playerId: string }) => s.playerId === players[2].id).stack).toBe(Math.min(1000, rebuy.maxRebuy));
       // Terminada la mano, se lo levanta; sus fichas siguen en la mesa.
       const out = await admin.ok('DELETE', `/g/table/seats/${players[2].id}`);
       expect(out.seats.find((s: { playerId: string }) => s.playerId === players[2].id).status).toBe('out');
