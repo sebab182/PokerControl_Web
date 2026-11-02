@@ -231,3 +231,57 @@ input[type="text"], input[type="search"], select {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+
+/* Mesa online */
+.pcard {
+  display: inline-flex; align-items: center; justify-content: center; flex: none;
+  background: #fff; color: #1A1D21; border: 1px solid #C9CED6; border-radius: 6px;
+  font-weight: 700; font-variant-numeric: tabular-nums; box-shadow: 0 1px 3px rgba(0, 0, 0, .35);
+}
+.pcard-red { color: #B91C1C; }
+.pcard-sm { width: 28px; height: 40px; font-size: 13px; }
+.pcard-md { width: 44px; height: 62px; font-size: 18px; }
+.pcard-lg { width: 64px; height: 90px; font-size: 24px; border-radius: 8px; }
+.pcard-back { background: repeating-linear-gradient(45deg, #1D4ED8, #1D4ED8 4px, #1E3A8A 4px, #1E3A8A 8px); border-color: #fff; }
+.pcard-empty { background: rgba(255, 255, 255, .12); border: 1px dashed rgba(255, 255, 255, .55); box-shadow: none; }
+.felt-wrap { padding: 54px 44px 64px; max-width: 700px; margin: 0 auto; }
+.felt {
+  position: relative; aspect-ratio: 4 / 3; border-radius: 50%;
+  background: radial-gradient(ellipse at center, #1F8A4C, #0B4F2A); border: 6px solid #5A3B1E;
+}
+.felt-center {
+  position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+}
+.pot { color: #fff; font-weight: 700; background: rgba(0, 0, 0, .35); padding: 2px 12px; border-radius: 999px; font-size: 14px; }
+.board { display: flex; gap: 4px; flex-wrap: nowrap; }
+.board .pcard-md { width: 32px; height: 46px; font-size: 14px; }
+.pseat {
+  position: absolute; transform: translate(-50%, -50%); width: 92px; text-align: center; color: #fff;
+  display: flex; flex-direction: column; align-items: center; gap: 1px; font-size: 12px;
+}
+.pseat .avatar { width: 36px; height: 36px; border: 2px solid #fff; }
+.pseat-cards { display: flex; gap: 2px; min-height: 0; }
+.pseat-name, .pseat-stack, .pseat-bet, .pseat-status {
+  max-width: 100%; padding: 0 6px; border-radius: 6px; background: rgba(0, 0, 0, .72); line-height: 1.35;
+}
+.pseat-stack { font-weight: 700; }
+.pseat-bet { background: #78350F; }
+.pseat-status { background: #fff; color: #1A1D21; font-weight: 700; }
+.pseat-turn .avatar { box-shadow: 0 0 0 3px #FBBF24; }
+.pseat-folded .avatar { filter: grayscale(1); }
+.pseat-won .avatar { box-shadow: 0 0 0 3px #34D399; }
+.dealer { background: #fff; color: #1A1D21; border-radius: 999px; padding: 0 4px; font-weight: 700; }
+.hero { display: flex; flex-direction: column; align-items: center; gap: 6px; margin-bottom: 12px; }
+.hero-cards { display: flex; gap: 6px; }
+.table-status { margin-bottom: 12px; }
+.controls-row { display: flex; gap: 8px; }
+.controls-row .btn { flex: 1; padding: 0 8px; }
+.btn-chip { min-height: 36px; padding: 0 12px; font-size: 14px; }
+@media (min-width: 768px) {
+  .felt-wrap { padding: 60px 70px 70px; }
+  .pcard-sm { width: 34px; height: 48px; font-size: 15px; }
+  .board .pcard-md { width: 44px; height: 62px; font-size: 18px; }
+}
+@media (max-width: 420px) {
+  .tabbar .nav-link { font-size: 11px; }
+}
