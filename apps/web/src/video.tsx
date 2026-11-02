@@ -274,7 +274,7 @@ export function StreamVideo({ stream, muted, mirrored, className = '' }: {
 }
 
 /** Controles de mi transmisión. */
-export function VideoControls() {
+export function VideoControls({ compact = false }: { compact?: boolean }) {
   const v = useVideo();
   const [wantMic, setWantMic] = useState(false);
   if (!v || !v.canBroadcast) return null;
@@ -283,7 +283,7 @@ export function VideoControls() {
   }
   const live = !!v.local;
   return (
-    <div className="video-controls" role="group" aria-label="Transmisión de video">
+    <div className={`video-controls${compact ? ' video-controls-dock' : ''}`} role="group" aria-label="Transmisión de video">
       {live
         ? <Btn variant="danger" onClick={v.stop}>Detener transmisión</Btn>
         : <Btn busy={v.starting} onClick={() => { void v.start(wantMic); }}>Transmitir video</Btn>}

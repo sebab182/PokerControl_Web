@@ -1,7 +1,7 @@
 import type { ApiPlayer, ApiRtcServerMessage, ApiTableAction, ApiTableView } from '@pokercontrol/contracts';
 import { evaluate, formatMoney, parseAmount } from '@pokercontrol/core';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ApiRequestError, api } from '../api';
 import { EmptyCard, PlayerSeat, PokerCard, cardText } from '../components/poker';
@@ -131,7 +131,7 @@ function TableView() {
         {live && <span className="badge badge-muted" title="Recibís los cambios al instante">En vivo</span>}
         {view.status === 'playing' && <span className="badge badge-green">Partida en curso</span>}
       </div>
-      <VideoControls />
+      {!(view.status === 'playing' && view.hand) && <VideoControls />}
       {closedId && view.status === 'waiting' && (
         <div className="notice notice-ok" role="status">
           Partida cerrada. <Link to={`/sessions/${closedId}`}>Ver resultados y saldos</Link>
@@ -256,19 +256,33 @@ function Playing({ view, canEdit, updatedAt, busy, onJoin, onLeave, onDeal, onCl
   // Sin fichas se puede recomprar entre manos o si ya te retiraste de la que está en juego.
   const myPlayer = hand?.players.find(p => p.playerId === me?.playerId);
   const canRebuy = !!me && me.stack === 0 && (!live || !myPlayer || myPlayer.folded);
+  const mine = view.seats.filter(s => s.isYou || s.managed);
+  const canDeal = !live && (me?.status === 'sitting' || canEdit);
+  // Todo lo que se toca durante la mano va a los costados de mi asiento, para no tener que bajar.
+  const dockLeft = hand && (
+    <>
+      {hand.street === 'done' && mine.map(s => (
+        <ShowCards key={s.playerId} hand={hand} playerId={s.playerId} you={s.isYou} name={s.name} busy={busy} onReveal={onReveal} />
+      ))}
+      {live && hand.legal && <Controls hand={hand} busy={busy} onAction={onAction} />}
+    </>
+  );
+  const dockRight = hand && (
+    <>
+      {canDeal && <Btn busy={busy} onClick={onDeal}>Repartir próxima mano</Btn>}
+      {canRebuy && me && <NoChips view={view} sitting={me.status === 'sitting'} busy={busy} onLeave={onLeave} onRebuy={onRebuy} />}
+      <VideoControls compact />
+    </>
+  );
   const waitingSeats = view.seats.filter(s => !hand?.players.some(p => p.playerId === s.playerId));
 
   return (
     <>
-      {hand && <Felt view={view} hand={hand} />}
+      {hand && <Felt view={view} hand={hand} left={dockLeft} right={dockRight} />}
       {hand && <Status view={view} hand={hand} updatedAt={updatedAt} />}
-      {hand && view.seats.filter(s => s.isYou || s.managed).map(s => (
+      {hand && mine.map(s => (
         <MyHand key={s.playerId} hand={hand} playerId={s.playerId} you={s.isYou} label={s.isYou ? 'Tus cartas' : `Cartas de ${s.name}`} />
       ))}
-      {hand?.street === 'done' && view.seats.filter(s => s.isYou || s.managed).map(s => (
-        <ShowCards key={s.playerId} hand={hand} playerId={s.playerId} you={s.isYou} name={s.name} busy={busy} onReveal={onReveal} />
-      ))}
-      {live && hand?.legal && <Controls hand={hand} busy={busy} onAction={onAction} />}
 
       {waitingSeats.length > 0 && (
         <p className="muted small center" style={{ marginBottom: 12 }}>
@@ -276,12 +290,8 @@ function Playing({ view, canEdit, updatedAt, busy, onJoin, onLeave, onDeal, onCl
         </p>
       )}
 
-      {canRebuy && me && <NoChips view={view} sitting={me.status === 'sitting'} busy={busy} onLeave={onLeave} onRebuy={onRebuy} />}
-
       <div className="stack">
-        {!live && (me?.status === 'sitting' || canEdit) && (
-          <Btn block busy={busy} onClick={onDeal}>{hand ? 'Repartir próxima mano' : 'Repartir'}</Btn>
-        )}
+        {!hand && canDeal && <Btn block busy={busy} onClick={onDeal}>Repartir</Btn>}
         {!me && view.myPlayerId && <Btn variant="ghost" block busy={busy} onClick={onJoin}>Sumarme a la mesa por {formatMoney(view.buyIn)}</Btn>}
         {me?.status === 'out' && <Btn variant="ghost" block busy={busy} onClick={onJoin}>Volver a sentarme</Btn>}
         {(me || canEdit) && !live && <Btn variant="danger" block busy={busy} onClick={onClose}>Cerrar partida</Btn>}
@@ -306,24 +316,17 @@ function NoChips({ view, sitting, busy, onLeave, onRebuy }: {
     setText(null);
   };
   return (
-    <section className="card" aria-labelledby="no-chips" style={{ marginBottom: 12 }} data-testid="no-chips">
-      <h2 id="no-chips" style={{ marginBottom: 4 }}>Te quedaste sin saldo</h2>
+    <section className="dock-box" aria-labelledby="no-chips" data-testid="no-chips">
+      <h2 id="no-chips" className="dock-title">Sin saldo</h2>
       {max >= 1 ? (
         <>
-          <p className="muted small" style={{ marginBottom: 8 }}>
-            Podés recomprar hasta {formatMoney(max)}, la mitad de lo que tiene quien más fichas tiene en la mesa.
-          </p>
-          <div className="row-wrap" style={{ marginBottom: 8 }}>
-            <Btn variant="ghost" className="btn-chip" onClick={() => setText(String(Math.min(view.buyIn, max)))}>Entrada</Btn>
-            <Btn variant="ghost" className="btn-chip" onClick={() => setText(String(max))}>Máximo</Btn>
-          </div>
+          <p className="xs muted" style={{ marginBottom: 4 }}>Hasta {formatMoney(max)} (la mitad del que más tiene).</p>
           <TextField label="Fichas a recomprar" value={value} onChange={setText} decimal />
+          <Btn variant="ghost" className="btn-chip" onClick={() => setText(String(max))}>Máximo</Btn>
+          <Btn busy={busy} onClick={submit}>Recomprar</Btn>
         </>
-      ) : <p className="muted small" style={{ marginBottom: 8 }}>No hay fichas suficientes en la mesa para recomprar.</p>}
-      <div className="stack">
-        {max >= 1 && <Btn block busy={busy} onClick={submit}>Recomprar</Btn>}
-        {sitting && <Btn variant="ghost" block busy={busy} onClick={onLeave}>Levantarme</Btn>}
-      </div>
+      ) : <p className="xs muted">No hay fichas para recomprar.</p>}
+      {sitting && <Btn variant="ghost" busy={busy} onClick={onLeave}>Levantarme</Btn>}
     </section>
   );
 }
@@ -339,8 +342,8 @@ function ShowCards({ hand, playerId, you, name, busy, onReveal }: {
   // Quedó solo porque los demás se retiraron: no hay showdown y decide qué enseñar.
   const alone = hand.showdown.length === 0 && !p.folded && hand.players.filter(x => !x.folded).length === 1;
   return (
-    <div className="card" data-testid="show-cards" style={{ marginBottom: 12 }}>
-      <div className="reveal-actions">
+    <div className="dock-box" data-testid="show-cards">
+      <div className="dock-actions">
         <Btn variant="ghost" busy={busy} onClick={() => onReveal(playerId)}>
           {you ? 'Mostrar mis cartas' : `Mostrar cartas de ${name}`}
         </Btn>
@@ -355,7 +358,7 @@ function ShowCards({ hand, playerId, you, name, busy, onReveal }: {
   );
 }
 
-function Felt({ view, hand }: { view: ApiTableView; hand: Hand }) {
+function Felt({ view, hand, left, right }: { view: ApiTableView; hand: Hand; left?: ReactNode; right?: ReactNode }) {
   const players = hand.players;
   const myIdx = Math.max(0, players.findIndex(p => p.playerId === view.myPlayerId));
   const showdown = hand.showdown.length > 0;
@@ -375,6 +378,10 @@ function Felt({ view, hand }: { view: ApiTableView; hand: Hand }) {
             offset={(i - myIdx + players.length) % players.length} total={players.length}
             showCards={showdown || !!view.seats.find(x => x.playerId === p.playerId)?.managed} />
         ))}
+      </div>
+      <div className="dock">
+        <div className="dock-col dock-left">{left}</div>
+        <div className="dock-col dock-right">{right}</div>
       </div>
     </div>
   );
@@ -483,8 +490,8 @@ function Controls({ hand, busy, onAction }: { hand: Hand; busy: boolean; onActio
   ].map(q => ({ ...q, to: Math.min(Math.max(q.to, legal.minRaiseTo), legal.maxRaiseTo) }));
 
   return (
-    <div className="card controls" aria-label="Tus acciones">
-      <div className="controls-row">
+    <div className="dock-box controls" aria-label="Tus acciones">
+      <div className="dock-actions">
         <Btn variant="danger" busy={busy} onClick={() => onAction({ type: 'fold' })}>Retirarme</Btn>
         {legal.canCheck
           ? <Btn busy={busy} onClick={() => onAction({ type: 'check' })}>Pasar</Btn>
@@ -495,7 +502,7 @@ function Controls({ hand, busy, onAction }: { hand: Hand; busy: boolean; onActio
         )}
       </div>
       {raising && legal.canRaise && (
-        <div className="raise" style={{ marginTop: 12 }}>
+        <div className="raise dock-popup">
           <div className="row-wrap" style={{ marginBottom: 8 }}>
             {quick.map(q => (
               <Btn key={q.label} variant="ghost" className="btn-chip" onClick={() => setAmount(String(q.to))}>{q.label}</Btn>

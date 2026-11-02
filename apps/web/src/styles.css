@@ -281,6 +281,28 @@ input[type="text"], input[type="search"], select {
 .hero-cards { display: flex; gap: 8px; }
 .reveal-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
 .table-status { margin-bottom: 12px; }
+/* Controles a los costados de mi asiento (abajo al centro de la mesa), sin tener que bajar la página. */
+.felt-wrap { position: relative; }
+.felt-wrap:has(.dock-col > *) { padding-bottom: 150px; }
+.dock {
+  position: absolute; left: 4px; right: 4px; bottom: 4px; display: grid;
+  grid-template-columns: minmax(0, 1fr) 104px minmax(0, 1fr); gap: 6px; align-items: end; pointer-events: none;
+}
+.dock-col { display: flex; flex-direction: column; gap: 6px; pointer-events: auto; position: relative; }
+.dock-left { grid-column: 1; }
+.dock-right { grid-column: 3; }
+.dock-box { display: flex; flex-direction: column; gap: 4px; position: relative; font-size: 13px; }
+.dock-title { font-size: 14px; margin: 0; }
+.dock-actions { display: flex; flex-direction: column; gap: 4px; }
+.dock .btn { min-height: 38px; padding: 0 6px; font-size: 13px; white-space: normal; line-height: 1.15; background-color: var(--surface); }
+.dock .btn-primary { background-color: var(--accent); }
+.dock .btn-chip { min-height: 30px; }
+.dock .video-mic { min-height: 30px; font-size: 12px; color: var(--text); background: var(--surface); border-radius: 8px; padding: 0 6px; }
+.dock-popup {
+  position: absolute; bottom: 100%; left: 0; width: 240px; margin-bottom: 6px; z-index: 5;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 10px;
+}
+.video-controls-dock { flex-direction: column; align-items: stretch; gap: 4px; margin: 0; }
 .controls-row { display: flex; gap: 8px; }
 .controls-row .btn { flex: 1; padding: 0 8px; }
 .btn-chip { min-height: 36px; padding: 0 12px; font-size: 14px; }
