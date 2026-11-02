@@ -29,6 +29,7 @@ const app = await buildApp({
   jwtSecret: 'e2e-secret-solo-para-pruebas-locales',
   corsOrigins: ['http://localhost:5174'],
   rateLimitMax: 1000,
+  turnSweepMs: 1000,
   verifier: async idToken => {
     const [, sub, email, name] = idToken.split(':');
     return { sub, email, name, emailVerified: true, picture: null };

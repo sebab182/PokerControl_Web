@@ -19,5 +19,7 @@ const app = await buildApp({
   logger: true,
   // Detrás del proxy de Render: sin esto, todos los usuarios comparten el rate limit.
   trustProxy: process.env.TRUST_PROXY === 'true',
+  // Vence los turnos de la mesa online (lee los vencimientos de la base).
+  turnSweepMs: 1000,
 });
 await app.listen({ port: Number(process.env.PORT ?? 3000), host: '0.0.0.0' });

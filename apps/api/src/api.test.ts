@@ -7,6 +7,7 @@ import { ApiError } from './errors';
 import { connect, runMigrations } from './db/client';
 import { generateOpenApi, openapiPath } from './openapi';
 import { planImport } from './backup';
+import { sweepTurns } from './routes/table';
 
 // En CI no hay .env: TEST_DATABASE_URL llega por el entorno.
 const envFile = resolve(__dirname, '../../../.env');
@@ -1224,5 +1225,150 @@ describe('mesa online', () => {
     // Siguiente mano: juegan los que están sentados con fichas.
     const next = await (actor === a ? b : a).ok('POST', '/g/table/deal');
     expect(next.hand.players.length).toBe(2);
+  });
+
+  describe('tiempo por turno', () => {
+    const expire = () => conn.pool.query(`update poker_tables set turn_deadline = now() - interval '1 second'`);
+    const seatsOf = async () => (await conn.pool.query('select player_id, status, timeouts from poker_seats')).rows;
+
+    async function started(turnSeconds?: number) {
+      const ctx = await setup();
+      await ctx.a.ok('POST', '/g/table/join');
+      await ctx.b.ok('POST', '/g/table/join');
+      const v = await ctx.a.idem('/g/table/start', turnSeconds === undefined ? {} : { turnSeconds });
+      return { ...ctx, v };
+    }
+
+    it('arma el vencimiento del turno y informa la hora del servidor', async () => {
+      const { v } = await started(30);
+      expect(v.turnSeconds).toBe(30);
+      const left = new Date(v.turnDeadline).getTime() - new Date(v.serverTime).getTime();
+      expect(left).toBeGreaterThan(28_000);
+      expect(left).toBeLessThanOrEqual(30_000);
+    });
+
+    it('sin límite no hay vencimiento; el valor se valida', async () => {
+      const { a, b } = await setup();
+      await a.ok('POST', '/g/table/join');
+      await b.ok('POST', '/g/table/join');
+      expect((await a.call('POST', '/g/table/start', { turnSeconds: 5 }, 'turn-key-0001')).body.error).toBe('invalid_turn_time');
+      expect((await a.call('POST', '/g/table/start', { turnSeconds: 301 }, 'turn-key-0002')).status).toBe(400);
+      const v = await a.idem('/g/table/start', { turnSeconds: 0 });
+      expect([v.turnSeconds, v.turnDeadline]).toEqual([0, null]);
+      await expire();
+      expect(await sweepTurns(app)).toEqual([]);
+    });
+
+    it('al vencer, el servidor se retira por quien debe igualar', async () => {
+      const { a, b, v } = await started(10);
+      expect(await sweepTurns(app)).toEqual([]); // todavía hay tiempo
+      await expire();
+      expect(await sweepTurns(app)).toEqual([a.groupId]);
+      const after = await view(b);
+      expect(after.hand.street).toBe('done');
+      expect(after.hand.lastAction).toEqual({ playerId: v.hand.toActPlayerId, type: 'fold', auto: true });
+      expect(after.version).toBeGreaterThan(v.version);
+      expect(after.turnDeadline).toBeNull();
+      expect((await seatsOf()).find(s => s.player_id === v.hand.toActPlayerId)?.timeouts).toBe(1);
+      expect(await sweepTurns(app)).toEqual([]); // ya no hay turno
+    });
+
+    it('si puede pasar, pasa; la mano sigue con un vencimiento nuevo', async () => {
+      const { byPlayer, v } = await started(10);
+      const sb = byPlayer(v.hand.toActPlayerId);
+      let cur = await act(sb, v, { type: 'call' });
+      await expire();
+      await sweepTurns(app);
+      cur = await view(sb);
+      expect(cur.hand.lastAction).toMatchObject({ type: 'check', auto: true });
+      expect(cur.hand.street).toBe('flop');
+      expect(new Date(cur.turnDeadline).getTime()).toBeGreaterThan(Date.now());
+    });
+
+    it('dos vencimientos seguidos sacan al jugador; actuar a tiempo reinicia el contador', async () => {
+      const { byPlayer, v } = await started(10);
+      const actor = byPlayer(v.hand.toActPlayerId);
+      await conn.pool.query(`update poker_seats set timeouts = 1 where player_id = $1`, [v.hand.toActPlayerId]);
+      await act(actor, v, { type: 'call' }); // actuó: contador a 0
+      expect((await seatsOf()).find(s => s.player_id === v.hand.toActPlayerId)?.timeouts).toBe(0);
+
+      const second = await started(10);
+      await conn.pool.query(`update poker_seats set timeouts = 1 where player_id = $1`, [second.v.hand.toActPlayerId]);
+      await expire();
+      await sweepTurns(app);
+      const out = (await view(second.a)).seats.find((s: { playerId: string }) => s.playerId === second.v.hand.toActPlayerId);
+      expect(out.status).toBe('out');
+      // Volver a sentarse reinicia el contador y no suma otro vencimiento.
+      await second.byPlayer(second.v.hand.toActPlayerId).ok('POST', '/g/table/join');
+      expect((await seatsOf()).find(s => s.player_id === second.v.hand.toActPlayerId)).toMatchObject({ status: 'sitting', timeouts: 0 });
+    });
+  });
+
+  describe('WebSocket', () => {
+    const wsUrl = (c: Client) => `/api/v1/groups/${c.groupId}/table/ws`;
+    const nextMessage = (ws: Awaited<ReturnType<typeof app.injectWS>>) =>
+      new Promise<{ type: string; version?: number }>(resolve => ws.once('message', (d: Buffer) => resolve(JSON.parse(d.toString()))));
+    const closeCode = (ws: Awaited<ReturnType<typeof app.injectWS>>) => new Promise<number>(resolve => ws.once('close', (c: number) => resolve(c)));
+
+    it('avisa a los conectados cuando cambia la mesa, sin datos de la mano', async () => {
+      const { a, b } = await setup();
+      await a.ok('POST', '/g/table/join');
+      await b.ok('POST', '/g/table/join');
+      const ws = await app.injectWS(wsUrl(a));
+      const ready = nextMessage(ws);
+      ws.send(JSON.stringify({ type: 'auth', token: b.token }));
+      expect(await ready).toEqual({ type: 'ready' });
+      const changed = nextMessage(ws);
+      const v = await a.idem('/g/table/start', {});
+      expect(await changed).toEqual({ type: 'changed', version: v.version });
+
+      const action = nextMessage(ws);
+      const mine = await view(a);
+      const actor = mine.hand.legal ? a : b;
+      const cur = await view(actor);
+      await act(actor, cur, { type: 'fold' });
+      const msg = await action;
+      expect(msg.type).toBe('changed');
+      expect(Object.keys(msg).sort()).toEqual(['type', 'version']);
+      ws.close();
+    });
+
+    it('el latido de presencia no genera avisos', async () => {
+      const { a, b } = await setup();
+      await a.ok('POST', '/g/table/join');
+      const ws = await app.injectWS(wsUrl(a));
+      const ready = nextMessage(ws);
+      ws.send(JSON.stringify({ type: 'auth', token: a.token }));
+      await ready;
+      let received = 0;
+      ws.on('message', () => { received++; });
+      await a.ok('POST', '/g/table/join'); // ya sentada: solo renueva la presencia
+      await new Promise(r => setTimeout(r, 300));
+      expect(received).toBe(0);
+      await b.ok('POST', '/g/table/join'); // llega alguien nuevo: sí avisa
+      await new Promise(r => setTimeout(r, 300));
+      expect(received).toBe(1);
+      ws.close();
+    });
+
+    it('rechaza token inválido, mensaje sin auth y a quien no es del grupo', async () => {
+      const { a } = await setup();
+      const bad = await app.injectWS(wsUrl(a));
+      const badClosed = closeCode(bad);
+      bad.send(JSON.stringify({ type: 'auth', token: 'basura' }));
+      expect(await badClosed).toBe(4401);
+
+      const noAuth = await app.injectWS(wsUrl(a));
+      const noAuthClosed = closeCode(noAuth);
+      noAuth.send(JSON.stringify({ type: 'hola' }));
+      expect(await noAuthClosed).toBe(4401);
+
+      const outsider = await login('ajeno');
+      const out = await app.injectWS(wsUrl(a));
+      const outClosed = closeCode(out);
+      out.send(JSON.stringify({ type: 'auth', token: outsider.token }));
+      expect(await outClosed).toBe(4403);
+      expect(app.tableHub.count(a.groupId)).toBe(0);
+    });
   });
 });

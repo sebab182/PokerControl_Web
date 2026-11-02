@@ -47,6 +47,17 @@ export async function requireMembership(req: FastifyRequest): Promise<void> {
   req.role = role ?? 'reader';
 }
 
+/** ¿Puede este usuario ver el grupo? Mismo criterio que requireMembership, para quien no pasa por una request HTTP. */
+export async function canAccessGroup(db: Conn, userId: string, groupId: string): Promise<boolean> {
+  const role = await userRole(db, userId);
+  const [group] = await db.select({ id: schema.groups.id }).from(schema.groups).where(eq(schema.groups.id, groupId));
+  if (!group) return false;
+  if (isEditor(role)) return true;
+  const [member] = await db.select({ userId: schema.groupMembers.userId }).from(schema.groupMembers)
+    .where(and(eq(schema.groupMembers.groupId, groupId), eq(schema.groupMembers.userId, userId)));
+  return !!member;
+}
+
 /** Corre después de requireMembership. */
 export async function requireEditor(req: FastifyRequest): Promise<void> {
   if (!isEditor(req.role)) throw new ApiError(403, 'read_only', 'Tu usuario es de solo lectura.');

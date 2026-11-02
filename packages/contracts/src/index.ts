@@ -232,6 +232,8 @@ export const HandView = Obj({
     playerId: T.String(),
     type: T.Union([T.Literal('fold'), T.Literal('check'), T.Literal('call'), T.Literal('raise'), T.Literal('allin')]),
     amount: T.Optional(T.Integer()),
+    /** true si la jugó el servidor por tiempo agotado. */
+    auto: T.Optional(T.Boolean()),
   })),
   payouts: T.Array(Obj({ playerId: T.String(), amount: T.Integer() })),
   showdown: T.Array(Obj({ playerId: T.String(), hole: T.Array(T.String()), handName: T.String() })),
@@ -241,6 +243,11 @@ export const TableView = Obj({
   smallBlind: T.Integer(), bigBlind: T.Integer(), buyIn: T.Integer(),
   /** Cambia con cada acción: se envía de vuelta en POST /table/action. */
   version: T.Integer(),
+  /** Segundos por turno (0 = sin límite) y vencimiento del turno en curso. */
+  turnSeconds: T.Integer(),
+  turnDeadline: Nullable(T.String()),
+  /** Hora del servidor, para calcular la cuenta regresiva sin depender del reloj del cliente. */
+  serverTime: T.String(),
   seats: T.Array(TableSeat),
   /** Tu jugador en este grupo; null si todavía no elegiste nick. */
   myPlayerId: Nullable(T.String()),
@@ -248,6 +255,8 @@ export const TableView = Obj({
 }, 'TableView');
 export const StartTableBody = Obj({
   smallBlind: T.Optional(Chips), bigBlind: T.Optional(Chips), buyIn: T.Optional(Chips),
+  /** 0 = sin límite; si no, entre 10 y 300 segundos. */
+  turnSeconds: T.Optional(T.Integer({ minimum: 0, maximum: 300 })),
 });
 export const TableActionBody = Obj({
   version: T.Integer(),

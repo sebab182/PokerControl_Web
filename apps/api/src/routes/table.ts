@@ -11,9 +11,9 @@ import {
   CloseTableResponse, ErrorResponse, GroupParams, StartTableBody, TableActionBody, TableView,
   type ApiTableView,
 } from '@pokercontrol/contracts';
-import { HoldemError, applyAction, legalActions, publicView, startHand, type HandState } from '@pokercontrol/core';
+import { HoldemError, applyAction, legalActions, publicView, startHand, type Action, type HandState } from '@pokercontrol/core';
 import { type Static } from '@sinclair/typebox';
-import { and, asc, desc, eq, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, isNotNull, lte, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import * as schema from '../db/schema';
 import type { LoggedAction } from '../db/schema';
@@ -103,7 +103,11 @@ async function buildView(db: Conn, table: TableRow, userId: string): Promise<Api
         }
         : null,
       lastAction: last
-        ? { playerId: last.playerId, type: last.action.type, ...(last.action.amount !== undefined ? { amount: last.action.amount } : {}) }
+        ? {
+          playerId: last.playerId, type: last.action.type,
+          ...(last.action.amount !== undefined ? { amount: last.action.amount } : {}),
+          ...(last.action.auto ? { auto: true } : {}),
+        }
         : null,
       payouts: v.payouts,
       showdown: v.showdown,
@@ -118,6 +122,9 @@ async function buildView(db: Conn, table: TableRow, userId: string): Promise<Api
     bigBlind: table.bigBlind,
     buyIn: table.buyIn,
     version: table.version,
+    turnSeconds: table.turnSeconds,
+    turnDeadline: live && table.turnDeadline ? table.turnDeadline.toISOString() : null,
+    serverTime: new Date(now).toISOString(),
     myPlayerId: myId,
     hand,
     seats: seats.map(({ seat, name }) => ({
@@ -159,7 +166,8 @@ async function dealHand(tx: Tx, table: TableRow): Promise<void> {
   });
   const handNo = table.handCount + 1;
   const [row] = await tx.insert(schema.pokerHands).values({ tableId: table.id, handNo, state }).returning();
-  await tx.update(schema.pokerTables).set({ handCount: handNo, button, version: sql`${schema.pokerTables.version} + 1` })
+  await tx.update(schema.pokerTables)
+    .set({ handCount: handNo, button, version: bump, turnDeadline: deadlineFor(table, state) })
     .where(eq(schema.pokerTables.id, table.id));
   // Si todos quedaron all-in por las ciegas, la mano ya puede estar terminada.
   if (state.street === 'done') await finishHand(tx, row.id, state);
@@ -178,12 +186,92 @@ async function finishHand(tx: Tx, handId: number, state: HandState): Promise<voi
     .where(eq(schema.pokerHands.id, handId));
 }
 
+const bump = sql`${schema.pokerTables.version} + 1`;
+
+/** Vencimiento del turno que sigue, o null si no hay turno o la mesa no tiene límite. */
+function deadlineFor(table: Pick<TableRow, 'turnSeconds'>, state: HandState): Date | null {
+  if (state.street === 'done' || state.toAct < 0 || table.turnSeconds <= 0) return null;
+  return new Date(Date.now() + table.turnSeconds * 1000);
+}
+
 async function activeHand(tx: Conn, tableId: string): Promise<HandRow | null> {
   const row = await latestHand(tx, tableId);
   return row?.status === 'active' ? row : null;
 }
 
-const bump = sql`${schema.pokerTables.version} + 1`;
+
+/**
+ * Aplica una jugada (de la persona o del temporizador), la registra, cierra la mano si
+ * corresponde y arma el vencimiento del próximo turno. Corre con la mesa bloqueada.
+ */
+async function playAction(tx: Tx, table: TableRow, hand: HandRow, playerId: string, action: Action, auto: boolean): Promise<void> {
+  const state = hand.state as HandState;
+  const before = legalActions(state);
+  const logged: LoggedAction = action.type === 'call' && before ? { type: 'call', amount: before.callAmount }
+    : action.type === 'raise' ? { type: 'raise', to: action.to, amount: action.to }
+      : action.type === 'allin' && before ? { type: 'allin', amount: before.canRaise ? before.maxRaiseTo : before.callAmount }
+        : action;
+  let next: HandState;
+  try {
+    next = applyAction(state, playerId, action);
+  } catch (e) {
+    if (e instanceof HoldemError) throw new ApiError(422, 'illegal_action', e.message);
+    throw e;
+  }
+  const [{ n }] = await tx.select({ n: sql<number>`count(*)::int` }).from(schema.pokerActions)
+    .where(eq(schema.pokerActions.handId, hand.id));
+  await tx.insert(schema.pokerActions).values({
+    handId: hand.id, seq: n + 1, playerId, action: auto ? { ...logged, auto: true } : logged,
+  });
+  await tx.update(schema.pokerHands).set({ state: next }).where(eq(schema.pokerHands.id, hand.id));
+  if (next.street === 'done') await finishHand(tx, hand.id, next);
+
+  const seat = and(eq(schema.pokerSeats.tableId, table.id), eq(schema.pokerSeats.playerId, playerId));
+  if (auto) {
+    // Dos turnos seguidos sin responder: se lo saca de las próximas manos (vuelve con "Volver a sentarme").
+    await tx.update(schema.pokerSeats)
+      .set({ timeouts: sql`${schema.pokerSeats.timeouts} + 1`, status: sql`case when ${schema.pokerSeats.timeouts} + 1 >= 2 then 'out' else ${schema.pokerSeats.status} end` })
+      .where(seat);
+  } else {
+    await tx.update(schema.pokerSeats).set({ timeouts: 0 }).where(seat);
+  }
+  await tx.update(schema.pokerTables).set({ version: bump, turnDeadline: deadlineFor(table, next) })
+    .where(eq(schema.pokerTables.id, table.id));
+}
+
+/**
+ * Juega por quien se quedó sin tiempo: pasa si puede y, si no, se retira. Lo corre un
+ * temporizador del servidor; como lee los vencimientos de la base, sobrevive a reinicios.
+ * Devuelve los grupos cuya mesa cambió.
+ */
+export async function sweepTurns(app: FastifyInstance): Promise<string[]> {
+  const due = await app.db.select({ id: schema.pokerTables.id }).from(schema.pokerTables).where(and(
+    eq(schema.pokerTables.status, 'playing'), gt(schema.pokerTables.turnSeconds, 0), isNotNull(schema.pokerTables.turnDeadline), lte(schema.pokerTables.turnDeadline, new Date()),
+  ));
+  const changed: string[] = [];
+  for (const { id } of due) {
+    const done = await app.db.transaction(async tx => {
+      const [table] = await tx.select().from(schema.pokerTables).where(eq(schema.pokerTables.id, id)).for('update', { skipLocked: true });
+      // Otro proceso la tomó, o el jugador actuó justo antes: no hay nada que vencer.
+      if (!table?.turnDeadline || table.turnSeconds <= 0 || table.turnDeadline.getTime() > Date.now()) return null;
+      const hand = await activeHand(tx, table.id);
+      const state = hand?.state as HandState | undefined;
+      const legal = state ? legalActions(state) : null;
+      if (!hand || !state || !legal) {
+        await tx.update(schema.pokerTables).set({ turnDeadline: null }).where(eq(schema.pokerTables.id, table.id));
+        return null;
+      }
+      await playAction(tx, table, hand, legal.playerId, legal.canCheck ? { type: 'check' } : { type: 'fold' }, true);
+      const [fresh] = await tx.select({ version: schema.pokerTables.version }).from(schema.pokerTables).where(eq(schema.pokerTables.id, table.id));
+      return { groupId: table.groupId, version: fresh.version };
+    });
+    if (done) {
+      changed.push(done.groupId);
+      app.tableHub.notify(done.groupId, done.version);
+    }
+  }
+  return changed;
+}
 
 // ─── Rutas ───────────────────────────────────────────────────────────────────
 
@@ -195,13 +283,25 @@ export async function tableRoutes(app: FastifyInstance) {
   /** Corre fn con la mesa bloqueada y devuelve la vista resultante. */
   const mutate = async (
     req: { group: { id: string }; user: { sub: string } },
-    fn: (tx: Tx, table: TableRow) => Promise<void>,
-  ) => app.db.transaction(async tx => {
-    const table = await ensureTable(tx, req.group.id, true);
-    await fn(tx, table);
-    const [fresh] = await tx.select().from(schema.pokerTables).where(eq(schema.pokerTables.id, table.id));
-    return buildView(tx, fresh, req.user.sub);
-  });
+    fn: (tx: Tx, table: TableRow) => Promise<void | 'quiet'>,
+  ) => {
+    let quiet = false;
+    const view = await app.db.transaction(async tx => {
+      const table = await ensureTable(tx, req.group.id, true);
+      quiet = (await fn(tx, table)) === 'quiet';
+      const [fresh] = await tx.select().from(schema.pokerTables).where(eq(schema.pokerTables.id, table.id));
+      return buildView(tx, fresh, req.user.sub);
+    });
+    // Después del commit, para que quien refresque ya vea el cambio. El latido de presencia no avisa.
+    if (!quiet) app.tableHub.notify(req.group.id, view.version);
+    return view;
+  };
+
+  /** Igual que mutate, para las rutas con Idempotency-Key (el aviso sale al confirmarse). */
+  const announce = <T extends { version: number } | { table: { version: number } }>(groupId: string, result: T): T => {
+    app.tableHub.notify(groupId, 'table' in result ? result.table.version : result.version);
+    return result;
+  };
 
   app.get<G>('/table', {
     schema: { ...base, response: { 200: TableView, ...err } },
@@ -216,9 +316,11 @@ export async function tableRoutes(app: FastifyInstance) {
     const [seat] = await tx.select().from(schema.pokerSeats)
       .where(and(eq(schema.pokerSeats.tableId, table.id), eq(schema.pokerSeats.playerId, playerId)));
     if (seat) {
-      await tx.update(schema.pokerSeats).set({ status: 'sitting', lastSeenAt: new Date() })
+      // Volver tras estar afuera (levantado o sacado por inactividad) reinicia el contador.
+      await tx.update(schema.pokerSeats)
+        .set({ status: 'sitting', lastSeenAt: new Date(), ...(seat.status === 'out' ? { timeouts: 0 } : {}) })
         .where(and(eq(schema.pokerSeats.tableId, table.id), eq(schema.pokerSeats.playerId, playerId)));
-      return;
+      return seat.status === 'sitting' ? 'quiet' : undefined;
     }
     let stack = 0;
     if (table.status === 'playing') {
@@ -255,7 +357,7 @@ export async function tableRoutes(app: FastifyInstance) {
     schema: { ...base, body: StartTableBody, response: { 200: TableView, ...err } },
   }, async req => {
     const groupId = req.group.id;
-    return idempotent(req, async tx => {
+    return announce(groupId, await idempotent(req, async tx => {
       const table = await ensureTable(tx, groupId, true);
       if (table.status !== 'waiting') throw new ApiError(409, 'already_playing', 'Ya hay una partida en juego.');
       const playerId = await requirePlayer(tx, groupId, req.user.sub);
@@ -263,7 +365,11 @@ export async function tableRoutes(app: FastifyInstance) {
         smallBlind: req.body.smallBlind ?? table.smallBlind,
         bigBlind: req.body.bigBlind ?? table.bigBlind,
         buyIn: req.body.buyIn ?? table.buyIn,
+        turnSeconds: req.body.turnSeconds ?? table.turnSeconds,
       };
+      if (cfg.turnSeconds !== 0 && cfg.turnSeconds < 10) {
+        throw new ApiError(422, 'invalid_turn_time', 'El tiempo por turno es 0 (sin límite) o entre 10 y 300 segundos.');
+      }
       if (cfg.smallBlind > cfg.bigBlind) throw new ApiError(422, 'invalid_blinds', 'La ciega chica no puede superar a la grande.');
       if (cfg.buyIn < cfg.bigBlind * 2) throw new ApiError(422, 'invalid_buy_in', 'La entrada debe ser al menos el doble de la ciega grande.');
 
@@ -305,7 +411,7 @@ export async function tableRoutes(app: FastifyInstance) {
       await dealHand(tx, fresh);
       const [after] = await tx.select().from(schema.pokerTables).where(eq(schema.pokerTables.id, table.id));
       return buildView(tx, after, req.user.sub);
-    });
+    }));
   });
 
   app.post<G>('/table/deal', {
@@ -326,25 +432,7 @@ export async function tableRoutes(app: FastifyInstance) {
     }
     const hand = await activeHand(tx, table.id);
     if (!hand) throw new ApiError(409, 'no_hand', 'No hay una mano en juego.');
-    const before = legalActions(hand.state as HandState);
-    const act = req.body.action;
-    const logged: LoggedAction = act.type === 'call' && before ? { type: 'call', amount: before.callAmount }
-      : act.type === 'raise' ? { type: 'raise', to: act.to, amount: act.to }
-        : act.type === 'allin' && before ? { type: 'allin', amount: before.canRaise ? before.maxRaiseTo : before.callAmount }
-          : act;
-    let next: HandState;
-    try {
-      next = applyAction(hand.state as HandState, playerId, req.body.action);
-    } catch (e) {
-      if (e instanceof HoldemError) throw new ApiError(422, 'illegal_action', e.message);
-      throw e;
-    }
-    const [{ n }] = await tx.select({ n: sql<number>`count(*)::int` }).from(schema.pokerActions)
-      .where(eq(schema.pokerActions.handId, hand.id));
-    await tx.insert(schema.pokerActions).values({ handId: hand.id, seq: n + 1, playerId, action: logged });
-    await tx.update(schema.pokerHands).set({ state: next }).where(eq(schema.pokerHands.id, hand.id));
-    if (next.street === 'done') await finishHand(tx, hand.id, next);
-    await tx.update(schema.pokerTables).set({ version: bump }).where(eq(schema.pokerTables.id, table.id));
+    await playAction(tx, table, hand, playerId, req.body.action, false);
   }));
 
   // Recompra: solo con 0 fichas y fuera de una mano. Suma una compra a la partida.
@@ -352,7 +440,7 @@ export async function tableRoutes(app: FastifyInstance) {
     schema: { ...base, response: { 200: TableView, ...err } },
   }, async req => {
     const groupId = req.group.id;
-    return idempotent(req, async tx => {
+    return announce(groupId, await idempotent(req, async tx => {
       const table = await ensureTable(tx, groupId, true);
       if (table.status !== 'playing') throw new ApiError(409, 'not_playing', 'No hay una partida en juego.');
       const playerId = await requirePlayer(tx, groupId, req.user.sub);
@@ -371,7 +459,7 @@ export async function tableRoutes(app: FastifyInstance) {
       await tx.update(schema.pokerTables).set({ version: bump }).where(eq(schema.pokerTables.id, table.id));
       const [fresh] = await tx.select().from(schema.pokerTables).where(eq(schema.pokerTables.id, table.id));
       return buildView(tx, fresh, req.user.sub);
-    });
+    }));
   });
 
   // Cerrar: los stacks pasan a ser los resultados finales y se cierra la Session (deudas y ranking).
@@ -379,7 +467,7 @@ export async function tableRoutes(app: FastifyInstance) {
     schema: { ...base, response: { 200: CloseTableResponse, ...err } },
   }, async req => {
     const groupId = req.group.id;
-    return idempotent(req, async tx => {
+    return announce(groupId, await idempotent(req, async tx => {
       const table = await ensureTable(tx, groupId, true);
       if (table.status !== 'playing') throw new ApiError(409, 'not_playing', 'No hay una partida en juego.');
       const playerId = await requirePlayer(tx, groupId, req.user.sub);
@@ -397,6 +485,6 @@ export async function tableRoutes(app: FastifyInstance) {
         .where(eq(schema.pokerTables.id, table.id));
       const [fresh] = await tx.select().from(schema.pokerTables).where(eq(schema.pokerTables.id, table.id));
       return { sessionId, table: await buildView(tx, fresh, req.user.sub) };
-    });
+    }));
   });
 }

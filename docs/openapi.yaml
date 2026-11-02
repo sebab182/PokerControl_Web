@@ -1081,6 +1081,9 @@ paths:
                   - bigBlind
                   - buyIn
                   - version
+                  - turnSeconds
+                  - turnDeadline
+                  - serverTime
                   - seats
                   - myPlayerId
                   - hand
@@ -1106,6 +1109,13 @@ paths:
                     type: integer
                   version:
                     type: integer
+                  turnSeconds:
+                    type: integer
+                  turnDeadline:
+                    type: string
+                    nullable: true
+                  serverTime:
+                    type: string
                   seats:
                     type: array
                     items:
@@ -1281,6 +1291,8 @@ paths:
                                   - allin
                           amount:
                             type: integer
+                          auto:
+                            type: boolean
                         nullable: true
                       payouts:
                         type: array
@@ -1356,6 +1368,9 @@ paths:
                   - bigBlind
                   - buyIn
                   - version
+                  - turnSeconds
+                  - turnDeadline
+                  - serverTime
                   - seats
                   - myPlayerId
                   - hand
@@ -1381,6 +1396,13 @@ paths:
                     type: integer
                   version:
                     type: integer
+                  turnSeconds:
+                    type: integer
+                  turnDeadline:
+                    type: string
+                    nullable: true
+                  serverTime:
+                    type: string
                   seats:
                     type: array
                     items:
@@ -1556,6 +1578,8 @@ paths:
                                   - allin
                           amount:
                             type: integer
+                          auto:
+                            type: boolean
                         nullable: true
                       payouts:
                         type: array
@@ -1631,6 +1655,9 @@ paths:
                   - bigBlind
                   - buyIn
                   - version
+                  - turnSeconds
+                  - turnDeadline
+                  - serverTime
                   - seats
                   - myPlayerId
                   - hand
@@ -1656,6 +1683,13 @@ paths:
                     type: integer
                   version:
                     type: integer
+                  turnSeconds:
+                    type: integer
+                  turnDeadline:
+                    type: string
+                    nullable: true
+                  serverTime:
+                    type: string
                   seats:
                     type: array
                     items:
@@ -1831,6 +1865,8 @@ paths:
                                   - allin
                           amount:
                             type: integer
+                          auto:
+                            type: boolean
                         nullable: true
                       payouts:
                         type: array
@@ -1903,6 +1939,10 @@ paths:
                   minimum: 1
                   maximum: 1000000000
                   type: integer
+                turnSeconds:
+                  minimum: 0
+                  maximum: 300
+                  type: integer
       parameters:
         - schema:
             type: string
@@ -1926,6 +1966,9 @@ paths:
                   - bigBlind
                   - buyIn
                   - version
+                  - turnSeconds
+                  - turnDeadline
+                  - serverTime
                   - seats
                   - myPlayerId
                   - hand
@@ -1951,6 +1994,13 @@ paths:
                     type: integer
                   version:
                     type: integer
+                  turnSeconds:
+                    type: integer
+                  turnDeadline:
+                    type: string
+                    nullable: true
+                  serverTime:
+                    type: string
                   seats:
                     type: array
                     items:
@@ -2126,6 +2176,8 @@ paths:
                                   - allin
                           amount:
                             type: integer
+                          auto:
+                            type: boolean
                         nullable: true
                       payouts:
                         type: array
@@ -2201,6 +2253,9 @@ paths:
                   - bigBlind
                   - buyIn
                   - version
+                  - turnSeconds
+                  - turnDeadline
+                  - serverTime
                   - seats
                   - myPlayerId
                   - hand
@@ -2226,6 +2281,13 @@ paths:
                     type: integer
                   version:
                     type: integer
+                  turnSeconds:
+                    type: integer
+                  turnDeadline:
+                    type: string
+                    nullable: true
+                  serverTime:
+                    type: string
                   seats:
                     type: array
                     items:
@@ -2401,6 +2463,8 @@ paths:
                                   - allin
                           amount:
                             type: integer
+                          auto:
+                            type: boolean
                         nullable: true
                       payouts:
                         type: array
@@ -2541,6 +2605,9 @@ paths:
                   - bigBlind
                   - buyIn
                   - version
+                  - turnSeconds
+                  - turnDeadline
+                  - serverTime
                   - seats
                   - myPlayerId
                   - hand
@@ -2566,6 +2633,13 @@ paths:
                     type: integer
                   version:
                     type: integer
+                  turnSeconds:
+                    type: integer
+                  turnDeadline:
+                    type: string
+                    nullable: true
+                  serverTime:
+                    type: string
                   seats:
                     type: array
                     items:
@@ -2741,6 +2815,8 @@ paths:
                                   - allin
                           amount:
                             type: integer
+                          auto:
+                            type: boolean
                         nullable: true
                       payouts:
                         type: array
@@ -2816,6 +2892,9 @@ paths:
                   - bigBlind
                   - buyIn
                   - version
+                  - turnSeconds
+                  - turnDeadline
+                  - serverTime
                   - seats
                   - myPlayerId
                   - hand
@@ -2841,6 +2920,13 @@ paths:
                     type: integer
                   version:
                     type: integer
+                  turnSeconds:
+                    type: integer
+                  turnDeadline:
+                    type: string
+                    nullable: true
+                  serverTime:
+                    type: string
                   seats:
                     type: array
                     items:
@@ -3016,6 +3102,8 @@ paths:
                                   - allin
                           amount:
                             type: integer
+                          auto:
+                            type: boolean
                         nullable: true
                       payouts:
                         type: array
@@ -3101,6 +3189,9 @@ paths:
                       - bigBlind
                       - buyIn
                       - version
+                      - turnSeconds
+                      - turnDeadline
+                      - serverTime
                       - seats
                       - myPlayerId
                       - hand
@@ -3126,6 +3217,13 @@ paths:
                         type: integer
                       version:
                         type: integer
+                      turnSeconds:
+                        type: integer
+                      turnDeadline:
+                        type: string
+                        nullable: true
+                      serverTime:
+                        type: string
                       seats:
                         type: array
                         items:
@@ -3301,6 +3399,8 @@ paths:
                                       - allin
                               amount:
                                 type: integer
+                              auto:
+                                type: boolean
                             nullable: true
                           payouts:
                             type: array

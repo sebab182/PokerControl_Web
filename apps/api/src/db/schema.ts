@@ -7,7 +7,7 @@
 import type { Action, HandState } from '@pokercontrol/core';
 
 /** Acción tal como se jugó: `amount` es lo igualado (call) o el total al que subió (raise/allin). */
-export type LoggedAction = Action & { amount?: number };
+export type LoggedAction = Action & { amount?: number; auto?: boolean };
 import { sql } from 'drizzle-orm';
 import {
   bigint, boolean, check, customType, foreignKey, index, integer, jsonb, pgTable, primaryKey, text,
@@ -211,6 +211,10 @@ export const pokerTables = pgTable('poker_tables', {
   button: integer('button').notNull().default(0),
   /** Se incrementa en cada cambio visible: evita acciones sobre estados viejos. */
   version: integer('version').notNull().default(0),
+  /** Segundos por turno; 0 = sin límite. */
+  turnSeconds: integer('turn_seconds').notNull().default(30),
+  /** Vencimiento del turno en curso; al pasarlo el servidor juega por el jugador. */
+  turnDeadline: ts('turn_deadline'),
   createdAt: ts('created_at').notNull().defaultNow(),
 }, t => [
   unique('uq_poker_tables_group').on(t.groupId),
@@ -218,6 +222,8 @@ export const pokerTables = pgTable('poker_tables', {
   foreignKey({ columns: [t.groupId, t.sessionId], foreignColumns: [sessions.groupId, sessions.id], name: 'fk_poker_tables_session' }).onDelete('restrict'),
   check('ck_poker_tables_status', sql`${t.status} in ('waiting', 'playing')`),
   check('ck_poker_tables_blinds', sql`${t.smallBlind} > 0 and ${t.bigBlind} >= ${t.smallBlind} and ${t.buyIn} > 0`),
+  check('ck_poker_tables_turn', sql`${t.turnSeconds} = 0 or ${t.turnSeconds} between 10 and 300`),
+  index('idx_poker_tables_deadline').on(t.turnDeadline).where(sql`turn_deadline is not null`),
   check('ck_poker_tables_session', sql`(${t.status} = 'playing') = (${t.sessionId} is not null)`),
 ]);
 
@@ -231,6 +237,8 @@ export const pokerSeats = pgTable('poker_seats', {
   /** sitting: juega las próximas manos. out: se levantó pero sus fichas siguen en la mesa. */
   status: text('status').notNull().default('sitting').$type<'sitting' | 'out'>(),
   joinedAt: ts('joined_at').notNull().defaultNow(),
+  /** Turnos seguidos que el servidor jugó por él (tiempo agotado); a los 2 se lo saca de la mesa. */
+  timeouts: integer('timeouts').notNull().default(0),
   /** Presencia: la web la renueva con cada join (heartbeat). */
   lastSeenAt: ts('last_seen_at').notNull().defaultNow(),
 }, t => [
