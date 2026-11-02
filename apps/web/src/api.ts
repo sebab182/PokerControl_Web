@@ -1,4 +1,6 @@
 const BASE = `${import.meta.env.VITE_API_URL ?? 'http://localhost:3000'}/api/v1`;
+/** URL de WebSocket de la API (mismo host, protocolo ws/wss). */
+export const wsUrl = (path: string) => `${BASE.replace(/^http/, 'ws')}${path}`;
 const TOKEN_KEY = 'pc_token';
 const SLOW_MS = 5000;
 // Holgado para un arranque en frío de Render, que puede tardar cerca de un minuto.

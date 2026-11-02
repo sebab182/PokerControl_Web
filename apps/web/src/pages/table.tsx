@@ -9,11 +9,14 @@ import {
   Avatar, Btn, Emoji, Loading, Modal, QueryError, TextField, useAction, useFeedback,
 } from '../components/ui';
 import { useGroup } from '../context';
+import { useTableSocket } from '../useTableSocket';
 import { NickChooser } from './auth';
 
 const HEARTBEAT_MS = 20_000;
 const HAND_POLL_MS = 2_000;
 const WAIT_POLL_MS = 3_000;
+/** Con el socket en vivo, el polling queda como red de seguridad (y renueva quién está conectado). */
+const LIVE_POLL_MS = 15_000;
 
 type Hand = NonNullable<ApiTableView['hand']>;
 
@@ -32,7 +35,7 @@ export function TablePage() {
 }
 
 function TableView() {
-  const { path, key, invalidate } = useGroup();
+  const { group, path, key, invalidate } = useGroup();
   const qc = useQueryClient();
   const { confirm } = useFeedback();
   const { busy, run } = useAction();
@@ -41,14 +44,26 @@ function TableView() {
   const [startOpen, setStartOpen] = useState(false);
   const [closedId, setClosedId] = useState<string | null>(null);
 
+  // Cualquier aviso refresca la mesa. No se compara la versión: sentarse o levantarse cambia lo que
+  // se ve sin cambiar la versión de la mano (que solo protege las jugadas). Un GET repetido sale barato.
+  const live = useTableSocket(group.id, () => { void qc.invalidateQueries({ queryKey }); });
   const query = useQuery({
     queryKey,
     queryFn: () => api<ApiTableView>(path('/table')),
-    refetchInterval: q => (q.state.data?.status === 'playing' ? HAND_POLL_MS : WAIT_POLL_MS),
+    refetchInterval: q => (live ? LIVE_POLL_MS : q.state.data?.status === 'playing' ? HAND_POLL_MS : WAIT_POLL_MS),
     staleTime: 0,
   });
   const view = query.data;
   const me = view?.seats.find(s => s.isYou);
+
+  // Con la pestaña en segundo plano, el título avisa cuando te toca.
+  const myTurn = !!view?.hand?.legal;
+  useEffect(() => {
+    if (!myTurn) return;
+    const original = document.title;
+    document.title = '🃏 Tu turno · ' + original;
+    return () => { document.title = original; };
+  }, [myTurn]);
 
   /** Cada operación devuelve la mesa ya actualizada. */
   const post = async (suffix: string, body?: unknown, opts: { idempotent?: boolean; refresh?: boolean } = {}) => {
@@ -97,6 +112,7 @@ function TableView() {
     <>
       <div className="page-head">
         <h1 className="grow">Mesa</h1>
+        {live && <span className="badge badge-muted" title="Recibís los cambios al instante">En vivo</span>}
         {view.status === 'playing' && <span className="badge badge-green">Partida en curso</span>}
       </div>
       {closedId && view.status === 'waiting' && (
@@ -106,7 +122,7 @@ function TableView() {
       )}
       {view.status === 'waiting'
         ? <Waiting view={view} standing={standing} busy={busy} onJoin={join} onLeave={leave} onStart={() => setStartOpen(true)} />
-        : <Playing view={view} busy={busy} onJoin={join} onDeal={deal} onClose={close}
+        : <Playing view={view} updatedAt={query.dataUpdatedAt} busy={busy} onJoin={join} onDeal={deal} onClose={close}
           onAction={action => run(async () => {
             try {
               await post('action', { version: view.version, action });
@@ -160,18 +176,24 @@ function Waiting({ view, standing, busy, onJoin, onLeave, onStart }: {
 
 function StartModal({ view, open, onClose, onStart, busy }: {
   view: ApiTableView; open: boolean; onClose: () => void; busy: boolean;
-  onStart: (cfg: { buyIn: number; smallBlind: number; bigBlind: number }) => void;
+  onStart: (cfg: { buyIn: number; smallBlind: number; bigBlind: number; turnSeconds: number }) => void;
 }) {
-  const { notify } = useFeedback();
+  const [error, setError] = useState('');
   const [buyIn, setBuyIn] = useState(String(view.buyIn));
   const [sb, setSb] = useState(String(view.smallBlind));
   const [bb, setBb] = useState(String(view.bigBlind));
+  const [turn, setTurn] = useState(String(view.turnSeconds));
   const submit = () => {
     const cfg = { buyIn: parseAmount(buyIn), smallBlind: parseAmount(sb), bigBlind: parseAmount(bb) };
     if ([cfg.buyIn, cfg.smallBlind, cfg.bigBlind].some(n => n === null || n <= 0 || !Number.isInteger(n))) {
-      return notify('Ingresá montos enteros mayores a 0.');
+      return setError('Ingresá montos enteros mayores a 0.');
     }
-    onStart(cfg as { buyIn: number; smallBlind: number; bigBlind: number });
+    const turnSeconds = parseAmount(turn);
+    if (turnSeconds === null || !Number.isInteger(turnSeconds) || (turnSeconds !== 0 && (turnSeconds < 10 || turnSeconds > 300))) {
+      return setError('El tiempo por turno es 0 (sin límite) o entre 10 y 300 segundos.');
+    }
+    setError('');
+    onStart({ ...cfg, turnSeconds } as { buyIn: number; smallBlind: number; bigBlind: number; turnSeconds: number });
   };
   return (
     <Modal open={open} onClose={onClose} title="Iniciar partida"
@@ -181,6 +203,8 @@ function StartModal({ view, open, onClose, onStart, busy }: {
         <TextField label="Ciega chica" value={sb} onChange={setSb} decimal />
         <TextField label="Ciega grande" value={bb} onChange={setBb} decimal />
       </div>
+      <TextField label="Tiempo por turno (segundos, 0 = sin límite)" value={turn} onChange={setTurn} decimal />
+      {error && <p className="notice notice-err" role="alert">{error}</p>}
       <div className="modal-actions">
         <Btn variant="ghost" onClick={onClose}>Cancelar</Btn>
         <Btn busy={busy} onClick={submit}>Iniciar partida</Btn>
@@ -190,8 +214,8 @@ function StartModal({ view, open, onClose, onStart, busy }: {
 }
 
 // ─── Partida en curso ────────────────────────────────────────────────────────
-function Playing({ view, busy, onJoin, onDeal, onClose, onAction, onRebuy }: {
-  view: ApiTableView; busy: boolean; onJoin: () => void; onDeal: () => void; onClose: () => void;
+function Playing({ view, updatedAt, busy, onJoin, onDeal, onClose, onAction, onRebuy }: {
+  view: ApiTableView; updatedAt: number; busy: boolean; onJoin: () => void; onDeal: () => void; onClose: () => void;
   onAction: (a: ApiTableAction) => void; onRebuy: () => void;
 }) {
   const me = view.seats.find(s => s.isYou);
@@ -203,7 +227,7 @@ function Playing({ view, busy, onJoin, onDeal, onClose, onAction, onRebuy }: {
   return (
     <>
       {hand && <Felt view={view} hand={hand} />}
-      {hand && <Status view={view} hand={hand} />}
+      {hand && <Status view={view} hand={hand} updatedAt={updatedAt} />}
       {hand && inHand && <MyHand hand={hand} myId={view.myPlayerId as string} />}
       {live && hand?.legal && <Controls hand={hand} busy={busy} onAction={onAction} />}
 
@@ -253,6 +277,25 @@ function Felt({ view, hand }: { view: ApiTableView; hand: Hand }) {
   );
 }
 
+/** Cuenta regresiva del turno. Se calcula contra la hora del servidor, no la del reloj del dispositivo. */
+function TurnTimer({ view, updatedAt }: { view: ApiTableView; updatedAt: number }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!view.turnDeadline) return;
+    const id = setInterval(() => setNow(Date.now()), 500);
+    return () => clearInterval(id);
+  }, [view.turnDeadline]);
+  if (!view.turnDeadline) return null;
+  const skew = Date.parse(view.serverTime) - updatedAt;
+  const left = Math.max(0, Math.ceil((Date.parse(view.turnDeadline) - (now + skew)) / 1000));
+  const clock = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
+  return (
+    <span role="timer" className={`turn-timer ${left <= 10 ? 'strong' : ''}`} data-testid="turn-timer">
+      {' '}· <Emoji>⏱</Emoji> {left > 0 ? clock : 'Tiempo agotado…'}
+    </span>
+  );
+}
+
 function nameOf(view: ApiTableView, id: string) {
   const s = view.seats.find(x => x.playerId === id);
   return s?.isYou ? 'Vos' : s?.name ?? 'Alguien';
@@ -270,10 +313,10 @@ function describeLast(view: ApiTableView, la: NonNullable<Hand['lastAction']>): 
     raise: [`subiste a ${money}`, `subió a ${money}`],
     allin: [`fuiste all-in por ${money}`, `fue all-in por ${money}`],
   };
-  return `${you ? 'Vos' : who} ${verbs[la.type][you ? 0 : 1]}`;
+  return `${you ? 'Vos' : who} ${verbs[la.type][you ? 0 : 1]}${la.auto ? ' (tiempo agotado)' : ''}`;
 }
 
-function Status({ view, hand }: { view: ApiTableView; hand: Hand }) {
+function Status({ view, hand, updatedAt }: { view: ApiTableView; hand: Hand; updatedAt: number }) {
   let text: string;
   if (hand.street === 'done') {
     const parts = hand.payouts.map(w => {
@@ -291,6 +334,7 @@ function Status({ view, hand }: { view: ApiTableView; hand: Hand }) {
   return (
     <p className={`table-status ${hand.street === 'done' ? 'notice notice-ok' : 'notice notice-info'}`} role="status" aria-live="polite">
       <span className="xs muted">Mano {hand.handNo} · </span>{text}
+      {hand.street !== 'done' && <TurnTimer view={view} updatedAt={updatedAt} />}
       {hand.lastAction && <span className="last-action" data-testid="last-action"> · {describeLast(view, hand.lastAction)}.</span>}
     </p>
   );
