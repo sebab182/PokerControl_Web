@@ -1,9 +1,10 @@
-import type { ApiPlayer, ApiSeason, ApiSession, ApiSessionSummary } from '@pokercontrol/contracts';
+import type { ApiPlayer, ApiPlayerBalance, ApiSeason, ApiSession, ApiSessionSummary } from '@pokercontrol/contracts';
 import { defaultSeasonName, formatMoney, parseAmount } from '@pokercontrol/core';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api';
+import { BalanceInputs, balanceText } from '../components/debts';
 import {
   Btn, Emoji, Empty, Loading, Modal, Money, QueryError, TextField, useAction, useFeedback,
 } from '../components/ui';
@@ -175,6 +176,13 @@ export function SeasonSessionsPage() {
   const [name, setName] = useState('');
   const [amount, setAmount] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [balanceValues, setBalanceValues] = useState<Record<string, string>>({});
+  const balances = useQuery({
+    queryKey: key('balances'),
+    queryFn: () => api<ApiPlayerBalance[]>(path('/balances')),
+    enabled: open,
+  });
+  const currentOf = (id: string) => balances.data?.find(b => b.playerId === id)?.balance ?? 0;
   const season = seasons.data?.find(s => s.id === seasonId);
 
   const parsed = parseAmount(amount);
@@ -206,11 +214,21 @@ export function SeasonSessionsPage() {
 
   const create = () => {
     if (selected.size > 0 && (parsed === null || parsed <= 0)) return notify('Ingresá un monto inicial válido.');
+    const typedBalances: { playerId: string; amount: number }[] = [];
+    for (const id of selected) {
+      const typed = balanceValues[id];
+      if (typed === undefined || typed.trim() === '') continue;
+      const value = parseAmount(typed);
+      if (value === null) return notify('Saldo inválido.');
+      if (value !== currentOf(id)) typedBalances.push({ playerId: id, amount: value });
+    }
     void run(async () => {
       const created = await api<ApiSession>(path(`/seasons/${seasonId}/sessions`), {
         method: 'POST',
         idempotent: true,
-        body: { name: name.trim(), playerIds: [...selected], ...(selected.size > 0 ? { initialBuyIn: parsed } : {}) },
+        body: { name: name.trim(), playerIds: [...selected], ...(selected.size > 0 ? { initialBuyIn: parsed } : {}),
+          ...(typedBalances.length > 0 ? { balances: typedBalances } : {}),
+        },
       });
       await invalidate();
       navigate(`/sessions/${created.id}`);
@@ -223,7 +241,7 @@ export function SeasonSessionsPage() {
       <div className="page-head">
         <h1 className="grow">{season?.name ?? 'Partidas'}</h1>
         <Link className="btn btn-ghost" to={`/ranking?seasonId=${seasonId}`}><Emoji>🏆</Emoji> Ranking</Link>
-        {canEdit && <Btn onClick={() => { setName(defaultPartyName()); setAmount(''); setSelected(new Set()); setOpen(true); }}>+ Nueva partida</Btn>}
+        {canEdit && <Btn onClick={() => { setName(defaultPartyName()); setAmount(''); setSelected(new Set()); setBalanceValues({}); setOpen(true); }}>+ Nueva partida</Btn>}
       </div>
 
       {sessions.length === 0 && <Empty icon="🃏" title="No hay partidas aún">{canEdit && <p>Creá la primera con “Nueva partida”.</p>}</Empty>}
@@ -266,6 +284,18 @@ export function SeasonSessionsPage() {
             {p.name}
           </label>
         ))}
+        {selected.size > 0 && (
+          <>
+            <p className="small muted" style={{ margin: '12px 0 8px' }}>
+              Saldo de cada jugador al empezar (último saldo conocido). Corregilo si hubo pagos por fuera.
+            </p>
+            <BalanceInputs
+              rows={(players.data ?? []).filter(p => selected.has(p.id)).map(p => ({ playerId: p.id, name: p.name }))}
+              values={Object.fromEntries([...selected].map(id => [id, balanceValues[id] ?? balanceText(currentOf(id))]))}
+              onChange={(id, v) => setBalanceValues(prev => ({ ...prev, [id]: v }))}
+            />
+          </>
+        )}
         {selected.size > 0 && parsed !== null && parsed > 0 && (
           <p className="small muted" style={{ marginTop: 8 }}>
             Pozo inicial: <Money amount={total} className="strong" /> ({selected.size} × {formatMoney(parsed)})

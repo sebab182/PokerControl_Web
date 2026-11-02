@@ -1,93 +1,127 @@
-import type { ApiDebt, ApiDebtorGroup, ApiReorganizeStatus } from '@pokercontrol/contracts';
-import { buildPendingDebtsText, type DebtorGroup } from '@pokercontrol/core';
+import type { ApiBalancePayment, ApiPlayerBalance } from '@pokercontrol/contracts';
+import { buildBalancesText, formatMoney, parseAmount, round2 } from '@pokercontrol/core';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { api } from '../api';
-import { DebtDetail, PaymentModal } from '../components/debts';
-import { Avatar, Btn, Emoji, Empty, Loading, Money, QueryError, useAction, useFeedback } from '../components/ui';
+import { BalanceInputs, PayModal, PaymentHistory, balanceText } from '../components/debts';
+import { Avatar, Btn, Emoji, Empty, Loading, Modal, Money, QueryError, TextField, useAction, useFeedback } from '../components/ui';
 import { useGroup } from '../context';
 import { shareText } from '../share';
 
 export function PendingDebtsPage() {
-  const { path, key, invalidate, canEdit } = useGroup();
+  const { path, key, invalidate, canEdit, group } = useGroup();
   const { confirm, notify } = useFeedback();
   const { busy, run } = useAction();
-  const groups = useQuery({
-    queryKey: key('pending-debts'),
-    queryFn: () => api<ApiDebtorGroup[]>(path('/debts/pending-by-debtor')),
+  const balances = useQuery({
+    queryKey: key('balances'),
+    queryFn: () => api<ApiPlayerBalance[]>(path('/balances')),
   });
-  const status = useQuery({
-    queryKey: key('reorganize-status'),
-    queryFn: () => api<ApiReorganizeStatus>(path('/debts/reorganize-status')),
+  const payments = useQuery({
+    queryKey: key('payments'),
+    queryFn: () => api<ApiBalancePayment[]>(path('/payments')),
   });
-  const [paying, setPaying] = useState<ApiDebt | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [note, setNote] = useState('');
+  const [paying, setPaying] = useState<ApiPlayerBalance | null>(null);
 
-  const reorganize = async () => {
+  const removePayment = async (p: ApiBalancePayment) => {
     const ok = await confirm({
-      title: 'Reorganizar deudas', confirmLabel: 'Reorganizar',
-      message: 'Esto va a netear y consolidar todas las deudas pendientes entre los mismos jugadores. Podrás deshacer si no hay pagos registrados.',
+      title: 'Eliminar pago', danger: true, confirmLabel: 'Eliminar',
+      message: `¿Eliminar el pago de ${formatMoney(p.amount)} de ${p.fromPlayer.name} a ${p.toPlayer.name}? Los saldos vuelven a como estaban.`,
     });
     if (!ok) return;
     void run(async () => {
-      await api(path('/debts/renet'), { method: 'POST' });
+      await api(path(`/payments/${p.id}`), { method: 'DELETE' });
       await invalidate();
     });
   };
 
-  const undo = async () => {
-    const ok = await confirm({
-      title: 'Deshacer reorganización', danger: true, confirmLabel: 'Deshacer',
-      message: '¿Restaurar las deudas al estado anterior a la última reorganización?',
-    });
-    if (!ok) return;
+  const active = (balances.data ?? []).filter(b => !b.archived);
+
+  const saveBalances = () => {
+    const changes: { playerId: string; amount: number }[] = [];
+    for (const b of active) {
+      const typed = values[b.playerId];
+      if (typed === undefined || typed.trim() === '') continue;
+      const amount = parseAmount(typed);
+      if (amount === null) return notify(`Saldo inválido para ${b.name}.`);
+      if (round2(amount) !== b.balance) changes.push({ playerId: b.playerId, amount: round2(amount) });
+    }
+    if (changes.length === 0) return notify('No cambiaste ningún saldo.');
     void run(async () => {
-      await api(path('/debts/renet/undo'), { method: 'POST' });
+      await api(path('/balances'), { method: 'PUT', body: { balances: changes, note } });
       await invalidate();
+      setEditing(false);
     });
   };
 
-  const reorganizeControl = () => {
-    const s = status.data;
-    if (!s || !canEdit) return null;
-    if (s.canUndo) return <Btn variant="ghost" block busy={busy} onClick={() => { void undo(); }}>↩ Deshacer reorganización</Btn>;
-    if (s.reason === 'has_payments') return <Btn variant="ghost" block disabled><Emoji>🔒</Emoji> Reorganizar (bloqueado por pagos)</Btn>;
-    if (!s.canReorganize) return <Btn variant="ghost" block disabled>✓ No hay deudas para reorganizar</Btn>;
-    return <Btn variant="ghost" block busy={busy} onClick={() => { void reorganize(); }}><Emoji>⚡</Emoji> Reorganizar deudas</Btn>;
-  };
-
-  if (groups.isLoading) return <Loading />;
-  if (groups.error) return <QueryError error={groups.error} onRetry={() => { void groups.refetch(); }} />;
-  const list = groups.data ?? [];
+  if (balances.isLoading || payments.isLoading) return <Loading />;
+  if (balances.error) return <QueryError error={balances.error} onRetry={() => { void balances.refetch(); }} />;
+  const list = (balances.data ?? []).filter(b => b.balance !== 0);
 
   return (
     <>
-      <h1 style={{ marginBottom: 12 }}>Deudas pendientes</h1>
-      {list.length === 0 && (
-        <>
-          <Empty icon="🤝" title="Sin deudas pendientes"><p>Todos los balances están saldados.</p></Empty>
-          {status.data?.canUndo && reorganizeControl()}
-        </>
+      <h1 style={{ marginBottom: 12 }}>Saldos</h1>
+      <p className="small muted" style={{ marginBottom: 12 }}>
+        Saldo consolidado de cada jugador, del que más tiene para cobrar al que más debe.
+      </p>
+      {canEdit && (
+        <Btn variant="ghost" block style={{ marginBottom: 12 }} onClick={() => { setValues({}); setNote(''); setEditing(true); }}>
+          <Emoji>✏️</Emoji> Actualizar saldos
+        </Btn>
       )}
+      {list.length === 0 && <Empty icon="🤝" title="Todos en cero"><p>No hay saldos pendientes.</p></Empty>}
       {list.length > 0 && (
         <div className="stack" style={{ marginBottom: 16 }}>
-          <Btn block onClick={() => { void shareText(buildPendingDebtsText(list as unknown as DebtorGroup[]), notify); }}>
+          <Btn block onClick={() => { void shareText(buildBalancesText(balances.data ?? [], formatMoney), notify); }}>
             <Emoji>📤</Emoji> Compartir por WhatsApp
           </Btn>
-          {reorganizeControl()}
         </div>
       )}
 
-      {list.map(g => (
-        <section key={g.player.id} style={{ marginBottom: 20 }} data-testid={`debtor-${g.player.name}`}>
-          <div className="row" style={{ marginBottom: 8 }}>
-            <Avatar name={g.player.name} />
-            <h2 className="grow ellipsis">{g.player.name}</h2>
-            <Money amount={g.totalPending} className="neg strong" />
+      {list.map(b => (
+        <div className="card" key={b.playerId} data-testid={`balance-${b.name}`}>
+          <div className="row">
+            <Avatar name={b.name} />
+            <div className="grow" style={{ minWidth: 0 }}>
+              <div className="strong ellipsis">{b.name}</div>
+              <div className="xs muted">{b.balance > 0 ? 'Tiene para cobrar' : 'Debe'}</div>
+            </div>
+            <Money amount={b.balance} signed tone className="strong" />
           </div>
-          {g.debts.map(d => <DebtDetail key={d.id} debt={d} onPay={setPaying} showPlayers />)}
-        </section>
+          {(canEdit || b.playerId === group.playerId) && b.balance < 0 && (
+            <Btn variant="ghost" block style={{ marginTop: 10 }} onClick={() => setPaying(b)}>+ Registrar pago</Btn>
+          )}
+        </div>
       ))}
-      <PaymentModal debt={paying} onClose={() => setPaying(null)} />
+
+      {(payments.data?.length ?? 0) > 0 && (
+        <>
+          <h2 className="section-title">Pagos registrados</h2>
+          <div className="card">
+            <PaymentHistory payments={payments.data ?? []} canEdit={canEdit} ownPlayerId={group.playerId} onDelete={p => { void removePayment(p); }} />
+          </div>
+        </>
+      )}
+      <Modal open={editing} onClose={() => setEditing(false)} title="Actualizar saldos">
+        <p className="small muted" style={{ marginBottom: 8 }}>
+          Poné el saldo real de cada jugador (+ cobra, − debe). Solo se guardan los que cambies.
+        </p>
+        <form onSubmit={e => { e.preventDefault(); saveBalances(); }}>
+          <BalanceInputs
+            rows={active.map(b => ({ playerId: b.playerId, name: b.name }))}
+            values={Object.fromEntries(active.map(b => [b.playerId, values[b.playerId] ?? balanceText(b.balance)]))}
+            onChange={(id, v) => setValues(prev => ({ ...prev, [id]: v }))}
+          />
+          <TextField label="Motivo (opcional)" value={note} onChange={setNote} placeholder="Ej: pagos por fuera" maxLength={200} />
+          <div className="modal-actions">
+            <Btn variant="ghost" onClick={() => setEditing(false)}>Cancelar</Btn>
+            <Btn type="submit" busy={busy}>Guardar</Btn>
+          </div>
+        </form>
+      </Modal>
+      <PayModal debtor={paying} balances={balances.data ?? []} onClose={() => setPaying(null)} />
     </>
   );
 }

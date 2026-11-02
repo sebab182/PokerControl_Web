@@ -5,10 +5,10 @@
 
 import { randomUUID } from 'node:crypto';
 import {
-  CONSOLIDATED_SESSION_ID, MANUAL_DEBT_SESSION_ID, calcSession, missingResults,
+  CONSOLIDATED_SESSION_ID, MANUAL_DEBT_SESSION_ID, calcSession, missingResults, rankBalances, round2, sumBalances,
   type Debt, type DomainContext, type Player, type Season, type Session,
 } from '@pokercontrol/core';
-import type { ApiDebt, ApiSession } from '@pokercontrol/contracts';
+import type { ApiDebt, ApiPlayerBalance, ApiSession } from '@pokercontrol/contracts';
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import * as schema from './db/schema';
@@ -231,4 +231,44 @@ export function toApiSession(s: Session): ApiSession {
     calc: calcSession(s),
     missingResults: missingResults(s),
   };
+}
+
+/** Saldo actual de cada jugador con movimientos: la suma de su libro. */
+export async function loadBalanceMap(db: Conn, groupId: string): Promise<Map<string, number>> {
+  const rows = await db.select({ playerId: schema.balanceEntries.playerId, amount: schema.balanceEntries.amount })
+    .from(schema.balanceEntries).where(eq(schema.balanceEntries.groupId, groupId));
+  return sumBalances(rows);
+}
+
+/** Saldos de todos los jugadores activos y de los archivados con saldo, del que más cobra al que más debe. */
+export async function loadPlayerBalances(db: Conn, groupId: string): Promise<ApiPlayerBalance[]> {
+  const [balances, players] = await Promise.all([
+    loadBalanceMap(db, groupId),
+    db.select().from(schema.players).where(eq(schema.players.groupId, groupId)),
+  ]);
+  return rankBalances(players
+    .map(p => ({ playerId: p.id, name: p.name, balance: balances.get(p.id) ?? 0, archived: p.archivedAt !== null }))
+    .filter(p => !p.archived || p.balance !== 0));
+}
+
+/** Inserta movimientos de saldo omitiendo los que valen cero. */
+export async function insertEntries(
+  tx: Tx, groupId: string,
+  entries: { playerId: string; kind: 'adjustment' | 'session' | 'payment'; amount: number; sessionId?: string; note?: string }[],
+): Promise<void> {
+  const rows = entries.filter(e => e.amount !== 0).map(e => ({
+    groupId, playerId: e.playerId, kind: e.kind, amount: e.amount, sessionId: e.sessionId ?? null, note: e.note ?? '',
+  }));
+  if (rows.length > 0) await tx.insert(schema.balanceEntries).values(rows);
+}
+
+/** Ajusta el saldo de un jugador al valor real indicado (ej: pagos hechos por fuera). */
+export async function setBalances(
+  tx: Tx, groupId: string, sessionId: string | null, note: string, targets: { playerId: string; amount: number }[],
+): Promise<void> {
+  const current = await loadBalanceMap(tx, groupId);
+  await insertEntries(tx, groupId, targets.map(t => ({
+    playerId: t.playerId, kind: 'adjustment' as const, sessionId: sessionId ?? undefined, note,
+    amount: round2(t.amount - (current.get(t.playerId) ?? 0)),
+  })));
 }

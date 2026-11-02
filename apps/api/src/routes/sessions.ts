@@ -5,18 +5,17 @@ import {
   SetFinalAmountBody,
 } from '@pokercontrol/contracts';
 import {
-  POT_TOLERANCE, calcDebts, calcParticipant, calcSession, generateDebtsFromSession, missingResults, round2,
+  POT_TOLERANCE, calcParticipant, calcSession, missingResults, round2,
   type Session as CoreSession,
 } from '@pokercontrol/core';
 import { Type, type Static } from '@sinclair/typebox';
-import { and, eq } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import * as schema from '../db/schema';
 import { ApiError, notFound, sessionClosed } from '../errors';
 import { idempotent } from '../idempotency';
 import {
-  clearBackup, ctx, loadDebts, loadSessions, lockGroup, lockSession, saveDebtDiff, toApiDebt, toApiSession,
-  type Conn, type Tx,
+  insertEntries, loadSessions, lockGroup, lockSession, setBalances, toApiSession, type Conn, type Tx,
 } from '../repo';
 
 type I = { Params: Static<typeof IdParams> };
@@ -84,7 +83,7 @@ export async function sessionRoutes(app: FastifyInstance) {
     schema: { tags, params: SeasonParams, body: CreateSessionBody, response: { 200: Session, ...err } },
   }, async req => idempotent(req, async tx => {
     const groupId = req.group.id;
-    const { playerIds, initialBuyIn } = req.body;
+    const { playerIds, initialBuyIn, balances } = req.body;
     const [season] = await tx.select({ id: schema.seasons.id }).from(schema.seasons)
       .where(and(eq(schema.seasons.id, req.params.seasonId), eq(schema.seasons.groupId, groupId)));
     if (!season) throw notFound('Temporada');
@@ -111,6 +110,12 @@ export async function sessionRoutes(app: FastifyInstance) {
         .values({ groupId, sessionId: id, playerId }).returning({ id: schema.sessionParticipants.id });
       await tx.insert(schema.buys).values({ participantId: participant.id, amount: initialBuyIn as number, occurredAt: now });
     }
+    if (balances && balances.length > 0) {
+      for (const b of balances) assertAmount(b.amount);
+      if (balances.some(b => !unique.includes(b.playerId))) throw notFound('Jugador');
+      await lockGroup(tx, groupId);
+      await setBalances(tx, groupId, id, 'inicio', balances);
+    }
     return fresh(tx, groupId, id);
   }));
 
@@ -125,19 +130,7 @@ export async function sessionRoutes(app: FastifyInstance) {
     const { id } = req.params;
     if (!(await lockSession(tx, groupId, id))) throw notFound('Partida');
     await lockGroup(tx, groupId);
-    const session = await findSession(tx, groupId, id);
-    const own = (await loadDebts(tx, groupId)).filter(d => d.sessionId === id);
-    // Si hay pagos o sus deudas se netearon, borrar dejaría plata sin origen.
-    if (own.some(d => d.payments.length > 0) || (session.status === 'closed' && calcDebts(session).length > own.length)) {
-      throw new ApiError(
-        409, 'session_debts_locked',
-        'No se puede borrar: sus deudas tienen pagos o ya se combinaron con otras.',
-      );
-    }
-    if (own.length > 0) {
-      await clearBackup(tx, groupId);
-      await tx.delete(schema.debts).where(eq(schema.debts.sessionId, id));
-    }
+    // Sus movimientos de saldo se borran en cascada: el saldo de cada jugador se recalcula solo.
     await tx.delete(schema.sessions).where(eq(schema.sessions.id, id));
     return { deleted: true };
   }));
@@ -217,43 +210,40 @@ export async function sessionRoutes(app: FastifyInstance) {
 
     await tx.update(schema.sessions).set({ status: 'closed', closedAt: new Date() }).where(eq(schema.sessions.id, id));
     await lockGroup(tx, groupId);
-    const before = await loadDebts(tx, groupId);
-    await clearBackup(tx, groupId);
-    const after = generateDebtsFromSession(before, session, calcDebts(session), ctx);
-    await saveDebtDiff(tx, groupId, before, after);
-    return {
-      session: await fresh(tx, groupId, id),
-      debts: (await loadDebts(tx, groupId)).map(toApiDebt),
-    };
+    // El resultado de cada participante con resultado se suma a su saldo; el resto queda igual.
+    await insertEntries(tx, groupId, session.participants
+      .filter(p => p.finalAmount !== null)
+      .map(p => ({ playerId: p.playerId, kind: 'session' as const, sessionId: id, amount: round2(calcParticipant(p).balance) })));
+    const typed = req.body.balances ?? [];
+    for (const b of typed) assertAmount(b.amount);
+    if (typed.some(b => !session.participants.some(p => p.playerId === b.playerId))) throw notFound('Jugador');
+    await setBalances(tx, groupId, id, 'cierre', typed);
+    return { session: await fresh(tx, groupId, id) };
   }));
 
   app.get<I>('/sessions/:id/debts', {
     schema: { tags, params: IdParams, response: { 200: SessionDebtsView, ...err } },
   }, async req => {
     const session = await findSession(app.db, req.group.id, req.params.id);
-    const own = (await loadDebts(app.db, req.group.id)).filter(d => d.sessionId === session.id);
+    const entries = session.status === 'closed'
+      ? await app.db.select().from(schema.balanceEntries)
+        .where(eq(schema.balanceEntries.groupId, req.group.id)).orderBy(asc(schema.balanceEntries.id))
+      : [];
+    const balances = session.participants.map(p => {
+      const result = p.finalAmount === null ? null : round2(calcParticipant(p).balance);
+      if (session.status !== 'closed') return { playerId: p.playerId, name: p.name, result, before: null, after: null };
+      const mine = entries.filter(e => e.playerId === p.playerId);
+      const last = Math.max(-1, ...mine.filter(e => e.sessionId === session.id).map(e => e.id));
+      if (last < 0) return { playerId: p.playerId, name: p.name, result, before: null, after: null };
+      const after = round2(mine.filter(e => e.id <= last).reduce((sum, e) => sum + e.amount, 0));
+      // Saldo de partida: lo previo más el ajuste de inicio; el ajuste de cierre va después.
+      const closing = mine.filter(e => e.sessionId === session.id && e.note === 'cierre').reduce((sum, e) => sum + e.amount, 0);
+      return { playerId: p.playerId, name: p.name, result, before: round2(after - (result ?? 0) - closing), after };
+    });
     return {
       sessionStatus: session.status,
       allHaveResult: session.participants.length > 0 && missingResults(session).length === 0,
-      balances: session.participants
-        .map(p => ({
-          playerId: p.playerId,
-          name: p.name,
-          balance: p.finalAmount === null ? null : calcParticipant(p).balance,
-        }))
-        .sort((a, b) => (b.balance ?? -Infinity) - (a.balance ?? -Infinity)),
-      items: calcDebts(session).map(t => {
-        const debt = own.find(d => d.fromPlayer.id === t.fromId && d.toPlayer.id === t.toId);
-        return {
-          fromId: t.fromId,
-          fromName: t.from,
-          toId: t.toId,
-          toName: t.to,
-          amount: t.amount,
-          state: debt || session.status === 'active' ? 'open' as const : 'merged' as const,
-          debt: debt ? toApiDebt(debt) : null,
-        };
-      }),
+      balances: balances.sort((a, b) => (b.after ?? b.result ?? -1e12) - (a.after ?? a.result ?? -1e12)),
     };
   });
 }

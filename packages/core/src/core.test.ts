@@ -4,7 +4,7 @@ import {
   calcParticipant, calcSession, canDeleteManualDebt, closeSeason, createSeason, debtsForPlayer,
   formatDate, generateDebtsFromSession, globalRanking, groupPendingByDebtor, hasDebtsToReorganize,
   MANUAL_DEBT_SESSION_ID, netDebts, parseAmount, pendingDebts, playerHistory, playerStats,
-  reopenSeason, round2, SeasonRuleError,
+  reopenSeason, round2, SeasonRuleError, buildBalancesText, rankBalances, sumBalances, validatePayment,
 } from './index';
 import type { Debt, DebtTransaction, DomainContext, Participant, Season, Session } from './types';
 
@@ -336,5 +336,34 @@ describe('compartir y zona horaria', () => {
   it('una noche de las 22:00 en Buenos Aires conserva su día local con servidor en UTC', () => {
     expect(formatDate('2026-03-07T01:00:00.000Z', 'America/Argentina/Buenos_Aires')).toBe('6/3/2026');
     expect(formatDate('2026-03-07T01:00:00.000Z', 'UTC')).toBe('7/3/2026');
+  });
+});
+
+describe('saldos', () => {
+  const row = (playerId: string, name: string, balance: number) => ({ playerId, name, balance });
+  it('ordena del que más cobra al que más debe, desempatando por nombre', () => {
+    const ranked = rankBalances([row('1', 'Caro', -30), row('2', 'Beto', 50), row('3', 'Ana', 50), row('4', 'Dani', 0)]);
+    expect(ranked.map(r => r.name)).toEqual(['Ana', 'Beto', 'Dani', 'Caro']);
+  });
+  it('suma movimientos con signo por jugador sin arrastrar error de coma flotante', () => {
+    const totals = sumBalances([
+      { playerId: 'a', amount: 0.1 }, { playerId: 'a', amount: 0.2 }, { playerId: 'b', amount: -5 },
+    ]);
+    expect(totals.get('a')).toBe(0.3);
+    expect(totals.get('b')).toBe(-5);
+  });
+  it('un pago solo vale del deudor al acreedor y dentro de ambos saldos', () => {
+    expect(validatePayment(-50, 80, 50)).toBeNull();
+    expect(validatePayment(-50, 80, 51)).toMatch(/supera/);
+    expect(validatePayment(-50, 30, 40)).toMatch(/supera/);
+    expect(validatePayment(10, 80, 5)).toMatch(/no tiene deuda/);
+    expect(validatePayment(-50, -5, 5)).toMatch(/no tiene saldo/);
+  });
+  it('el texto para compartir omite los saldos en cero', () => {
+    const text = buildBalancesText([row('1', 'Ana', 50), row('2', 'Beto', -50), row('3', 'Caro', 0)], n => `$${n}`);
+    expect(text).toContain('Ana: cobra $50');
+    expect(text).toContain('Beto: debe $50');
+    expect(text).not.toContain('Caro');
+    expect(buildBalancesText([row('1', 'Ana', 0)], n => `$${n}`)).toContain('en cero');
   });
 });

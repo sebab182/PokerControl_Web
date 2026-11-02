@@ -11,6 +11,7 @@ import { ApiError } from './errors';
 import type { Db } from './repo';
 import { authRoutes } from './routes/auth';
 import { backupRoutes } from './routes/backup';
+import { balanceRoutes, paymentRoutes } from './routes/balances';
 import { debtRoutes } from './routes/debts';
 import { adminRoutes } from './routes/admin';
 import type { Role } from './routes/auth';
@@ -68,7 +69,7 @@ export async function buildApp(options: AppOptions) {
   await app.register(cors, {
     origin: options.corsOrigins ?? false,
     allowedHeaders: ['Authorization', 'Content-Type', 'Idempotency-Key'],
-    methods: ['GET', 'POST', 'PATCH', 'DELETE'],
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
   });
   await app.register(jwt, {
     secret: options.jwtSecret,
@@ -121,6 +122,8 @@ export async function buildApp(options: AppOptions) {
         scoped.addHook('preValidation', requireMembership);
         // Lo único que solo lectura escribe dentro de un grupo: elegir su propio jugador.
         await scoped.register(claimPlayerRoutes);
+        // Pagos: cada usuario puede registrar los suyos; la ruta valida a quién pertenecen.
+        await scoped.register(paymentRoutes);
         await scoped.register(async guarded => {
           guarded.addHook('preValidation', async req => {
             if (req.method !== 'GET') await requireEditor(req);
@@ -129,6 +132,7 @@ export async function buildApp(options: AppOptions) {
           await guarded.register(seasonRoutes);
           await guarded.register(sessionRoutes);
           await guarded.register(debtRoutes);
+          await guarded.register(balanceRoutes);
           await guarded.register(backupRoutes);
         });
       }, { prefix: '/groups/:groupId' });

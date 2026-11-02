@@ -1,12 +1,12 @@
 import type {
-  ApiCloseSessionResponse, ApiDebt, ApiGroup, ApiParticipant, ApiPlayer, ApiSession, ApiSessionDebtsView,
+  ApiCloseSessionResponse, ApiGroup, ApiParticipant, ApiPlayer, ApiPlayerBalance, ApiSession, ApiSessionDebtsView,
 } from '@pokercontrol/contracts';
-import { POT_TOLERANCE, buildWhatsAppSummary, formatMoney, parseAmount } from '@pokercontrol/core';
+import { POT_TOLERANCE, buildWhatsAppSummary, calcParticipant, formatMoney, parseAmount, round2 } from '@pokercontrol/core';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ApiRequestError, api } from '../api';
-import { DebtDetail, PaymentModal } from '../components/debts';
+import { BalanceInputs, balanceText } from '../components/debts';
 import {
   Avatar, Btn, Emoji, Empty, Loading, Modal, Money, QueryError, TextField, useAction, useFeedback,
 } from '../components/ui';
@@ -44,6 +44,13 @@ export function SessionPage() {
   const [buyAmount, setBuyAmount] = useState('');
   const [finalFor, setFinalFor] = useState<ApiParticipant | null>(null);
   const [finalAmount, setFinalAmount] = useState('');
+  const [closeOpen, setCloseOpen] = useState(false);
+  const [closeValues, setCloseValues] = useState<Record<string, string>>({});
+  const currentBalances = useQuery({
+    queryKey: key('balances'),
+    queryFn: () => api<ApiPlayerBalance[]>(path('/balances')),
+    enabled: closeOpen,
+  });
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   if (query.isLoading) return <Loading />;
@@ -95,32 +102,39 @@ export function SessionPage() {
     if (ok) void mutate(() => api<ApiSession>(path(`/sessions/${sessionId}/participants/${p.playerId}`), { method: 'DELETE' }));
   };
 
-  const closeSession = async () => {
-    const missing = session.missingResults.length;
-    const lines: string[] = [];
-    if (Math.abs(diff) > POT_TOLERANCE) lines.push(`⚠️ El pozo no cuadra: ${status} ${formatMoney(Math.abs(diff))}.`);
-    if (missing > 0) lines.push(`⚠️ ${missing} jugador${missing === 1 ? '' : 'es'} sin resultado: quedan fuera de las deudas.`);
-    const ok = await confirm({
-      title: 'Cerrar partida',
-      danger: lines.length > 0,
-      confirmLabel: lines.length > 0 ? 'Cerrar de todas formas' : 'Cerrar',
-      message: lines.length > 0
-        ? `${lines.join('\n')}\n\n¿Cerrar igual? Una partida cerrada no se puede editar.`
-        : 'Los montos cuadran bien.\n¿Cerrar y registrar resultados finales? Una partida cerrada no se puede editar.',
-    });
-    if (!ok) return;
+  /** Saldo final por defecto: el último saldo conocido más el resultado de esta partida. */
+  const defaultClosing = (p: ApiParticipant, current: Map<string, number>) =>
+    round2((current.get(p.playerId) ?? 0) + (p.finalAmount === null ? 0 : calcParticipant(p).balance));
+
+  const openClose = () => {
+    setCloseValues({});
+    setCloseOpen(true);
+  };
+
+  const closeSession = () => {
+    const current = new Map((currentBalances.data ?? []).map(b => [b.playerId, b.balance]));
+    const balances: { playerId: string; amount: number }[] = [];
+    for (const p of session.participants) {
+      const typed = closeValues[p.playerId];
+      if (typed === undefined || typed.trim() === '') continue;
+      const amount = parseAmount(typed);
+      if (amount === null) return notify(`Saldo inválido para ${p.name}.`);
+      if (round2(amount) !== defaultClosing(p, current)) balances.push({ playerId: p.playerId, amount: round2(amount) });
+    }
     void run(async () => {
       try {
         await api<ApiCloseSessionResponse>(path(`/sessions/${sessionId}/close`), {
-          method: 'POST', idempotent: true, body: { confirmedDiff: diff },
+          method: 'POST', idempotent: true, body: { confirmedDiff: diff, ...(balances.length > 0 ? { balances } : {}) },
         });
       } catch (e) {
         if (e instanceof ApiRequestError && e.code === 'pot_mismatch') {
           await query.refetch();
+          setCloseOpen(false);
           throw new Error('Otro miembro cambió los montos. Revisá la diferencia y volvé a cerrar.');
         }
         throw e;
       }
+      setCloseOpen(false);
       await invalidate();
       navigate(`/sessions/${sessionId}/debts`);
     });
@@ -151,7 +165,7 @@ export function SessionPage() {
       {session.participants.length > 0 && (
         <div className="row" style={{ marginBottom: 12 }}>
           <Btn variant="ghost" className="grow" onClick={() => { void share(); }}><Emoji>📤</Emoji> WhatsApp</Btn>
-          <Link className="btn btn-ghost grow" to={`/sessions/${sessionId}/debts`}><Emoji>💳</Emoji> Deudas</Link>
+          <Link className="btn btn-ghost grow" to={`/sessions/${sessionId}/debts`}><Emoji>💳</Emoji> Saldos</Link>
         </div>
       )}
 
@@ -222,10 +236,46 @@ export function SessionPage() {
         <div className="stack" style={{ marginTop: 4 }}>
           <Btn variant="ghost" block onClick={() => setAddOpen(true)}>Agregar jugador a la partida</Btn>
           {session.participants.length > 0 && (
-            <Btn variant="danger" block busy={busy} onClick={() => { void closeSession(); }}><Emoji>🏁</Emoji> Cerrar partida</Btn>
+            <Btn variant="danger" block busy={busy} onClick={openClose}><Emoji>🏁</Emoji> Cerrar partida</Btn>
           )}
         </div>
       )}
+
+      <Modal open={closeOpen} onClose={() => setCloseOpen(false)} title="Cerrar partida">
+        {Math.abs(diff) > POT_TOLERANCE && (
+          <div className="notice notice-warn" role="status">El pozo no cuadra: {status} {formatMoney(Math.abs(diff))}.</div>
+        )}
+        {session.missingResults.length > 0 && (
+          <div className="notice notice-warn" role="status">
+            {session.missingResults.length} jugador{session.missingResults.length === 1 ? '' : 'es'} sin resultado: su saldo no cambia.
+          </div>
+        )}
+        <p className="small muted" style={{ marginBottom: 8 }}>
+          Saldo final de cada jugador (último saldo conocido + resultado). Corregilo si hubo pagos por fuera.
+        </p>
+        {currentBalances.isLoading && <Loading />}
+        {currentBalances.data && (() => {
+          const current = new Map(currentBalances.data.map(b => [b.playerId, b.balance]));
+          return (
+            <BalanceInputs
+              rows={session.participants.map(p => ({
+                playerId: p.playerId,
+                name: p.name,
+                hint: `Previo ${formatMoney(current.get(p.playerId) ?? 0)}${p.finalAmount === null ? '' : ` · resultado ${formatMoney(round2(calcParticipant(p).balance))}`}`,
+              }))}
+              values={Object.fromEntries(session.participants.map(p => [
+                p.playerId, closeValues[p.playerId] ?? balanceText(defaultClosing(p, current)),
+              ]))}
+              onChange={(id, v) => setCloseValues(prev => ({ ...prev, [id]: v }))}
+            />
+          );
+        })()}
+        <p className="small muted" style={{ marginTop: 8 }}>Una partida cerrada no se puede editar.</p>
+        <div className="modal-actions">
+          <Btn variant="ghost" onClick={() => setCloseOpen(false)}>Cancelar</Btn>
+          <Btn variant="danger" busy={busy} disabled={!currentBalances.data} onClick={closeSession}>Cerrar partida</Btn>
+        </div>
+      </Modal>
 
       <Modal open={addOpen} onClose={() => setAddOpen(false)} title="Agregar jugador">
         {available.isLoading && <Loading />}
@@ -275,7 +325,6 @@ export function SessionDebtsPage() {
     queryKey: key('session-debts', sessionId),
     queryFn: () => api<ApiSessionDebtsView>(path(`/sessions/${sessionId}/debts`)),
   });
-  const [paying, setPaying] = useState<ApiDebt | null>(null);
 
   if (query.isLoading) return <Loading />;
   if (query.error instanceof ApiRequestError && query.error.status === 404) {
@@ -288,7 +337,7 @@ export function SessionDebtsPage() {
   return (
     <>
       <Link className="breadcrumb" to={`/sessions/${sessionId}`}>← Partida</Link>
-      <h1 style={{ marginBottom: 12 }}>Deudas de la partida</h1>
+      <h1 style={{ marginBottom: 12 }}>Saldos de la partida</h1>
 
       {!view.allHaveResult && view.balances.length > 0 && (
         <div className="notice notice-warn" role="status">
@@ -296,46 +345,23 @@ export function SessionDebtsPage() {
         </div>
       )}
 
-      <h2 className="section-title">Balance de cada jugador</h2>
       <div className="card">
         {view.balances.length === 0 && <p className="muted small">Sin jugadores.</p>}
         {view.balances.map(b => (
-          <div className="list-row" key={b.playerId}>
+          <div className="list-row" key={b.playerId} data-testid={`result-${b.name}`}>
             <Avatar name={b.name} />
-            <span className="grow ellipsis">{b.name}</span>
-            {b.balance === null ? <span className="muted small">sin resultado</span> : <Money amount={b.balance} signed tone className="strong" />}
+            <div className="grow" style={{ minWidth: 0 }}>
+              <div className="ellipsis">{b.name}</div>
+              {b.before !== null && <div className="xs muted">Previo {formatMoney(b.before)}</div>}
+            </div>
+            {b.result === null ? <span className="muted small">sin resultado</span> : <Money amount={b.result} signed tone className="strong" />}
+            {b.after !== null && <Money amount={b.after} className="strong" />}
           </div>
         ))}
       </div>
-
-      <h2 className="section-title">Pagos</h2>
-      {view.items.length === 0 && (
-        <Empty icon="🤝" title={view.allHaveResult ? '¡Todos mano a mano!' : 'Todavía no hay pagos'}>
-          <p>{view.allHaveResult ? 'No hay pagos pendientes.' : 'Registrá todos los resultados para ver los pagos.'}</p>
-        </Empty>
-      )}
-      {!closed && view.items.length > 0 && (
-        <div className="notice notice-info">Cerrá la partida para habilitar el seguimiento de pagos.</div>
-      )}
-      {view.items.map((item, i) => {
-        if (item.debt) {
-          return <DebtDetail key={item.debt.id} debt={item.debt} onPay={setPaying} showPlayers />;
-        }
-        return (
-          <div className="card" key={i} data-testid="debt-item">
-            <div className="row-between">
-              <span className="strong">{item.fromName} → {item.toName}</span>
-              <Money amount={item.amount} className="strong" />
-            </div>
-            {item.state === 'merged' && (
-              <p className="small muted" style={{ marginTop: 6 }}>
-                Se combinó con otras deudas entre estos jugadores. <Link to="/debts">Ver deudas pendientes</Link>
-              </p>
-            )}
-          </div>
-        );
-      })}
-      <PaymentModal debt={paying} onClose={() => setPaying(null)} />
+      {closed
+        ? <p className="small muted" style={{ marginTop: 12 }}>Resultado de la partida y saldo resultante de cada uno. <Link to="/debts">Ver saldos de todos</Link></p>
+        : <div className="notice notice-info">Cerrá la partida para sumar estos resultados a los saldos.</div>}
     </>
   );
 }

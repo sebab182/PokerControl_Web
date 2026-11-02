@@ -182,6 +182,30 @@ export const debtBackups = pgTable('debt_backups', {
   invalidatedReason: text('invalidated_reason'),
 });
 
+/**
+ * Libro de saldos: el saldo de un jugador es la suma de sus movimientos (+ cobra, − debe).
+ * Un pago entre jugadores son dos filas con el mismo payment_id.
+ */
+export const balanceEntries = pgTable('balance_entries', {
+  id: bigint('id', { mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
+  groupId: text('group_id').notNull().references(() => groups.id, { onDelete: 'cascade' }),
+  playerId: text('player_id').notNull(),
+  kind: text('kind').notNull().$type<'adjustment' | 'session' | 'payment'>(),
+  amount: money('amount').notNull(),
+  sessionId: text('session_id'),
+  counterpartPlayerId: text('counterpart_player_id'),
+  paymentId: text('payment_id'),
+  note: text('note').notNull().default(''),
+  createdAt: ts('created_at').notNull().defaultNow(),
+}, t => [
+  foreignKey({ columns: [t.groupId, t.playerId], foreignColumns: [players.groupId, players.id], name: 'fk_balance_entries_player' }).onDelete('restrict'),
+  foreignKey({ columns: [t.groupId, t.sessionId], foreignColumns: [sessions.groupId, sessions.id], name: 'fk_balance_entries_session' }).onDelete('cascade'),
+  check('ck_balance_entries_kind', sql`${t.kind} in ('adjustment', 'session', 'payment')`),
+  check('ck_balance_entries_amount', sql`${t.amount} <> 0`),
+  index('idx_balance_entries_player').on(t.groupId, t.playerId),
+  index('idx_balance_entries_payment').on(t.paymentId),
+]);
+
 export const idempotencyKeys = pgTable('idempotency_keys', {
   groupId: text('group_id').notNull().references(() => groups.id, { onDelete: 'cascade' }),
   key: text('key').notNull(),

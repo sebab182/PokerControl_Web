@@ -31,7 +31,7 @@ const NAV = [
   { to: '/ranking', icon: '🏆', label: 'Ranking' },
   { to: '/seasons', icon: '🗓️', label: 'Temporadas' },
   { to: '/players', icon: '👥', label: 'Jugadores' },
-  { to: '/debts', icon: '💳', label: 'Deudas' },
+  { to: '/debts', icon: '💳', label: 'Saldos' },
   { to: '/settings', icon: '⚙️', label: 'Config' },
 ];
 

@@ -15,6 +15,13 @@
       "when": 1793579529269,
       "tag": "0001_wakeful_nighthawk",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793618375067,
+      "tag": "0002_dizzy_thanos",
+      "breakpoints": true
     }
   ]
 }

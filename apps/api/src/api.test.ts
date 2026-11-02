@@ -51,7 +51,7 @@ beforeEach(async () => {
 class Client {
   token = '';
   groupId = '';
-  async call(method: 'GET' | 'POST' | 'PATCH' | 'DELETE', path: string, body?: unknown, key?: string) {
+  async call(method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE', path: string, body?: unknown, key?: string) {
     const scoped = path === '/g' || path.startsWith('/g/') ? `/groups/${this.groupId}${path.slice(2)}` : path;
     const res = await app.inject({
       method,
@@ -64,7 +64,7 @@ class Client {
     });
     return { status: res.statusCode, body: res.body ? JSON.parse(res.body) : null };
   }
-  async ok(method: 'GET' | 'POST' | 'PATCH' | 'DELETE', path: string, body?: unknown, key?: string) {
+  async ok(method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE', path: string, body?: unknown, key?: string) {
     const r = await this.call(method, path, body, key);
     if (r.status !== 200) throw new Error(`${method} ${path}: ${r.status} ${JSON.stringify(r.body)}`);
     return r.body;
@@ -195,7 +195,7 @@ describe('aislamiento entre grupos', () => {
     const { c } = await withGroup('ana');
     const other = await login('intruso');
     other.groupId = c.groupId;
-    for (const path of ['/g', '/g/players', '/g/seasons', '/g/debts', '/g/ranking', '/g/backup/export', '/g/debts/reorganize-status']) {
+    for (const path of ['/g', '/g/players', '/g/seasons', '/g/balances', '/g/payments', '/g/ranking', '/g/backup/export']) {
       expect((await other.call('GET', path)).status).toBe(403);
     }
     expect((await other.call('POST', '/g/players', { name: 'x' })).status).toBe(403);
@@ -204,14 +204,15 @@ describe('aislamiento entre grupos', () => {
     const { c: a } = await withGroup('ana');
     const { season, ana, beto } = await seed(a);
     const sessionId = await closedSession(a, season.id, ana, beto);
-    const debt = (await a.ok('GET', '/g/debts'))[0];
+    const payment = await a.idem('/g/payments', { fromPlayerId: beto.id, toPlayerId: ana.id, amount: 10 });
 
     const { c: b } = await withGroup('beto');
     expect((await b.call('GET', `/g/sessions/${sessionId}`)).status).toBe(404);
     expect((await b.call('GET', `/g/players/${ana.id}/stats`)).status).toBe(404);
     expect((await b.call('PATCH', `/g/players/${ana.id}`, { name: 'hack' })).status).toBe(404);
     expect((await b.call('DELETE', `/g/seasons/${season.id}`)).status).toBe(404);
-    expect((await b.call('POST', `/g/debts/${debt.id}/mark-paid`, undefined, 'clave-aislada')).status).toBe(404);
+    expect((await b.call('DELETE', `/g/payments/${payment.id}`)).status).toBe(404);
+    expect(await b.ok('GET', '/g/balances')).toEqual([]);
     expect((await b.call('POST', `/g/seasons/${season.id}/sessions`, { playerIds: [] }, 'clave-aislada-2')).status).toBe(404);
 
     const own = (await b.ok('GET', '/g/seasons'))[0];
@@ -298,14 +299,15 @@ describe('partidas', () => {
     ];
     expect(calls.map(r => r.body.error)).toEqual(Array(5).fill('session_closed'));
   });
-  it('bug 1: cerrar dos veces da 409 aunque las deudas se hayan consolidado', async () => {
+  it('bug 1: cerrar dos veces da 409 y los saldos se acumulan una sola vez', async () => {
     const { c } = await withGroup();
     const { season, ana, beto } = await seed(c);
     const first = await closedSession(c, season.id, ana, beto);
     await closedSession(c, season.id, ana, beto);
-    expect(await c.ok('GET', '/g/debts')).toHaveLength(1);
+    expect((await c.ok('GET', '/g/balances')).map((b: { name: string; balance: number }) => [b.name, b.balance]))
+      .toEqual([['Ana', 100], ['Beto', -100]]);
     expect((await c.call('POST', `/g/sessions/${first}/close`, {}, 'clave-recierre')).body.error).toBe('session_closed');
-    expect((await c.ok('GET', '/g/debts'))[0].pendingAmount).toBe(100);
+    expect((await c.ok('GET', '/g/balances'))[0].balance).toBe(100);
   });
   it('pide confirmar la diferencia, y rechaza si cambió', async () => {
     const { c } = await withGroup();
@@ -329,7 +331,7 @@ describe('partidas', () => {
     await c.ok('PATCH', `/g/sessions/${s.id}/participants/${beto.id}`, { finalAmount: 51 });
     expect((await c.call('POST', `/g/sessions/${s.id}/close`, {}, 'clave-tolerancia')).status).toBe(200);
   });
-  it('los participantes sin resultado requieren confirmación y quedan fuera de las deudas', async () => {
+  it('los participantes sin resultado requieren confirmación y su saldo no cambia', async () => {
     const { c } = await withGroup();
     const { season, ana, beto } = await seed(c);
     const s = await c.idem(`/g/seasons/${season.id}/sessions`, { playerIds: [ana.id, beto.id], initialBuyIn: 100 });
@@ -338,36 +340,29 @@ describe('partidas', () => {
     expect(r.body.missingResults).toEqual([beto.id]);
     // Con el pozo exacto igual se confirma, porque falta un resultado.
     const closed = await c.ok('POST', `/g/sessions/${s.id}/close`, { confirmedDiff: 0 }, 'clave-faltan-2');
-    expect(closed.debts).toEqual([]);
+    expect(closed.session.status).toBe('closed');
+    const balances = await c.ok('GET', '/g/balances');
+    expect(balances.find((b: { name: string }) => b.name === 'Beto').balance).toBe(0);
   });
-  it('bug 6: borrar una partida: libre sin pagos, 409 con pagos o neteada', async () => {
-    const { c } = await withGroup();
-    const { season, ana, beto } = await seed(c);
-    const free = await closedSession(c, season.id, ana, beto);
-    expect((await c.ok('DELETE', `/g/sessions/${free}`)).deleted).toBe(true);
-    expect(await c.ok('GET', '/g/debts')).toEqual([]);
-
-    const paid = await closedSession(c, season.id, ana, beto);
-    const [debt] = await c.ok('GET', '/g/debts');
-    await c.idem(`/g/debts/${debt.id}/payments`, { amount: 1 });
-    expect((await c.call('DELETE', `/g/sessions/${paid}`)).body.error).toBe('session_debts_locked');
-
-    await c.idem(`/g/debts/${debt.id}/mark-paid`);
-    const a = await closedSession(c, season.id, ana, beto);
-    const b = await closedSession(c, season.id, ana, beto);
-    expect((await c.call('DELETE', `/g/sessions/${a}`)).body.error).toBe('session_debts_locked');
-    expect((await c.call('DELETE', `/g/sessions/${b}`)).body.error).toBe('session_debts_locked');
-  });
-  it('bug 7: tras netear, la vista de la partida marca los ítems como merged', async () => {
+  it('bug 6: borrar una partida recalcula los saldos', async () => {
     const { c } = await withGroup();
     const { season, ana, beto } = await seed(c);
     const a = await closedSession(c, season.id, ana, beto);
-    const before = await c.ok('GET', `/g/sessions/${a}/debts`);
-    expect(before.items[0]).toMatchObject({ state: 'open', fromId: beto.id, amount: 50 });
-    expect(before.items[0].debt.pendingAmount).toBe(50);
-    expect(before.balances[0]).toMatchObject({ playerId: ana.id, balance: 50 });
-    await closedSession(c, season.id, ana, beto);
-    expect((await c.ok('GET', `/g/sessions/${a}/debts`)).items[0]).toMatchObject({ state: 'merged', debt: null });
+    await closedSession(c, season.id, ana, beto, 20);
+    expect((await c.ok('GET', '/g/balances'))[0].balance).toBe(70);
+    expect((await c.ok('DELETE', `/g/sessions/${a}`)).deleted).toBe(true);
+    expect((await c.ok('GET', '/g/balances'))[0].balance).toBe(20);
+  });
+  it('la vista de la partida muestra resultado, saldo previo y saldo posterior', async () => {
+    const { c } = await withGroup();
+    const { season, ana, beto } = await seed(c);
+    const a = await closedSession(c, season.id, ana, beto);
+    await closedSession(c, season.id, ana, beto, 20);
+    const view = await c.ok('GET', `/g/sessions/${a}/debts`);
+    expect(view.balances[0]).toMatchObject({ playerId: ana.id, result: 50, before: 0, after: 50 });
+    expect(view.balances[1]).toMatchObject({ playerId: beto.id, result: -50, before: 0, after: -50 });
+    const second = (await c.ok('GET', '/g/seasons'))[0];
+    expect(second).toBeTruthy();
   });
 });
 
@@ -405,7 +400,7 @@ describe('idempotencia y concurrencia', () => {
     await Promise.all(Array.from({ length: 8 }, () => c.idem(`/g/sessions/${s.id}/buys`, { playerId: ana.id, amount: 10 })));
     expect((await c.ok('GET', `/g/sessions/${s.id}`)).calc.totalPot).toBe(180);
   });
-  it('cierres paralelos generan las deudas una sola vez', async () => {
+  it('cierres paralelos suman el resultado una sola vez', async () => {
     const { c } = await withGroup();
     const { season, ana, beto } = await seed(c);
     const s = await c.idem(`/g/seasons/${season.id}/sessions`, { playerIds: [ana.id, beto.id], initialBuyIn: 100 });
@@ -414,21 +409,18 @@ describe('idempotencia y concurrencia', () => {
     const rs = await Promise.all(Array.from({ length: 5 }, (_, i) => c.call('POST', `/g/sessions/${s.id}/close`, {}, `cierre-paralelo-${i}`)));
     expect(rs.filter(r => r.status === 200)).toHaveLength(1);
     expect(rs.filter(r => r.status === 409)).toHaveLength(4);
-    const debts = await c.ok('GET', '/g/debts');
-    expect(debts).toHaveLength(1);
-    expect(debts[0].pendingAmount).toBe(50);
+    const balances = await c.ok('GET', '/g/balances');
+    expect(balances.map((b: { balance: number }) => b.balance)).toEqual([50, -50]);
   });
-  it('pagos paralelos no superan lo pendiente', async () => {
+  it('pagos paralelos no superan lo que se debe', async () => {
     const { c } = await withGroup();
     const { season, ana, beto } = await seed(c);
     await closedSession(c, season.id, ana, beto, 50);
-    const [debt] = await c.ok('GET', '/g/debts');
     const rs = await Promise.all(Array.from({ length: 6 }, (_, i) =>
-      c.call('POST', `/g/debts/${debt.id}/payments`, { amount: 20 }, `pago-paralelo-${i}`)));
+      c.call('POST', '/g/payments', { fromPlayerId: beto.id, toPlayerId: ana.id, amount: 20 }, `pago-paralelo-${i}`)));
     expect(rs.filter(r => r.status === 200)).toHaveLength(2);
-    const [after] = await c.ok('GET', '/g/debts');
-    expect(after.pendingAmount).toBe(10);
-    expect(after.payments).toHaveLength(2);
+    expect((await c.ok('GET', '/g/balances')).map((b: { balance: number }) => b.balance)).toEqual([10, -10]);
+    expect(await c.ok('GET', '/g/payments')).toHaveLength(2);
   });
   it('compra contra cierre: el resultado final siempre es coherente', async () => {
     const { c } = await withGroup();
@@ -450,52 +442,24 @@ describe('idempotencia y concurrencia', () => {
       expect(final.calc.totalPot).toBe(240);
     }
   });
-  it('rollback: si falla la generación de deudas, la partida sigue abierta', async () => {
+  it('rollback: si falla el registro de saldos, la partida sigue abierta', async () => {
     const { c } = await withGroup();
     const { season, ana, beto } = await seed(c);
     const s = await c.idem(`/g/seasons/${season.id}/sessions`, { playerIds: [ana.id, beto.id], initialBuyIn: 100 });
     await c.ok('PATCH', `/g/sessions/${s.id}/participants/${ana.id}`, { finalAmount: 150 });
     await c.ok('PATCH', `/g/sessions/${s.id}/participants/${beto.id}`, { finalAmount: 50 });
-    await conn.pool.query('ALTER TABLE debts ADD CONSTRAINT ck_test_falla CHECK (original_amount < 0) NOT VALID');
+    await conn.pool.query('ALTER TABLE balance_entries ADD CONSTRAINT ck_test_falla CHECK (amount > 1000) NOT VALID');
     try {
       expect((await c.call('POST', `/g/sessions/${s.id}/close`, {}, 'clave-rollback')).status).toBe(500);
       expect((await c.ok('GET', `/g/sessions/${s.id}`)).status).toBe('active');
     } finally {
-      await conn.pool.query('ALTER TABLE debts DROP CONSTRAINT ck_test_falla');
+      await conn.pool.query('ALTER TABLE balance_entries DROP CONSTRAINT ck_test_falla');
     }
     expect((await c.call('POST', `/g/sessions/${s.id}/close`, {}, 'clave-rollback')).status).toBe(200);
   });
 });
 
 describe('deudas', () => {
-  it('pago parcial, exceso y saldado', async () => {
-    const { c } = await withGroup();
-    const { season, ana, beto } = await seed(c);
-    await closedSession(c, season.id, ana, beto, 50);
-    const [debt] = await c.ok('GET', '/g/debts');
-    expect(debt).toMatchObject({ sourceType: 'session', status: 'pending' });
-    const over = await c.call('POST', `/g/debts/${debt.id}/payments`, { amount: 51 }, 'clave-exceso');
-    expect(over.status).toBe(422);
-    expect(over.body).toMatchObject({ error: 'amount_exceeds_pending', max: 50 });
-    const partial = await c.idem(`/g/debts/${debt.id}/payments`, { amount: 20, note: ' efectivo ' });
-    expect(partial).toMatchObject({ status: 'partial', pendingAmount: 30, payments: [{ amount: 20, note: 'efectivo' }] });
-    const paid = await c.idem(`/g/debts/${debt.id}/mark-paid`);
-    expect(paid).toMatchObject({ status: 'paid', pendingAmount: 0 });
-    expect(paid.payments).toHaveLength(2);
-    expect((await c.call('POST', `/g/debts/${debt.id}/payments`, { amount: 1 }, 'clave-pagada')).body.error).toBe('debt_paid');
-    expect(await c.ok('GET', '/g/debts/pending-by-debtor')).toEqual([]);
-  });
-  it('saldar varias es atómico: un id inválido revierte todo', async () => {
-    const { c } = await withGroup();
-    const { season, ana, beto } = await seed(c);
-    await closedSession(c, season.id, ana, beto);
-    const [debt] = await c.ok('GET', '/g/debts');
-    const bad = await c.call('POST', '/g/debts/mark-paid', { debtIds: [debt.id, 'nada'] }, 'clave-atomica');
-    expect(bad.status).toBe(404);
-    expect((await c.ok('GET', '/g/debts'))[0].status).toBe('pending');
-    const [paid] = await c.ok('POST', '/g/debts/mark-paid', { debtIds: [debt.id] }, 'clave-atomica-2');
-    expect(paid.status).toBe('paid');
-  });
   it('deudas manuales: validación, DTO limpio y borrado', async () => {
     const { c } = await withGroup();
     const { ana, beto } = await seed(c);
@@ -505,22 +469,6 @@ describe('deudas', () => {
     expect((await c.ok('GET', `/g/players/${ana.id}/stats`)).manualDebtsNet).toBe(40);
     await c.ok('DELETE', `/g/debts/manual/${debt.id}`);
     expect(await c.ok('GET', '/g/debts')).toEqual([]);
-  });
-  it('una manual consolidada no se borra, y bug 9 no duplica balance', async () => {
-    const { c } = await withGroup();
-    const { season, ana, beto } = await seed(c);
-    await closedSession(c, season.id, ana, beto, 100);
-    const [merged] = await c.ok('POST', '/g/debts/manual', { fromPlayerId: beto.id, toPlayerId: ana.id, amount: 50 });
-    expect(merged).toMatchObject({ sourceType: 'manual', isConsolidated: true, pendingAmount: 150, manualAmount: 50 });
-    expect((await c.call('DELETE', `/g/debts/manual/${merged.id}`)).body.error).toBe('debt_not_deletable');
-    expect(await c.ok('GET', `/g/players/${ana.id}/stats`)).toMatchObject({ sessionBalance: 100, manualDebtsNet: 50, totalBalance: 150 });
-  });
-  it('una deuda de partida no se borra por la ruta de manuales', async () => {
-    const { c } = await withGroup();
-    const { season, ana, beto } = await seed(c);
-    await closedSession(c, season.id, ana, beto);
-    const [debt] = await c.ok('GET', '/g/debts');
-    expect((await c.call('DELETE', `/g/debts/manual/${debt.id}`)).body.error).toBe('debt_not_deletable');
   });
 });
 
@@ -577,25 +525,6 @@ describe('reorganizar y deshacer', () => {
     await c.ok('POST', '/g/debts/manual', { fromPlayerId: caro.id, toPlayerId: ana.id, amount: 5 });
     expect((await c.ok('GET', '/g/debts/reorganize-status')).reason).toBe('no_backup');
   });
-  it('bug 5: borrar una partida con deudas invalida el backup', async () => {
-    const { c } = await withGroup();
-    const { season, ana, beto } = await seed(c);
-    const caro = await c.ok('POST', '/g/players', { name: 'Caro' });
-    const id = await closedSession(c, season.id, caro, beto);
-    await unnetted(c, ana, beto);
-    await c.ok('POST', '/g/debts/renet');
-    await c.ok('DELETE', `/g/sessions/${id}`);
-    expect((await c.ok('GET', '/g/debts/reorganize-status')).canUndo).toBe(false);
-  });
-  it('cerrar una partida invalida el backup', async () => {
-    const { c } = await withGroup();
-    const { season, ana, beto } = await seed(c);
-    await unnetted(c, ana, beto);
-    await c.ok('POST', '/g/debts/renet');
-    const caro = await c.ok('POST', '/g/players', { name: 'Caro' });
-    await closedSession(c, season.id, caro, ana);
-    expect((await c.ok('GET', '/g/debts/reorganize-status')).reason).toBe('no_backup');
-  });
   it('un jugador presente solo en el snapshot se archiva y el undo no falla', async () => {
     const { c } = await withGroup();
     const { ana, beto } = await seed(c);
@@ -626,11 +555,11 @@ describe('jugadores', () => {
     const ranking = await c.ok('GET', '/g/ranking');
     expect(ranking.map((r: { playerId: string }) => r.playerId)).toEqual([beto.id]);
     expect((await c.ok('GET', '/g/seasons'))[0].leader.playerId).toBe(beto.id);
-    // Sigue visible en la partida, en sus estadísticas y en las deudas.
+    // Sigue visible en la partida, en sus estadísticas y en los saldos.
     const session = await c.ok('GET', `/g/sessions/${sessionId}`);
     expect(session.participants.map((p: { playerId: string }) => p.playerId)).toContain(ana.id);
     expect((await c.ok('GET', `/g/players/${ana.id}/stats`)).sessionBalance).toBe(50);
-    expect((await c.ok('GET', `/g/players/${ana.id}/debts`)).owed).toHaveLength(1);
+    expect((await c.ok('GET', '/g/balances')).find((b: { playerId: string }) => b.playerId === ana.id).balance).toBe(50);
   });
   it('un archivado no entra en partidas ni deudas, hasta desarchivarlo', async () => {
     const { c } = await withGroup();
@@ -650,7 +579,7 @@ describe('jugadores', () => {
     const id = await closedSession(c, season.id, ana, beto);
     await c.ok('PATCH', `/g/players/${ana.id}`, { name: 'Anita' });
     expect((await c.ok('GET', `/g/sessions/${id}`)).participants[0].name).toBe('Anita');
-    expect((await c.ok('GET', '/g/debts'))[0].toPlayer.name).toBe('Anita');
+    expect((await c.ok('GET', '/g/balances'))[0].name).toBe('Anita');
     expect((await c.call('PATCH', `/g/players/${ana.id}`, { name: '   ' })).body.error).toBe('invalid_name');
   });
   it('ajustes: alta, edición y borrado', async () => {
@@ -674,10 +603,113 @@ describe('jugadores', () => {
     expect((await c.ok('GET', `/g/players/${ana.id}/stats?seasonId=${season.id}`)).sessionBalance).toBe(50);
     expect((await c.ok('GET', `/g/players/${ana.id}/report`)).games).toBe(1);
     expect(await c.ok('GET', `/g/players/${ana.id}/report?seasonId=${other.id}`)).toBeNull();
-    const debts = await c.ok('GET', `/g/players/${beto.id}/debts`);
-    expect([debts.owes.length, debts.owed.length]).toEqual([1, 0]);
     expect((await c.ok('GET', `/g/ranking?seasonId=${season.id}`))[0].playerId).toBe(ana.id);
     expect(await c.ok('GET', `/g/ranking?seasonId=${other.id}`)).toEqual([]);
+  });
+});
+
+describe('saldos y pagos', () => {
+  it('el saldo inicial se corrige al crear y al cerrar, y arranca del último saldo conocido', async () => {
+    const { c } = await withGroup();
+    const { season, ana, beto } = await seed(c);
+    await closedSession(c, season.id, ana, beto, 50);
+    // Beto pagó 30 por fuera: su saldo real al empezar es -20.
+    const s = await c.idem(`/g/seasons/${season.id}/sessions`, {
+      playerIds: [ana.id, beto.id], initialBuyIn: 100, balances: [{ playerId: beto.id, amount: -20 }],
+    });
+    expect((await c.ok('GET', '/g/balances')).map((b: { balance: number }) => b.balance)).toEqual([50, -20]);
+    await c.ok('PATCH', `/g/sessions/${s.id}/participants/${ana.id}`, { finalAmount: 110 });
+    await c.ok('PATCH', `/g/sessions/${s.id}/participants/${beto.id}`, { finalAmount: 90 });
+    // Al cerrar, Ana cobró 10 por fuera: su saldo real queda en 40 en lugar de 60.
+    await c.ok('POST', `/g/sessions/${s.id}/close`, { balances: [{ playerId: ana.id, amount: 40 }] }, 'cierre-con-saldos');
+    expect((await c.ok('GET', '/g/balances')).map((b: { name: string; balance: number }) => [b.name, b.balance]))
+      .toEqual([['Ana', 40], ['Beto', -30]]);
+    const view = await c.ok('GET', `/g/sessions/${s.id}/debts`);
+    expect(view.balances.find((b: { playerId: string }) => b.playerId === ana.id)).toMatchObject({ before: 50, result: 10, after: 40 });
+  });
+  it('actualizar saldos: solo admin, guarda la diferencia y rechaza archivados', async () => {
+    const { c, group } = await withGroup();
+    const { season, ana, beto } = await seed(c);
+    await closedSession(c, season.id, ana, beto, 50);
+    const updated = await c.ok('PUT', '/g/balances', { balances: [{ playerId: beto.id, amount: -20 }], note: 'pagó por fuera' });
+    expect(updated.map((b: { name: string; balance: number }) => [b.name, b.balance])).toEqual([['Ana', 50], ['Beto', -20]]);
+    expect((await c.ok('PUT', '/g/balances', { balances: [{ playerId: beto.id, amount: -20 }] })).length).toBe(2);
+    expect((await c.call('PUT', '/g/balances', { balances: [{ playerId: 'nada', amount: 1 }] })).status).toBe(404);
+    await c.ok('DELETE', `/g/players/${beto.id}`);
+    expect((await c.call('PUT', '/g/balances', { balances: [{ playerId: beto.id, amount: 0 }] })).body.error).toBe('player_archived');
+
+    const reader = await login('lector');
+    await reader.ok('POST', '/groups/join', { inviteCode: group.inviteCode });
+    reader.groupId = c.groupId;
+    expect((await reader.call('PUT', '/g/balances', { balances: [{ playerId: ana.id, amount: 1 }] })).status).toBe(403);
+  });
+  it('un usuario común registra pagos solo a su nombre, y puede deshacerlos', async () => {
+    const { c, group } = await withGroup();
+    const { season, ana, beto } = await seed(c);
+    await closedSession(c, season.id, ana, beto, 50);
+    const reader = await login('lector');
+    await reader.ok('POST', '/groups/join', { inviteCode: group.inviteCode });
+    reader.groupId = c.groupId;
+    await reader.ok('POST', '/g/me/player', { playerId: beto.id });
+
+    const body = (from: string, to: string) => ({ fromPlayerId: from, toPlayerId: to, amount: 20 });
+    // Ana cobra: un usuario común no puede registrar pagos de otro.
+    expect((await reader.call('POST', '/g/payments', body(ana.id, beto.id), 'pago-ajeno')).body.error).toBe('not_your_payment');
+    const mine = await reader.ok('POST', '/g/payments', body(beto.id, ana.id), 'pago-propio');
+    expect((await c.ok('GET', '/g/balances')).map((b: { balance: number }) => b.balance)).toEqual([30, -30]);
+    // Tampoco puede tocar saldos ni pagos ajenos.
+    expect((await reader.call('PUT', '/g/balances', { balances: [{ playerId: beto.id, amount: 0 }] })).status).toBe(403);
+    const other = await c.idem('/g/payments', body(beto.id, ana.id));
+    await c.ok('DELETE', `/g/payments/${other.id}`);
+    const stranger = await login('otro');
+    await stranger.ok('POST', '/groups/join', { inviteCode: group.inviteCode });
+    stranger.groupId = c.groupId;
+    await stranger.ok('POST', '/g/me/player', { name: 'Caro' });
+    const again = await c.idem('/g/payments', body(beto.id, ana.id));
+    expect((await stranger.call('DELETE', `/g/payments/${again.id}`)).body.error).toBe('not_your_payment');
+    await reader.ok('DELETE', `/g/payments/${mine.id}`);
+    await c.ok('DELETE', `/g/payments/${again.id}`);
+    expect((await c.ok('GET', '/g/balances')).map((b: { balance: number }) => b.balance)).toEqual([50, 0, -50]);
+  });
+  it('rechaza saldos de jugadores que no están en la partida', async () => {
+    const { c } = await withGroup();
+    const { season, ana, beto } = await seed(c);
+    const r = await c.call('POST', `/g/seasons/${season.id}/sessions`, {
+      playerIds: [ana.id], initialBuyIn: 100, balances: [{ playerId: beto.id, amount: 5 }],
+    }, 'saldo-ajeno');
+    expect(r.status).toBe(404);
+  });
+  it('un pago baja la deuda del pagador y el crédito del acreedor, y se puede deshacer', async () => {
+    const { c } = await withGroup();
+    const { season, ana, beto } = await seed(c);
+    await closedSession(c, season.id, ana, beto, 50);
+    const payment = await c.idem('/g/payments', { fromPlayerId: beto.id, toPlayerId: ana.id, amount: 20, note: ' efectivo ' });
+    expect(payment).toMatchObject({ amount: 20, note: 'efectivo', fromPlayer: { id: beto.id }, toPlayer: { id: ana.id } });
+    expect((await c.ok('GET', '/g/balances')).map((b: { balance: number }) => b.balance)).toEqual([30, -30]);
+    expect(await c.ok('GET', '/g/payments')).toHaveLength(1);
+    await c.ok('DELETE', `/g/payments/${payment.id}`);
+    expect((await c.ok('GET', '/g/balances')).map((b: { balance: number }) => b.balance)).toEqual([50, -50]);
+    expect((await c.call('DELETE', `/g/payments/${payment.id}`)).status).toBe(404);
+  });
+  it('valida pagos: excesos, sentido incorrecto y mismo jugador', async () => {
+    const { c } = await withGroup();
+    const { season, ana, beto } = await seed(c);
+    await closedSession(c, season.id, ana, beto, 50);
+    const pay = (from: string, to: string, amount: number, key: string) =>
+      c.call('POST', '/g/payments', { fromPlayerId: from, toPlayerId: to, amount }, key);
+    expect((await pay(beto.id, ana.id, 51, 'pago-exceso')).body.error).toBe('invalid_payment');
+    expect((await pay(ana.id, beto.id, 10, 'pago-al-reves')).body.error).toBe('invalid_payment');
+    expect((await pay(ana.id, ana.id, 10, 'pago-mismo')).body.error).toBe('invalid_payment');
+    expect((await pay(beto.id, ana.id, 0.001, 'pago-decimales')).status).toBe(422);
+  });
+  it('la reproducción con la misma Idempotency-Key no duplica el pago', async () => {
+    const { c } = await withGroup();
+    const { season, ana, beto } = await seed(c);
+    await closedSession(c, season.id, ana, beto, 50);
+    const body = { fromPlayerId: beto.id, toPlayerId: ana.id, amount: 10 };
+    await c.ok('POST', '/g/payments', body, 'pago-repetido');
+    await c.ok('POST', '/g/payments', body, 'pago-repetido');
+    expect(await c.ok('GET', '/g/payments')).toHaveLength(1);
   });
 });
 
@@ -782,7 +814,7 @@ describe('backup', () => {
     const key = (r: { name: string; totalBalance: number; totalGames: number }) => [r.name, r.totalBalance, r.totalGames];
     expect(again.map(key)).toEqual(ranking.map(key));
     const [debt] = await copy.ok('GET', '/g/debts');
-    expect(debt).toMatchObject({ manualAmount: 25, pendingAmount: 75, isConsolidated: true });
+    expect(debt).toMatchObject({ manualAmount: 25, pendingAmount: 25, sourceType: 'manual' });
   });
 });
 
@@ -900,6 +932,8 @@ describe('roles', () => {
     const { ana } = await seed(master);
     const allowed = new Set([
       'POST /api/v1/groups/join', 'DELETE /api/v1/groups/{groupId}/members/me', 'POST /api/v1/groups/{groupId}/me/player',
+      // Pagos: se autorizan por dueño del pagador, no por rol (ver test de pagos a nombre propio).
+      'POST /api/v1/groups/{groupId}/payments', 'DELETE /api/v1/groups/{groupId}/payments/{paymentId}',
     ]);
     for (const route of open.filter(r => !allowed.has(r))) {
       const [method, path] = route.split(' ');
