@@ -29,7 +29,7 @@ function assertTimezone(timezone: string): void {
   }
 }
 
-const isEditor = (role: Role | null) => role === 'master' || role === 'admin';
+export const isEditor = (role: Role | null) => role === 'master' || role === 'admin';
 
 /** Master y admins entran a cualquier grupo; solo lectura, a aquellos donde es miembro. */
 export async function requireMembership(req: FastifyRequest): Promise<void> {

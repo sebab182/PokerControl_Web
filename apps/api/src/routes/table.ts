@@ -8,7 +8,7 @@
 
 import { randomInt, randomUUID } from 'node:crypto';
 import {
-  CloseTableResponse, ErrorResponse, GroupParams, StartTableBody, TableActionBody, TableView,
+  CloseTableResponse, ErrorResponse, GroupParams, SeatParams, StartTableBody, TableActionBody, TableView,
   type ApiTableView,
 } from '@pokercontrol/contracts';
 import { HoldemError, applyAction, legalActions, publicView, startHand, type Action, type HandState } from '@pokercontrol/core';
@@ -20,11 +20,14 @@ import type { LoggedAction } from '../db/schema';
 import { ApiError, notFound } from '../errors';
 import { idempotent } from '../idempotency';
 import type { Conn, Tx } from '../repo';
+import type { Role } from './auth';
+import { isEditor, requireEditor } from './groups';
 import { closeSessionTx, defaultSessionName } from './sessions';
 
 const ONLINE_MS = 45_000;
 
 type TableRow = typeof schema.pokerTables.$inferSelect;
+type SeatRow = typeof schema.pokerSeats.$inferSelect;
 type HandRow = typeof schema.pokerHands.$inferSelect;
 type G = { Params: Static<typeof GroupParams> };
 
@@ -67,14 +70,24 @@ async function requirePlayer(db: Conn, groupId: string, userId: string): Promise
 
 // ─── Vista ───────────────────────────────────────────────────────────────────
 
-async function buildView(db: Conn, table: TableRow, userId: string): Promise<ApiTableView> {
-  const me = await myPlayer(db, table.groupId, userId);
+/** Quién mira: su usuario y si es administrador (puede jugar por los jugadores sin usuario). */
+interface Viewer { userId: string; canManage: boolean }
+const viewerOf = (req: { user: { sub: string }; role: Role }): Viewer => ({ userId: req.user.sub, canManage: isEditor(req.role) });
+
+/** ¿Está presente? Conectado hace poco, o sentado por un administrador (no hay pantalla que lo renueve). */
+const isPresent = (seat: SeatRow, now = Date.now()) =>
+  seat.addedBy !== null || seat.userId === null || now - seat.lastSeenAt.getTime() < ONLINE_MS;
+
+async function buildView(db: Conn, table: TableRow, viewer: Viewer): Promise<ApiTableView> {
+  const me = await myPlayer(db, table.groupId, viewer.userId);
   const myId = me?.id ?? null;
   const seats = await loadSeats(db, table.id);
   const row = await latestHand(db, table.id);
   const state = row?.state as HandState | undefined;
   const live = row?.status === 'active' ? state : undefined;
   const now = Date.now();
+  // Jugadores sin usuario que este administrador maneja: ve sus cartas y juega sus turnos.
+  const managedIds = new Set(viewer.canManage ? seats.filter(({ seat }) => seat.userId === null).map(({ seat }) => seat.playerId) : []);
   const [last] = row
     ? await db.select().from(schema.pokerActions).where(eq(schema.pokerActions.handId, row.id))
       .orderBy(desc(schema.pokerActions.seq)).limit(1)
@@ -82,8 +95,10 @@ async function buildView(db: Conn, table: TableRow, userId: string): Promise<Api
 
   let hand: ApiTableView['hand'] = null;
   if (row && state) {
-    const v = publicView(state, myId);
-    const legal = myId && live ? legalActions(state) : null;
+    const v = publicView(state, [...(myId ? [myId] : []), ...managedIds]);
+    const actor = live && state.toAct >= 0 ? state.players[state.toAct].id : null;
+    const actingFor = actor && (actor === myId || managedIds.has(actor)) ? actor : null;
+    const legal = actingFor ? legalActions(state) : null;
     hand = {
       handNo: row.handNo,
       street: v.street,
@@ -96,7 +111,8 @@ async function buildView(db: Conn, table: TableRow, userId: string): Promise<Api
       players: v.players.map(p => ({
         playerId: p.id, stack: p.stack, bet: p.bet, totalBet: p.totalBet, folded: p.folded, allIn: p.allIn, hole: p.hole,
       })),
-      legal: legal && legal.playerId === myId
+      actingPlayerId: legal ? actingFor : null,
+      legal: legal
         ? {
           toCall: legal.toCall, canCheck: legal.canCheck, canCall: legal.canCall, callAmount: legal.callAmount,
           canRaise: legal.canRaise, minRaiseTo: legal.minRaiseTo, maxRaiseTo: legal.maxRaiseTo,
@@ -133,8 +149,9 @@ async function buildView(db: Conn, table: TableRow, userId: string): Promise<Api
       // Durante una mano, el stack real de quien juega está en el estado de la mano.
       stack: live?.players.find(p => p.id === seat.playerId)?.stack ?? seat.stack,
       status: seat.status,
-      online: now - seat.lastSeenAt.getTime() < ONLINE_MS,
+      online: isPresent(seat, now),
       isYou: seat.playerId === myId,
+      managed: managedIds.has(seat.playerId),
     })),
   };
 }
@@ -273,6 +290,88 @@ export async function sweepTurns(app: FastifyInstance): Promise<string[]> {
   return changed;
 }
 
+/** Jugador existente y activo del grupo, con su usuario (si tiene). */
+async function usablePlayer(tx: Tx, groupId: string, playerId: string) {
+  const [p] = await tx.select({ id: schema.players.id, userId: schema.players.userId, archivedAt: schema.players.archivedAt })
+    .from(schema.players).where(and(eq(schema.players.groupId, groupId), eq(schema.players.id, playerId)));
+  if (!p) throw notFound('Jugador');
+  if (p.archivedAt) throw new ApiError(409, 'player_archived', 'El jugador está archivado.');
+  return p;
+}
+
+/**
+ * Sienta a un jugador. Sin partida en curso solo ocupa un lugar; con la partida en curso entra con
+ * una nueva compra de entrada (juega desde la próxima mano). `by` es el administrador que lo sienta
+ * a mano (null si se sienta solo). Devuelve 'quiet' si no cambió nada visible (latido de presencia).
+ */
+async function sitPlayer(
+  tx: Tx, table: TableRow, p: { id: string; userId: string | null }, by: string | null,
+): Promise<void | 'quiet'> {
+  const key = and(eq(schema.pokerSeats.tableId, table.id), eq(schema.pokerSeats.playerId, p.id));
+  const [seat] = await tx.select().from(schema.pokerSeats).where(key);
+  if (seat) {
+    // Volver tras estar afuera (levantado o sacado por inactividad) reinicia el contador.
+    await tx.update(schema.pokerSeats)
+      .set({ status: 'sitting', lastSeenAt: new Date(), ...(seat.status === 'out' ? { timeouts: 0 } : {}) })
+      .where(key);
+    return seat.status === 'sitting' ? 'quiet' : undefined;
+  }
+  let stack = 0;
+  if (table.status === 'playing') {
+    stack = table.buyIn;
+    const [participant] = await tx.insert(schema.sessionParticipants)
+      .values({ groupId: table.groupId, sessionId: table.sessionId as string, playerId: p.id }).onConflictDoNothing()
+      .returning({ id: schema.sessionParticipants.id });
+    if (participant) await tx.insert(schema.buys).values({ participantId: participant.id, amount: table.buyIn, occurredAt: new Date() });
+  }
+  await tx.insert(schema.pokerSeats).values({
+    tableId: table.id, groupId: table.groupId, playerId: p.id, userId: p.userId, addedBy: by, stack,
+  });
+}
+
+/** Levanta a un jugador: sin partida se libera el lugar; con partida sus fichas quedan en la mesa. */
+async function standPlayer(tx: Tx, table: TableRow, playerId: string): Promise<void> {
+  const key = and(eq(schema.pokerSeats.tableId, table.id), eq(schema.pokerSeats.playerId, playerId));
+  const [seat] = await tx.select().from(schema.pokerSeats).where(key);
+  if (!seat) return;
+  if (table.status === 'waiting') {
+    await tx.delete(schema.pokerSeats).where(key);
+    return;
+  }
+  const hand = await activeHand(tx, table.id);
+  const inHand = (hand?.state as HandState | undefined)?.players.find(p => p.id === playerId);
+  if (inHand && !inHand.folded) throw new ApiError(409, 'in_hand', 'No se puede levantar a un jugador en medio de una mano.');
+  await tx.update(schema.pokerSeats).set({ status: 'out' }).where(key);
+}
+
+/** Recompra: solo sin fichas y fuera de una mano. Suma una compra a la partida. */
+async function rebuyPlayer(tx: Tx, table: TableRow, playerId: string): Promise<void> {
+  if (table.status !== 'playing') throw new ApiError(409, 'not_playing', 'No hay una partida en juego.');
+  const seat = (await loadSeats(tx, table.id)).map(s => s.seat).find(s => s.playerId === playerId);
+  if (!seat) throw notFound('Asiento');
+  const hand = await activeHand(tx, table.id);
+  if ((hand?.state as HandState | undefined)?.players.some(p => p.id === playerId)) {
+    throw new ApiError(409, 'in_hand', 'Esperá a que termine la mano.');
+  }
+  if (seat.stack > 0) throw new ApiError(409, 'has_chips', 'Solo se puede recomprar sin fichas.');
+  const [participant] = await tx.select({ id: schema.sessionParticipants.id }).from(schema.sessionParticipants)
+    .where(and(eq(schema.sessionParticipants.sessionId, table.sessionId as string), eq(schema.sessionParticipants.playerId, playerId)));
+  await tx.insert(schema.buys).values({ participantId: participant.id, amount: table.buyIn, occurredAt: new Date() });
+  await tx.update(schema.pokerSeats).set({ stack: table.buyIn, status: 'sitting' })
+    .where(and(eq(schema.pokerSeats.tableId, table.id), eq(schema.pokerSeats.playerId, playerId)));
+  await tx.update(schema.pokerTables).set({ version: bump }).where(eq(schema.pokerTables.id, table.id));
+}
+
+/** Jugador al que un administrador puede mover: sentado y sin usuario (nadie más puede jugar por él). */
+async function managedPlayerId(tx: Tx, req: { role: Role }, table: TableRow, playerId: string): Promise<string> {
+  if (!isEditor(req.role)) throw new ApiError(403, 'read_only', 'Solo un administrador puede jugar por otro jugador.');
+  const [seat] = await tx.select().from(schema.pokerSeats)
+    .where(and(eq(schema.pokerSeats.tableId, table.id), eq(schema.pokerSeats.playerId, playerId)));
+  if (!seat) throw notFound('Asiento');
+  if (seat.userId !== null) throw new ApiError(403, 'not_managed', 'Ese jugador tiene usuario: juega él mismo.');
+  return playerId;
+}
+
 // ─── Rutas ───────────────────────────────────────────────────────────────────
 
 export async function tableRoutes(app: FastifyInstance) {
@@ -282,7 +381,7 @@ export async function tableRoutes(app: FastifyInstance) {
 
   /** Corre fn con la mesa bloqueada y devuelve la vista resultante. */
   const mutate = async (
-    req: { group: { id: string }; user: { sub: string } },
+    req: { group: { id: string }; user: { sub: string }; role: Role },
     fn: (tx: Tx, table: TableRow) => Promise<void | 'quiet'>,
   ) => {
     let quiet = false;
@@ -290,7 +389,7 @@ export async function tableRoutes(app: FastifyInstance) {
       const table = await ensureTable(tx, req.group.id, true);
       quiet = (await fn(tx, table)) === 'quiet';
       const [fresh] = await tx.select().from(schema.pokerTables).where(eq(schema.pokerTables.id, table.id));
-      return buildView(tx, fresh, req.user.sub);
+      return buildView(tx, fresh, viewerOf(req));
     });
     // Después del commit, para que quien refresque ya vea el cambio. El latido de presencia no avisa.
     if (!quiet) app.tableHub.notify(req.group.id, view.version);
@@ -305,52 +404,49 @@ export async function tableRoutes(app: FastifyInstance) {
 
   app.get<G>('/table', {
     schema: { ...base, response: { 200: TableView, ...err } },
-  }, async req => buildView(app.db, await ensureTable(app.db, req.group.id, false), req.user.sub));
+  }, async req => buildView(app.db, await ensureTable(app.db, req.group.id, false), viewerOf(req)));
 
   // Sentarse (y heartbeat de presencia: la web lo repite cada ~20 s).
   app.post<G>('/table/join', {
     schema: { ...base, response: { 200: TableView, ...err } },
   }, async req => mutate(req, async (tx, table) => {
-    const groupId = req.group.id;
-    const playerId = await requirePlayer(tx, groupId, req.user.sub);
-    const [seat] = await tx.select().from(schema.pokerSeats)
-      .where(and(eq(schema.pokerSeats.tableId, table.id), eq(schema.pokerSeats.playerId, playerId)));
-    if (seat) {
-      // Volver tras estar afuera (levantado o sacado por inactividad) reinicia el contador.
-      await tx.update(schema.pokerSeats)
-        .set({ status: 'sitting', lastSeenAt: new Date(), ...(seat.status === 'out' ? { timeouts: 0 } : {}) })
-        .where(and(eq(schema.pokerSeats.tableId, table.id), eq(schema.pokerSeats.playerId, playerId)));
-      return seat.status === 'sitting' ? 'quiet' : undefined;
-    }
-    let stack = 0;
-    if (table.status === 'playing') {
-      // Se suma con partida en curso: nueva compra de entrada, juega desde la próxima mano.
-      stack = table.buyIn;
-      const [participant] = await tx.insert(schema.sessionParticipants)
-        .values({ groupId, sessionId: table.sessionId as string, playerId }).onConflictDoNothing()
-        .returning({ id: schema.sessionParticipants.id });
-      if (participant) await tx.insert(schema.buys).values({ participantId: participant.id, amount: table.buyIn, occurredAt: new Date() });
-    }
-    await tx.insert(schema.pokerSeats).values({ tableId: table.id, groupId, playerId, userId: req.user.sub, stack });
+    const playerId = await requirePlayer(tx, req.group.id, req.user.sub);
+    return sitPlayer(tx, table, { id: playerId, userId: req.user.sub }, null);
   }));
 
   app.post<G>('/table/leave', {
     schema: { ...base, response: { 200: TableView, ...err } },
   }, async req => mutate(req, async (tx, table) => {
-    const playerId = await requirePlayer(tx, req.group.id, req.user.sub);
-    const key = and(eq(schema.pokerSeats.tableId, table.id), eq(schema.pokerSeats.playerId, playerId));
-    const [seat] = await tx.select().from(schema.pokerSeats).where(key);
-    if (!seat) return;
-    if (table.status === 'waiting') {
-      await tx.delete(schema.pokerSeats).where(key);
-      return;
-    }
-    const hand = await activeHand(tx, table.id);
-    const inHand = (hand?.state as HandState | undefined)?.players.find(p => p.id === playerId);
-    if (inHand && !inHand.folded) throw new ApiError(409, 'in_hand', 'No podés levantarte en medio de una mano.');
-    // Sus fichas quedan en la mesa y cuentan en el resultado final.
-    await tx.update(schema.pokerSeats).set({ status: 'out' }).where(key);
+    await standPlayer(tx, table, await requirePlayer(tx, req.group.id, req.user.sub));
   }));
+
+  // Administración manual: sentar, levantar y recomprar a cualquier jugador del grupo.
+  type S = { Params: Static<typeof SeatParams> };
+  const seatRoute = { tags, params: SeatParams, response: { 200: TableView, ...err } };
+
+  app.post<S>('/table/seats/:playerId', { schema: seatRoute }, async req => {
+    await requireEditor(req);
+    return mutate(req, async (tx, table) => {
+      const player = await usablePlayer(tx, req.group.id, req.params.playerId);
+      return sitPlayer(tx, table, player, req.user.sub);
+    });
+  });
+
+  app.delete<S>('/table/seats/:playerId', { schema: seatRoute }, async req => {
+    await requireEditor(req);
+    return mutate(req, async (tx, table) => standPlayer(tx, table, req.params.playerId));
+  });
+
+  app.post<S>('/table/seats/:playerId/rebuy', { schema: seatRoute }, async req => {
+    await requireEditor(req);
+    const groupId = req.group.id;
+    return announce(groupId, await idempotent(req, async tx => {
+      const table = await ensureTable(tx, groupId, true);
+      await rebuyPlayer(tx, table, req.params.playerId);
+      const [fresh] = await tx.select().from(schema.pokerTables).where(eq(schema.pokerTables.id, table.id));
+      return buildView(tx, fresh, viewerOf(req));
+    }));
+  });
 
   // Iniciar partida: crea una Session normal con los presentes y reparte la primera mano.
   app.post<G & { Body: Static<typeof StartTableBody> }>('/table/start', {
@@ -360,7 +456,8 @@ export async function tableRoutes(app: FastifyInstance) {
     return announce(groupId, await idempotent(req, async tx => {
       const table = await ensureTable(tx, groupId, true);
       if (table.status !== 'waiting') throw new ApiError(409, 'already_playing', 'Ya hay una partida en juego.');
-      const playerId = await requirePlayer(tx, groupId, req.user.sub);
+      // Un administrador puede iniciar sin estar sentado (ni tener jugador).
+      const playerId = isEditor(req.role) ? null : await requirePlayer(tx, groupId, req.user.sub);
       const cfg = {
         smallBlind: req.body.smallBlind ?? table.smallBlind,
         bigBlind: req.body.bigBlind ?? table.bigBlind,
@@ -373,10 +470,9 @@ export async function tableRoutes(app: FastifyInstance) {
       if (cfg.smallBlind > cfg.bigBlind) throw new ApiError(422, 'invalid_blinds', 'La ciega chica no puede superar a la grande.');
       if (cfg.buyIn < cfg.bigBlind * 2) throw new ApiError(422, 'invalid_buy_in', 'La entrada debe ser al menos el doble de la ciega grande.');
 
-      const cutoff = Date.now() - ONLINE_MS;
       const seats = (await loadSeats(tx, table.id)).map(s => s.seat);
-      const present = seats.filter(s => s.lastSeenAt.getTime() >= cutoff);
-      if (!present.some(s => s.playerId === playerId)) throw new ApiError(409, 'not_seated', 'Sentate en la mesa para iniciar la partida.');
+      const present = seats.filter(s => isPresent(s));
+      if (playerId && !present.some(s => s.playerId === playerId)) throw new ApiError(409, 'not_seated', 'Sentate en la mesa para iniciar la partida.');
       if (present.length < 2) throw new ApiError(422, 'not_enough_players', 'Hacen falta al menos 2 jugadores conectados.');
 
       const [season] = await tx.select({ id: schema.seasons.id }).from(schema.seasons)
@@ -410,7 +506,7 @@ export async function tableRoutes(app: FastifyInstance) {
       const [fresh] = await tx.select().from(schema.pokerTables).where(eq(schema.pokerTables.id, table.id));
       await dealHand(tx, fresh);
       const [after] = await tx.select().from(schema.pokerTables).where(eq(schema.pokerTables.id, table.id));
-      return buildView(tx, after, req.user.sub);
+      return buildView(tx, after, viewerOf(req));
     }));
   });
 
@@ -418,7 +514,7 @@ export async function tableRoutes(app: FastifyInstance) {
     schema: { ...base, response: { 200: TableView, ...err } },
   }, async req => mutate(req, async (tx, table) => {
     if (table.status !== 'playing') throw new ApiError(409, 'not_playing', 'No hay una partida en juego.');
-    await requirePlayer(tx, req.group.id, req.user.sub);
+    if (!isEditor(req.role)) await requirePlayer(tx, req.group.id, req.user.sub);
     if (await activeHand(tx, table.id)) throw new ApiError(409, 'hand_in_progress', 'Hay una mano en juego.');
     await dealHand(tx, table);
   }));
@@ -426,7 +522,10 @@ export async function tableRoutes(app: FastifyInstance) {
   app.post<G & { Body: Static<typeof TableActionBody> }>('/table/action', {
     schema: { ...base, body: TableActionBody, response: { 200: TableView, ...err } },
   }, async req => mutate(req, async (tx, table) => {
-    const playerId = await requirePlayer(tx, req.group.id, req.user.sub);
+    // Un administrador puede jugar por un jugador sin usuario; el resto, solo por sí mismo.
+    const playerId = req.body.playerId
+      ? await managedPlayerId(tx, req, table, req.body.playerId)
+      : await requirePlayer(tx, req.group.id, req.user.sub);
     if (req.body.version !== table.version) {
       throw new ApiError(409, 'stale_state', 'La mesa cambió. Actualizá y volvé a intentar.');
     }
@@ -442,23 +541,9 @@ export async function tableRoutes(app: FastifyInstance) {
     const groupId = req.group.id;
     return announce(groupId, await idempotent(req, async tx => {
       const table = await ensureTable(tx, groupId, true);
-      if (table.status !== 'playing') throw new ApiError(409, 'not_playing', 'No hay una partida en juego.');
-      const playerId = await requirePlayer(tx, groupId, req.user.sub);
-      const seat = (await loadSeats(tx, table.id)).map(s => s.seat).find(s => s.playerId === playerId);
-      if (!seat) throw notFound('Asiento');
-      const hand = await activeHand(tx, table.id);
-      if ((hand?.state as HandState | undefined)?.players.some(p => p.id === playerId)) {
-        throw new ApiError(409, 'in_hand', 'Esperá a que termine la mano.');
-      }
-      if (seat.stack > 0) throw new ApiError(409, 'has_chips', 'Solo podés recomprar sin fichas.');
-      const [participant] = await tx.select({ id: schema.sessionParticipants.id }).from(schema.sessionParticipants)
-        .where(and(eq(schema.sessionParticipants.sessionId, table.sessionId as string), eq(schema.sessionParticipants.playerId, playerId)));
-      await tx.insert(schema.buys).values({ participantId: participant.id, amount: table.buyIn, occurredAt: new Date() });
-      await tx.update(schema.pokerSeats).set({ stack: table.buyIn, status: 'sitting' })
-        .where(and(eq(schema.pokerSeats.tableId, table.id), eq(schema.pokerSeats.playerId, playerId)));
-      await tx.update(schema.pokerTables).set({ version: bump }).where(eq(schema.pokerTables.id, table.id));
+      await rebuyPlayer(tx, table, await requirePlayer(tx, groupId, req.user.sub));
       const [fresh] = await tx.select().from(schema.pokerTables).where(eq(schema.pokerTables.id, table.id));
-      return buildView(tx, fresh, req.user.sub);
+      return buildView(tx, fresh, viewerOf(req));
     }));
   });
 
@@ -470,9 +555,12 @@ export async function tableRoutes(app: FastifyInstance) {
     return announce(groupId, await idempotent(req, async tx => {
       const table = await ensureTable(tx, groupId, true);
       if (table.status !== 'playing') throw new ApiError(409, 'not_playing', 'No hay una partida en juego.');
-      const playerId = await requirePlayer(tx, groupId, req.user.sub);
       const seats = (await loadSeats(tx, table.id)).map(s => s.seat);
-      if (!seats.some(s => s.playerId === playerId)) throw new ApiError(409, 'not_seated', 'Solo quienes están en la mesa pueden cerrarla.');
+      // Cierra quien juega en la mesa, o un administrador aunque no esté sentado.
+      if (!isEditor(req.role)) {
+        const playerId = await requirePlayer(tx, groupId, req.user.sub);
+        if (!seats.some(s => s.playerId === playerId)) throw new ApiError(409, 'not_seated', 'Solo quienes están en la mesa pueden cerrarla.');
+      }
       if (await activeHand(tx, table.id)) throw new ApiError(409, 'hand_in_progress', 'Esperá a que termine la mano.');
       const sessionId = table.sessionId as string;
       for (const seat of seats) {
@@ -484,7 +572,7 @@ export async function tableRoutes(app: FastifyInstance) {
       await tx.update(schema.pokerTables).set({ status: 'waiting', sessionId: null, version: bump })
         .where(eq(schema.pokerTables.id, table.id));
       const [fresh] = await tx.select().from(schema.pokerTables).where(eq(schema.pokerTables.id, table.id));
-      return { sessionId, table: await buildView(tx, fresh, req.user.sub) };
+      return { sessionId, table: await buildView(tx, fresh, viewerOf(req)) };
     }));
   });
 }

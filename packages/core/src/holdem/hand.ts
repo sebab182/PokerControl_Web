@@ -311,15 +311,16 @@ function seatDistance(s: HandState, id: string): number {
 }
 
 /**
- * Vista segura para un jugador: oculta cartas ajenas (salvo las mostradas en el showdown)
+ * Vista segura para quien mira (uno o varios jugadores, p. ej. un administrador que juega por otros): oculta cartas ajenas (salvo las mostradas en el showdown)
  * y el mazo. Es lo único que debe salir del servidor hacia los clientes.
  */
-export function publicView(s: HandState, viewerId: string | null): Omit<HandState, 'deck'> {
+export function publicView(s: HandState, viewerId: string | string[] | null): Omit<HandState, 'deck'> {
+  const own = new Set(Array.isArray(viewerId) ? viewerId : viewerId ? [viewerId] : []);
   const shown = new Set(s.showdown.map((e) => e.playerId));
   const { deck: _deck, ...rest } = clone(s);
   void _deck;
   return {
     ...rest,
-    players: rest.players.map((p) => (p.id === viewerId || shown.has(p.id) ? p : { ...p, hole: p.hole.map(() => '??') })),
+    players: rest.players.map((p) => (own.has(p.id) || shown.has(p.id) ? p : { ...p, hole: p.hole.map(() => '??') })),
   };
 }

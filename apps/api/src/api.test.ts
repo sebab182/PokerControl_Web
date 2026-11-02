@@ -1227,6 +1227,122 @@ describe('mesa online', () => {
     expect(next.hand.players.length).toBe(2);
   });
 
+  describe('administración manual de la mesa', () => {
+    /** Admin sin jugador propio y un grupo con jugadores cargados a mano (sin usuario). */
+    async function adminTable(ghosts = 2) {
+      const { c: admin, group } = await withGroup('master');
+      const players: { id: string; name: string }[] = [];
+      for (let i = 0; i < ghosts; i++) players.push(await admin.ok('POST', '/g/players', { name: `Fantasma${i}` }));
+      const reader = await login('lector');
+      await reader.ok('POST', '/groups/join', { inviteCode: group.inviteCode });
+      reader.groupId = group.id;
+      return { admin, reader, players };
+    }
+
+    it('un administrador sienta jugadores sin usuario, que cuentan como presentes', async () => {
+      const { admin, reader, players } = await adminTable();
+      const v = await admin.ok('POST', `/g/table/seats/${players[0].id}`);
+      expect(v.seats).toEqual([expect.objectContaining({ playerId: players[0].id, online: true, managed: true, isYou: false })]);
+      expect((await admin.ok('POST', `/g/table/seats/${players[0].id}`)).seats).toHaveLength(1); // repetir no duplica
+      // Pasan los 45 s de presencia: sigue presente porque lo sentó un administrador.
+      await conn.pool.query(`update poker_seats set last_seen_at = now() - interval '5 minutes'`);
+      expect((await admin.ok('GET', '/g/table')).seats[0].online).toBe(true);
+      // Solo lectura no puede; jugador archivado o inexistente, tampoco.
+      expect((await reader.call('POST', `/g/table/seats/${players[0].id}`)).body.error).toBe('read_only');
+      expect((await reader.call('DELETE', `/g/table/seats/${players[0].id}`)).body.error).toBe('read_only');
+      expect((await admin.call('POST', '/g/table/seats/no-existe')).status).toBe(404);
+      await admin.ok('POST', `/g/players/${players[1].id}/adjustments`, { description: 'x', amount: 1 });
+      await admin.ok('DELETE', `/g/players/${players[1].id}`);
+      expect((await admin.call('POST', `/g/table/seats/${players[1].id}`)).body.error).toBe('player_archived');
+      // Se puede quitar mientras se espera.
+      expect((await admin.ok('DELETE', `/g/table/seats/${players[0].id}`)).seats).toEqual([]);
+    });
+
+    it('el administrador inicia, ve las cartas de quienes maneja y juega sus turnos', async () => {
+      const { admin, reader, players } = await adminTable();
+      await admin.ok('POST', `/g/table/seats/${players[0].id}`);
+      await admin.ok('POST', `/g/table/seats/${players[1].id}`);
+      expect((await reader.call('POST', '/g/table/start', {}, 'manual-start-1')).body.error).toBe('no_player');
+      // Sin estar sentado ni tener jugador, inicia.
+      let v = await admin.idem('/g/table/start', {});
+      expect(v.hand.players).toHaveLength(2);
+      expect(v.myPlayerId).toBeNull();
+      expect(v.hand.players.every((p: { hole: string[] }) => p.hole.every(c => c !== '??'))).toBe(true);
+      expect(v.hand.actingPlayerId).toBe(v.hand.toActPlayerId);
+      expect(v.hand.legal).not.toBeNull();
+
+      // Juega por el jugador al que le toca, sin indicar quién: se rechaza (no tiene jugador propio).
+      expect((await admin.call('POST', '/g/table/action', { version: v.version, action: { type: 'call' } })).body.error).toBe('no_player');
+      const first = v.hand.toActPlayerId;
+      v = await admin.ok('POST', '/g/table/action', { version: v.version, playerId: first, action: { type: 'call' } });
+      expect(v.hand.lastAction).toMatchObject({ playerId: first, type: 'call' });
+      // Termina la mano pasando por los dos.
+      for (let i = 0; v.hand.street !== 'done'; i++) {
+        if (i > 40) throw new Error('mano infinita');
+        const who = v.hand.toActPlayerId;
+        v = await admin.ok('POST', '/g/table/action', {
+          version: v.version, playerId: who, action: v.hand.legal.canCheck ? { type: 'check' } : { type: 'call' },
+        });
+      }
+      expect(v.hand.showdown).toHaveLength(2);
+      // El administrador reparte y cierra sin estar sentado.
+      v = await admin.ok('POST', '/g/table/deal');
+      expect(v.hand.handNo).toBe(2);
+      v = await admin.ok('POST', '/g/table/action', { version: v.version, playerId: v.hand.toActPlayerId, action: { type: 'fold' } });
+      const closed = await admin.idem('/g/table/close');
+      expect(closed.table.status).toBe('waiting');
+    });
+
+    it('solo se juega por jugadores sin usuario, y solo un administrador puede', async () => {
+      const { admin, reader, players } = await adminTable(1);
+      const mine = await reader.ok('POST', '/g/me/player', { name: 'Lector' });
+      await admin.ok('POST', `/g/table/seats/${players[0].id}`);
+      await reader.ok('POST', '/g/table/join');
+      let v = await admin.idem('/g/table/start', {});
+      const ghost = players[0].id;
+      const readerView = await view(reader);
+      // El lector no ve las cartas del fantasma, ni puede jugar por él.
+      expect(readerView.hand.players.find((p: { playerId: string }) => p.playerId === ghost).hole).toEqual(['??', '??']);
+      expect((await reader.call('POST', '/g/table/action', { version: v.version, playerId: ghost, action: { type: 'fold' } })).body.error).toBe('read_only');
+      // El administrador ve las del fantasma pero no las del lector, y no puede jugar por él.
+      expect(v.hand.players.find((p: { playerId: string }) => p.playerId === mine.id).hole).toEqual(['??', '??']);
+      expect(v.hand.players.find((p: { playerId: string }) => p.playerId === ghost).hole[0]).not.toBe('??');
+      expect((await admin.call('POST', '/g/table/action', { version: v.version, playerId: mine.id, action: { type: 'fold' } })).body.error).toBe('not_managed');
+      // Si le toca al lector, el administrador no recibe acciones para jugar.
+      if (v.hand.toActPlayerId === mine.id) {
+        expect(v.hand.legal).toBeNull();
+        v = await act(reader, v, { type: 'call' });
+      }
+      expect(v.hand.toActPlayerId).toBe(ghost);
+      expect(v.hand.actingPlayerId).toBe(ghost);
+    });
+
+    it('suma, recompra y levanta con la partida en curso', async () => {
+      const { admin, players } = await adminTable(3);
+      await admin.ok('POST', `/g/table/seats/${players[0].id}`);
+      await admin.ok('POST', `/g/table/seats/${players[1].id}`);
+      let v = await admin.idem('/g/table/start', {});
+      // Se suma otro: entra con la compra de entrada y juega desde la próxima mano.
+      v = await admin.ok('POST', `/g/table/seats/${players[2].id}`);
+      expect(v.seats.find((s: { playerId: string }) => s.playerId === players[2].id).stack).toBe(1000);
+      expect(v.hand.players).toHaveLength(2);
+      const sess = await admin.ok('GET', `/g/sessions/${v.sessionId}`);
+      expect(sess.participants).toHaveLength(3);
+      // En medio de la mano no se puede levantar a quien sigue jugando.
+      const inHand = v.hand.toActPlayerId;
+      expect((await admin.call('DELETE', `/g/table/seats/${inHand}`)).body.error).toBe('in_hand');
+      expect((await admin.call('POST', `/g/table/seats/${inHand}/rebuy`, {}, 'manual-rebuy-1')).body.error).toBe('in_hand');
+      v = await admin.ok('POST', '/g/table/action', { version: v.version, playerId: inHand, action: { type: 'fold' } });
+      // Sin fichas, el administrador recompra por él.
+      await conn.pool.query(`update poker_seats set stack = 0 where player_id = $1`, [players[2].id]);
+      const rebuy = await admin.ok('POST', `/g/table/seats/${players[2].id}/rebuy`, {}, 'manual-rebuy-2');
+      expect(rebuy.seats.find((s: { playerId: string }) => s.playerId === players[2].id).stack).toBe(1000);
+      // Terminada la mano, se lo levanta; sus fichas siguen en la mesa.
+      const out = await admin.ok('DELETE', `/g/table/seats/${players[2].id}`);
+      expect(out.seats.find((s: { playerId: string }) => s.playerId === players[2].id).status).toBe('out');
+    });
+  });
+
   describe('tiempo por turno', () => {
     const expire = () => conn.pool.query(`update poker_tables set turn_deadline = now() - interval '1 second'`);
     const seatsOf = async () => (await conn.pool.query('select player_id, status, timeouts from poker_seats')).rows;

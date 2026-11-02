@@ -231,7 +231,10 @@ export const pokerSeats = pgTable('poker_seats', {
   tableId: text('table_id').notNull().references(() => pokerTables.id, { onDelete: 'cascade' }),
   playerId: text('player_id').notNull(),
   groupId: text('group_id').notNull(),
-  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  /** Usuario que juega este asiento; null si el jugador no tiene usuario (lo maneja un administrador). */
+  userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
+  /** Administrador que lo sentó a mano: cuenta como presente aunque no tenga la pantalla abierta. */
+  addedBy: text('added_by').references(() => users.id, { onDelete: 'set null' }),
   /** Fichas en la mesa, fuera de la mano en curso. */
   stack: integer('stack').notNull().default(0),
   /** sitting: juega las próximas manos. out: se levantó pero sus fichas siguen en la mesa. */

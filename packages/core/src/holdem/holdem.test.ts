@@ -165,6 +165,12 @@ describe('mano', () => {
     expect(legalActions(s)).toMatchObject({ playerId: 'a', canCall: true, canRaise: false });
   });
 
+  it('publicView acepta varios jugadores propios', () => {
+    const s = startHand(seats(1000, 1000, 1000), { button: 0, smallBlind: 10, bigBlind: 20, randomInt: rng(6) });
+    const v = publicView(s, ['a', 'c']);
+    expect(v.players.map((p) => p.hole.includes('??'))).toEqual([false, true, false]);
+  });
+
   it('publicView oculta cartas ajenas y el mazo', () => {
     const s = startHand(seats(1000, 1000), { button: 0, smallBlind: 10, bigBlind: 20, randomInt: rng(5) });
     const v = publicView(s, 'a');

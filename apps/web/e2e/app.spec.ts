@@ -548,3 +548,44 @@ test('mesa online: al agotarse el tiempo el servidor juega por quien no responde
   }
   await context2.close();
 });
+
+test('mesa online: un administrador agrega jugadores sin usuario y juega por ellos', async ({ page }) => {
+  await login(page, 'Seba');
+  await createGroup(page);
+  await nav(page, 'Jugadores');
+  await addPlayer(page, 'Ana');
+  await addPlayer(page, 'Beto');
+
+  // Sin jugador propio igual entra a la mesa: no se le pide elegir un nick.
+  await nav(page, 'Mesa');
+  await expect(page.getByRole('heading', { name: 'Administrar mesa' })).toBeVisible();
+  await expect(page.getByLabel('Tu nick')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /Iniciar partida/ })).toBeDisabled();
+
+  await page.getByRole('button', { name: '+ Agregar jugador' }).click();
+  await page.getByRole('button', { name: 'Agregar a Ana' }).click();
+  await page.getByRole('button', { name: 'Agregar a Beto' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Cerrar' }).click();
+  await expect(page.getByTestId('admin-seat-Ana')).toContainText('lo jugás vos');
+  await checkPage(page, 'mesa: administrar (espera)');
+
+  const start = page.getByRole('button', { name: /Iniciar partida \(2 jugadores\)/ });
+  await expect(start).toBeEnabled();
+  await start.click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Iniciar partida' }).click();
+
+  // Ve las cartas de los dos y juega los turnos por ellos.
+  await expect(page.getByTestId('felt')).toBeVisible();
+  await expect(page.getByTestId('my-hand')).toHaveCount(2);
+  await expect(page.getByRole('status').filter({ hasText: 'Te toca jugar por' })).toBeVisible();
+  await checkPage(page, 'mesa: administrador jugando por otros');
+  await page.getByRole('button', { name: /Igualar|Pasar/ }).click();
+  await expect(page.getByTestId('last-action')).toContainText(/igualó|pasó/);
+  await page.getByRole('button', { name: 'Retirarme' }).click();
+  await expect(page.getByRole('status').filter({ hasText: /ganó/ })).toBeVisible();
+
+  // Reparte y cierra sin estar sentado.
+  await page.getByRole('button', { name: 'Cerrar partida' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Cerrar partida' }).click();
+  await expect(page.getByRole('link', { name: 'Ver resultados y deudas' })).toBeVisible();
+});
