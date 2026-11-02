@@ -4,6 +4,7 @@ import jwt from '@fastify/jwt';
 import rateLimit from '@fastify/rate-limit';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
+import websocket from '@fastify/websocket';
 import { Ok } from '@pokercontrol/contracts';
 import Fastify, { type FastifyError } from 'fastify';
 import { googleVerifier, type GoogleVerifier } from './auth';
@@ -18,7 +19,9 @@ import { groupRoutes, requireEditor, requireMembership } from './routes/groups';
 import { claimPlayerRoutes, playerRoutes } from './routes/players';
 import { seasonRoutes } from './routes/seasons';
 import { sessionRoutes } from './routes/sessions';
-import { tableRoutes } from './routes/table';
+import { sweepTurns, tableRoutes } from './routes/table';
+import { tableSocketRoutes } from './routes/table-ws';
+import { TableHub } from './table-hub';
 
 export interface AppOptions {
   db: Db;
@@ -30,6 +33,8 @@ export interface AppOptions {
   logger?: boolean;
   rateLimitMax?: number;
   trustProxy?: boolean;
+  /** Cada cuánto vencer turnos de la mesa (ms). Sin valor, no hay temporizador (tests, OpenAPI). */
+  turnSweepMs?: number;
 }
 
 declare module 'fastify' {
@@ -37,6 +42,7 @@ declare module 'fastify' {
     db: Db;
     verifier: GoogleVerifier;
     rateLimitMax: number;
+    tableHub: TableHub;
   }
   interface FastifyRequest {
     group: { id: string; timezone: string };
@@ -61,6 +67,7 @@ export async function buildApp(options: AppOptions) {
   app.decorate('db', options.db);
   app.decorate('verifier', options.verifier ?? googleVerifier(options.googleClientIds ?? []));
   app.decorate('rateLimitMax', options.rateLimitMax ?? 10);
+  app.decorate('tableHub', new TableHub());
   app.decorateRequest('group', null as unknown as { id: string; timezone: string });
   app.decorateRequest('role', 'reader' as Role);
 
@@ -77,6 +84,8 @@ export async function buildApp(options: AppOptions) {
     verify: { algorithms: ['HS256'] },
   });
   await app.register(rateLimit, { global: false });
+  // Los clientes solo mandan el token y pings: 2 KB sobran.
+  await app.register(websocket, { options: { maxPayload: 2048 } });
   await app.register(swagger, {
     openapi: {
       info: { title: 'PokerControl API', version: '1.0.0' },
@@ -107,6 +116,8 @@ export async function buildApp(options: AppOptions) {
 
   await app.register(async v1 => {
     await v1.register(authRoutes);
+    // Autentica por mensaje (no por header), así que va fuera del hook JWT.
+    await v1.register(tableSocketRoutes);
     await v1.register(async authed => {
       authed.addHook('onRequest', async req => {
         try {
@@ -137,6 +148,17 @@ export async function buildApp(options: AppOptions) {
       }, { prefix: '/groups/:groupId' });
     });
   }, { prefix: '/api/v1' });
+
+  if (options.turnSweepMs) {
+    let running = false;
+    const timer = setInterval(() => {
+      if (running) return;
+      running = true;
+      sweepTurns(app).catch(e => app.log.error(e)).finally(() => { running = false; });
+    }, options.turnSweepMs);
+    timer.unref();
+    app.addHook('onClose', async () => clearInterval(timer));
+  }
 
   return app;
 }

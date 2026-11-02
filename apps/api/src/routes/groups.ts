@@ -29,7 +29,7 @@ function assertTimezone(timezone: string): void {
   }
 }
 
-const isEditor = (role: Role | null) => role === 'master' || role === 'admin';
+export const isEditor = (role: Role | null) => role === 'master' || role === 'admin';
 
 /** Master y admins entran a cualquier grupo; solo lectura, a aquellos donde es miembro. */
 export async function requireMembership(req: FastifyRequest): Promise<void> {
@@ -45,6 +45,17 @@ export async function requireMembership(req: FastifyRequest): Promise<void> {
   if (!group || (!member && !isEditor(role))) throw new ApiError(403, 'not_a_member', 'No pertenecés a este grupo.');
   req.group = group;
   req.role = role ?? 'reader';
+}
+
+/** ¿Puede este usuario ver el grupo? Mismo criterio que requireMembership, para quien no pasa por una request HTTP. */
+export async function canAccessGroup(db: Conn, userId: string, groupId: string): Promise<boolean> {
+  const role = await userRole(db, userId);
+  const [group] = await db.select({ id: schema.groups.id }).from(schema.groups).where(eq(schema.groups.id, groupId));
+  if (!group) return false;
+  if (isEditor(role)) return true;
+  const [member] = await db.select({ userId: schema.groupMembers.userId }).from(schema.groupMembers)
+    .where(and(eq(schema.groupMembers.groupId, groupId), eq(schema.groupMembers.userId, userId)));
+  return !!member;
 }
 
 /** Corre después de requireMembership. */

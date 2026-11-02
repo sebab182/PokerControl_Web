@@ -455,6 +455,8 @@ test('mesa online: sala de espera, iniciar, jugar una mano y cerrar', async ({ p
   await login(page, 'Seba');
   const code = await createGroup(page);
   await nav(page, 'Mesa');
+  // Un administrador entra a la mesa sin jugador; si quiere jugar, elige su nick.
+  await page.getByText('Quiero jugar yo también').click();
   await page.getByLabel('Tu nick').fill('Seba');
   await page.getByRole('button', { name: 'Crear mi jugador' }).click();
   await expect(page.getByRole('heading', { name: 'Mesa', exact: true })).toBeVisible();
@@ -473,7 +475,7 @@ test('mesa online: sala de espera, iniciar, jugar una mano y cerrar', async ({ p
   await nav(page2, 'Mesa');
   await expect(page2.getByText('Nico (vos)')).toBeVisible();
 
-  await expect(page.getByText('Nico', { exact: true })).toBeVisible({ timeout: 10000 });
+  await expect(page.getByText('Nico', { exact: true }).first()).toBeVisible({ timeout: 10000 });
   await checkPage(page, 'mesa: sala de espera');
   const start = page.getByRole('button', { name: /Iniciar partida \(2 jugadores\)/ });
   await expect(start).toBeEnabled();
@@ -483,6 +485,9 @@ test('mesa online: sala de espera, iniciar, jugar una mano y cerrar', async ({ p
   // Los dos ven la mano; solo cada uno ve sus cartas.
   await expect(page.getByTestId('felt')).toBeVisible();
   await expect(page.getByTestId('pot')).toHaveText('Pozo $30');
+  // Cuenta regresiva del turno y conexión en vivo.
+  await expect(page.getByTestId('turn-timer')).toContainText(/\d:\d\d/);
+  await expect(page.getByText('En vivo')).toBeVisible({ timeout: 10000 });
   await expect(page.getByTestId('my-hand').getByRole('img')).toHaveCount(2);
   await expect(page2.getByTestId('my-hand').getByRole('img')).toHaveCount(2, { timeout: 10000 });
   await expect(page.getByRole('img', { name: 'Carta oculta' })).toHaveCount(0);
@@ -494,7 +499,8 @@ test('mesa online: sala de espera, iniciar, jugar una mano y cerrar', async ({ p
   const other = actor === page ? page2 : page;
   await actor.getByRole('button', { name: 'Retirarme' }).click();
   await expect(actor.getByTestId('last-action')).toContainText('te retiraste');
-  await expect(other.getByTestId('last-action')).toContainText('se retiró', { timeout: 10000 });
+  // El polling con el socket en vivo es de 15 s: ver el cambio antes prueba que llegó por WebSocket.
+  await expect(other.getByTestId('last-action')).toContainText('se retiró', { timeout: 5000 });
   await expect(page.getByRole('status').filter({ hasText: 'ganó' }).or(page.getByRole('status').filter({ hasText: 'ganaste' }))).toBeVisible({ timeout: 10000 });
   await checkPage(page, 'mesa: fin de mano');
 
@@ -505,4 +511,84 @@ test('mesa online: sala de espera, iniciar, jugar una mano y cerrar', async ({ p
   await page.getByRole('link', { name: 'Ver resultados y deudas' }).click();
   await expect(page.getByText('✓ Partida cerrada')).toBeVisible();
   await context2.close();
+});
+
+test('mesa online: al agotarse el tiempo el servidor juega por quien no responde', async ({ page, browser }) => {
+  test.setTimeout(60000);
+  await login(page, 'Seba');
+  const code = await createGroup(page);
+  await nav(page, 'Mesa');
+  await page.getByText('Quiero jugar yo también').click();
+  await page.getByLabel('Tu nick').fill('Seba');
+  await page.getByRole('button', { name: 'Crear mi jugador' }).click();
+
+  const context2 = await browser.newContext();
+  const page2 = await context2.newPage();
+  await login(page2, 'Nico', 'reader');
+  await page2.goto('/');
+  await page2.getByLabel('Código de invitación').fill(code);
+  await page2.getByRole('button', { name: 'Unirme' }).click();
+  await page2.getByLabel('Tu nick').fill('Nico');
+  await page2.getByRole('button', { name: 'Crear mi jugador' }).click();
+  await nav(page2, 'Mesa');
+  await expect(page2.getByText('Nico (vos)')).toBeVisible();
+
+  const start = page.getByRole('button', { name: /Iniciar partida \(2 jugadores\)/ });
+  await expect(start).toBeEnabled({ timeout: 10000 });
+  await start.click();
+  await page.getByLabel('Tiempo por turno (segundos, 0 = sin límite)').fill('5');
+  await page.getByRole('dialog').getByRole('button', { name: 'Iniciar partida' }).click();
+  await expect(page.getByRole('alert')).toContainText('entre 10 y 300');
+  await page.getByLabel('Tiempo por turno (segundos, 0 = sin límite)').fill('10');
+  await page.getByRole('dialog').getByRole('button', { name: 'Iniciar partida' }).click();
+
+  await expect(page.getByTestId('turn-timer')).toContainText(/0:(0\d|10)/);
+  await expect(page2.getByTestId('turn-timer')).toBeVisible({ timeout: 10000 });
+  // Nadie actúa: a los ~10 s el servidor se retira por quien tenía el turno, y ambos lo ven.
+  for (const p of [page, page2]) {
+    await expect(p.getByTestId('last-action')).toContainText('(tiempo agotado)', { timeout: 25000 });
+    await expect(p.getByRole('status').filter({ hasText: /ganó|ganaste/ })).toBeVisible();
+  }
+  await context2.close();
+});
+
+test('mesa online: un administrador agrega jugadores sin usuario y juega por ellos', async ({ page }) => {
+  await login(page, 'Seba');
+  await createGroup(page);
+  await nav(page, 'Jugadores');
+  await addPlayer(page, 'Ana');
+  await addPlayer(page, 'Beto');
+
+  // Sin jugador propio igual entra a la mesa: no se le pide elegir un nick.
+  await nav(page, 'Mesa');
+  await expect(page.getByRole('heading', { name: 'Administrar mesa' })).toBeVisible();
+  await expect(page.getByLabel('Tu nick')).toBeHidden(); // la elección de nick queda plegada
+  await expect(page.getByRole('button', { name: /Iniciar partida/ })).toBeDisabled();
+
+  await page.getByRole('button', { name: '+ Agregar jugador' }).click();
+  await page.getByRole('button', { name: 'Agregar a Ana' }).click();
+  await page.getByRole('button', { name: 'Agregar a Beto' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Cerrar' }).click();
+  await expect(page.getByTestId('admin-seat-Ana')).toContainText('lo jugás vos');
+  await checkPage(page, 'mesa: administrar (espera)');
+
+  const start = page.getByRole('button', { name: /Iniciar partida \(2 jugadores\)/ });
+  await expect(start).toBeEnabled();
+  await start.click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Iniciar partida' }).click();
+
+  // Ve las cartas de los dos y juega los turnos por ellos.
+  await expect(page.getByTestId('felt')).toBeVisible();
+  await expect(page.getByTestId('my-hand')).toHaveCount(2);
+  await expect(page.getByRole('status').filter({ hasText: 'Te toca jugar por' })).toBeVisible();
+  await checkPage(page, 'mesa: administrador jugando por otros');
+  await page.getByRole('button', { name: /Igualar|Pasar/ }).click();
+  await expect(page.getByTestId('last-action')).toContainText(/igualó|pasó/);
+  await page.getByRole('button', { name: 'Retirarme' }).click();
+  await expect(page.getByRole('status').filter({ hasText: /ganó/ })).toBeVisible();
+
+  // Reparte y cierra sin estar sentado.
+  await page.getByRole('button', { name: 'Cerrar partida' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Cerrar partida' }).click();
+  await expect(page.getByRole('link', { name: 'Ver resultados y deudas' })).toBeVisible();
 });

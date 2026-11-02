@@ -22,6 +22,20 @@
       "when": 1793591944748,
       "tag": "0002_poker_table",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793593390879,
+      "tag": "0003_poker_turn_timer",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793594337373,
+      "tag": "0004_poker_manual_seats",
+      "breakpoints": true
     }
   ]
 }

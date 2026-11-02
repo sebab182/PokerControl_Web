@@ -7,6 +7,7 @@ import { ApiError } from './errors';
 import { connect, runMigrations } from './db/client';
 import { generateOpenApi, openapiPath } from './openapi';
 import { planImport } from './backup';
+import { sweepTurns } from './routes/table';
 
 // En CI no hay .env: TEST_DATABASE_URL llega por el entorno.
 const envFile = resolve(__dirname, '../../../.env');
@@ -1224,5 +1225,266 @@ describe('mesa online', () => {
     // Siguiente mano: juegan los que están sentados con fichas.
     const next = await (actor === a ? b : a).ok('POST', '/g/table/deal');
     expect(next.hand.players.length).toBe(2);
+  });
+
+  describe('administración manual de la mesa', () => {
+    /** Admin sin jugador propio y un grupo con jugadores cargados a mano (sin usuario). */
+    async function adminTable(ghosts = 2) {
+      const { c: admin, group } = await withGroup('master');
+      const players: { id: string; name: string }[] = [];
+      for (let i = 0; i < ghosts; i++) players.push(await admin.ok('POST', '/g/players', { name: `Fantasma${i}` }));
+      const reader = await login('lector');
+      await reader.ok('POST', '/groups/join', { inviteCode: group.inviteCode });
+      reader.groupId = group.id;
+      return { admin, reader, players };
+    }
+
+    it('un administrador sienta jugadores sin usuario, que cuentan como presentes', async () => {
+      const { admin, reader, players } = await adminTable();
+      const v = await admin.ok('POST', `/g/table/seats/${players[0].id}`);
+      expect(v.seats).toEqual([expect.objectContaining({ playerId: players[0].id, online: true, managed: true, isYou: false })]);
+      expect((await admin.ok('POST', `/g/table/seats/${players[0].id}`)).seats).toHaveLength(1); // repetir no duplica
+      // Pasan los 45 s de presencia: sigue presente porque lo sentó un administrador.
+      await conn.pool.query(`update poker_seats set last_seen_at = now() - interval '5 minutes'`);
+      expect((await admin.ok('GET', '/g/table')).seats[0].online).toBe(true);
+      // Solo lectura no puede; jugador archivado o inexistente, tampoco.
+      expect((await reader.call('POST', `/g/table/seats/${players[0].id}`)).body.error).toBe('read_only');
+      expect((await reader.call('DELETE', `/g/table/seats/${players[0].id}`)).body.error).toBe('read_only');
+      expect((await admin.call('POST', '/g/table/seats/no-existe')).status).toBe(404);
+      await admin.ok('POST', `/g/players/${players[1].id}/adjustments`, { description: 'x', amount: 1 });
+      await admin.ok('DELETE', `/g/players/${players[1].id}`);
+      expect((await admin.call('POST', `/g/table/seats/${players[1].id}`)).body.error).toBe('player_archived');
+      // Se puede quitar mientras se espera.
+      expect((await admin.ok('DELETE', `/g/table/seats/${players[0].id}`)).seats).toEqual([]);
+    });
+
+    it('el administrador inicia, ve las cartas de quienes maneja y juega sus turnos', async () => {
+      const { admin, reader, players } = await adminTable();
+      await admin.ok('POST', `/g/table/seats/${players[0].id}`);
+      await admin.ok('POST', `/g/table/seats/${players[1].id}`);
+      expect((await reader.call('POST', '/g/table/start', {}, 'manual-start-1')).body.error).toBe('no_player');
+      // Sin estar sentado ni tener jugador, inicia.
+      let v = await admin.idem('/g/table/start', {});
+      expect(v.hand.players).toHaveLength(2);
+      expect(v.myPlayerId).toBeNull();
+      expect(v.hand.players.every((p: { hole: string[] }) => p.hole.every(c => c !== '??'))).toBe(true);
+      expect(v.hand.actingPlayerId).toBe(v.hand.toActPlayerId);
+      expect(v.hand.legal).not.toBeNull();
+
+      // Juega por el jugador al que le toca, sin indicar quién: se rechaza (no tiene jugador propio).
+      expect((await admin.call('POST', '/g/table/action', { version: v.version, action: { type: 'call' } })).body.error).toBe('no_player');
+      const first = v.hand.toActPlayerId;
+      v = await admin.ok('POST', '/g/table/action', { version: v.version, playerId: first, action: { type: 'call' } });
+      expect(v.hand.lastAction).toMatchObject({ playerId: first, type: 'call' });
+      // Termina la mano pasando por los dos.
+      for (let i = 0; v.hand.street !== 'done'; i++) {
+        if (i > 40) throw new Error('mano infinita');
+        const who = v.hand.toActPlayerId;
+        v = await admin.ok('POST', '/g/table/action', {
+          version: v.version, playerId: who, action: v.hand.legal.canCheck ? { type: 'check' } : { type: 'call' },
+        });
+      }
+      expect(v.hand.showdown).toHaveLength(2);
+      // El administrador reparte y cierra sin estar sentado.
+      v = await admin.ok('POST', '/g/table/deal');
+      expect(v.hand.handNo).toBe(2);
+      v = await admin.ok('POST', '/g/table/action', { version: v.version, playerId: v.hand.toActPlayerId, action: { type: 'fold' } });
+      const closed = await admin.idem('/g/table/close');
+      expect(closed.table.status).toBe('waiting');
+    });
+
+    it('solo se juega por jugadores sin usuario, y solo un administrador puede', async () => {
+      const { admin, reader, players } = await adminTable(1);
+      const mine = await reader.ok('POST', '/g/me/player', { name: 'Lector' });
+      await admin.ok('POST', `/g/table/seats/${players[0].id}`);
+      await reader.ok('POST', '/g/table/join');
+      let v = await admin.idem('/g/table/start', {});
+      const ghost = players[0].id;
+      const readerView = await view(reader);
+      // El lector no ve las cartas del fantasma, ni puede jugar por él.
+      expect(readerView.hand.players.find((p: { playerId: string }) => p.playerId === ghost).hole).toEqual(['??', '??']);
+      expect((await reader.call('POST', '/g/table/action', { version: v.version, playerId: ghost, action: { type: 'fold' } })).body.error).toBe('read_only');
+      // El administrador ve las del fantasma pero no las del lector, y no puede jugar por él.
+      expect(v.hand.players.find((p: { playerId: string }) => p.playerId === mine.id).hole).toEqual(['??', '??']);
+      expect(v.hand.players.find((p: { playerId: string }) => p.playerId === ghost).hole[0]).not.toBe('??');
+      expect((await admin.call('POST', '/g/table/action', { version: v.version, playerId: mine.id, action: { type: 'fold' } })).body.error).toBe('not_managed');
+      // Si le toca al lector, el administrador no recibe acciones para jugar.
+      if (v.hand.toActPlayerId === mine.id) {
+        expect(v.hand.legal).toBeNull();
+        v = await act(reader, v, { type: 'call' });
+      }
+      expect(v.hand.toActPlayerId).toBe(ghost);
+      expect(v.hand.actingPlayerId).toBe(ghost);
+    });
+
+    it('suma, recompra y levanta con la partida en curso', async () => {
+      const { admin, players } = await adminTable(3);
+      await admin.ok('POST', `/g/table/seats/${players[0].id}`);
+      await admin.ok('POST', `/g/table/seats/${players[1].id}`);
+      let v = await admin.idem('/g/table/start', {});
+      // Se suma otro: entra con la compra de entrada y juega desde la próxima mano.
+      v = await admin.ok('POST', `/g/table/seats/${players[2].id}`);
+      expect(v.seats.find((s: { playerId: string }) => s.playerId === players[2].id).stack).toBe(1000);
+      expect(v.hand.players).toHaveLength(2);
+      const sess = await admin.ok('GET', `/g/sessions/${v.sessionId}`);
+      expect(sess.participants).toHaveLength(3);
+      // En medio de la mano no se puede levantar a quien sigue jugando.
+      const inHand = v.hand.toActPlayerId;
+      expect((await admin.call('DELETE', `/g/table/seats/${inHand}`)).body.error).toBe('in_hand');
+      expect((await admin.call('POST', `/g/table/seats/${inHand}/rebuy`, {}, 'manual-rebuy-1')).body.error).toBe('in_hand');
+      v = await admin.ok('POST', '/g/table/action', { version: v.version, playerId: inHand, action: { type: 'fold' } });
+      // Sin fichas, el administrador recompra por él.
+      await conn.pool.query(`update poker_seats set stack = 0 where player_id = $1`, [players[2].id]);
+      const rebuy = await admin.ok('POST', `/g/table/seats/${players[2].id}/rebuy`, {}, 'manual-rebuy-2');
+      expect(rebuy.seats.find((s: { playerId: string }) => s.playerId === players[2].id).stack).toBe(1000);
+      // Terminada la mano, se lo levanta; sus fichas siguen en la mesa.
+      const out = await admin.ok('DELETE', `/g/table/seats/${players[2].id}`);
+      expect(out.seats.find((s: { playerId: string }) => s.playerId === players[2].id).status).toBe('out');
+    });
+  });
+
+  describe('tiempo por turno', () => {
+    const expire = () => conn.pool.query(`update poker_tables set turn_deadline = now() - interval '1 second'`);
+    const seatsOf = async () => (await conn.pool.query('select player_id, status, timeouts from poker_seats')).rows;
+
+    async function started(turnSeconds?: number) {
+      const ctx = await setup();
+      await ctx.a.ok('POST', '/g/table/join');
+      await ctx.b.ok('POST', '/g/table/join');
+      const v = await ctx.a.idem('/g/table/start', turnSeconds === undefined ? {} : { turnSeconds });
+      return { ...ctx, v };
+    }
+
+    it('arma el vencimiento del turno y informa la hora del servidor', async () => {
+      const { v } = await started(30);
+      expect(v.turnSeconds).toBe(30);
+      const left = new Date(v.turnDeadline).getTime() - new Date(v.serverTime).getTime();
+      expect(left).toBeGreaterThan(28_000);
+      expect(left).toBeLessThanOrEqual(30_000);
+    });
+
+    it('sin límite no hay vencimiento; el valor se valida', async () => {
+      const { a, b } = await setup();
+      await a.ok('POST', '/g/table/join');
+      await b.ok('POST', '/g/table/join');
+      expect((await a.call('POST', '/g/table/start', { turnSeconds: 5 }, 'turn-key-0001')).body.error).toBe('invalid_turn_time');
+      expect((await a.call('POST', '/g/table/start', { turnSeconds: 301 }, 'turn-key-0002')).status).toBe(400);
+      const v = await a.idem('/g/table/start', { turnSeconds: 0 });
+      expect([v.turnSeconds, v.turnDeadline]).toEqual([0, null]);
+      await expire();
+      expect(await sweepTurns(app)).toEqual([]);
+    });
+
+    it('al vencer, el servidor se retira por quien debe igualar', async () => {
+      const { a, b, v } = await started(10);
+      expect(await sweepTurns(app)).toEqual([]); // todavía hay tiempo
+      await expire();
+      expect(await sweepTurns(app)).toEqual([a.groupId]);
+      const after = await view(b);
+      expect(after.hand.street).toBe('done');
+      expect(after.hand.lastAction).toEqual({ playerId: v.hand.toActPlayerId, type: 'fold', auto: true });
+      expect(after.version).toBeGreaterThan(v.version);
+      expect(after.turnDeadline).toBeNull();
+      expect((await seatsOf()).find(s => s.player_id === v.hand.toActPlayerId)?.timeouts).toBe(1);
+      expect(await sweepTurns(app)).toEqual([]); // ya no hay turno
+    });
+
+    it('si puede pasar, pasa; la mano sigue con un vencimiento nuevo', async () => {
+      const { byPlayer, v } = await started(10);
+      const sb = byPlayer(v.hand.toActPlayerId);
+      let cur = await act(sb, v, { type: 'call' });
+      await expire();
+      await sweepTurns(app);
+      cur = await view(sb);
+      expect(cur.hand.lastAction).toMatchObject({ type: 'check', auto: true });
+      expect(cur.hand.street).toBe('flop');
+      expect(new Date(cur.turnDeadline).getTime()).toBeGreaterThan(Date.now());
+    });
+
+    it('dos vencimientos seguidos sacan al jugador; actuar a tiempo reinicia el contador', async () => {
+      const { byPlayer, v } = await started(10);
+      const actor = byPlayer(v.hand.toActPlayerId);
+      await conn.pool.query(`update poker_seats set timeouts = 1 where player_id = $1`, [v.hand.toActPlayerId]);
+      await act(actor, v, { type: 'call' }); // actuó: contador a 0
+      expect((await seatsOf()).find(s => s.player_id === v.hand.toActPlayerId)?.timeouts).toBe(0);
+
+      const second = await started(10);
+      await conn.pool.query(`update poker_seats set timeouts = 1 where player_id = $1`, [second.v.hand.toActPlayerId]);
+      await expire();
+      await sweepTurns(app);
+      const out = (await view(second.a)).seats.find((s: { playerId: string }) => s.playerId === second.v.hand.toActPlayerId);
+      expect(out.status).toBe('out');
+      // Volver a sentarse reinicia el contador y no suma otro vencimiento.
+      await second.byPlayer(second.v.hand.toActPlayerId).ok('POST', '/g/table/join');
+      expect((await seatsOf()).find(s => s.player_id === second.v.hand.toActPlayerId)).toMatchObject({ status: 'sitting', timeouts: 0 });
+    });
+  });
+
+  describe('WebSocket', () => {
+    const wsUrl = (c: Client) => `/api/v1/groups/${c.groupId}/table/ws`;
+    const nextMessage = (ws: Awaited<ReturnType<typeof app.injectWS>>) =>
+      new Promise<{ type: string; version?: number }>(resolve => ws.once('message', (d: Buffer) => resolve(JSON.parse(d.toString()))));
+    const closeCode = (ws: Awaited<ReturnType<typeof app.injectWS>>) => new Promise<number>(resolve => ws.once('close', (c: number) => resolve(c)));
+
+    it('avisa a los conectados cuando cambia la mesa, sin datos de la mano', async () => {
+      const { a, b } = await setup();
+      await a.ok('POST', '/g/table/join');
+      await b.ok('POST', '/g/table/join');
+      const ws = await app.injectWS(wsUrl(a));
+      const ready = nextMessage(ws);
+      ws.send(JSON.stringify({ type: 'auth', token: b.token }));
+      expect(await ready).toEqual({ type: 'ready' });
+      const changed = nextMessage(ws);
+      const v = await a.idem('/g/table/start', {});
+      expect(await changed).toEqual({ type: 'changed', version: v.version });
+
+      const action = nextMessage(ws);
+      const mine = await view(a);
+      const actor = mine.hand.legal ? a : b;
+      const cur = await view(actor);
+      await act(actor, cur, { type: 'fold' });
+      const msg = await action;
+      expect(msg.type).toBe('changed');
+      expect(Object.keys(msg).sort()).toEqual(['type', 'version']);
+      ws.close();
+    });
+
+    it('el latido de presencia no genera avisos', async () => {
+      const { a, b } = await setup();
+      await a.ok('POST', '/g/table/join');
+      const ws = await app.injectWS(wsUrl(a));
+      const ready = nextMessage(ws);
+      ws.send(JSON.stringify({ type: 'auth', token: a.token }));
+      await ready;
+      let received = 0;
+      ws.on('message', () => { received++; });
+      await a.ok('POST', '/g/table/join'); // ya sentada: solo renueva la presencia
+      await new Promise(r => setTimeout(r, 300));
+      expect(received).toBe(0);
+      await b.ok('POST', '/g/table/join'); // llega alguien nuevo: sí avisa
+      await new Promise(r => setTimeout(r, 300));
+      expect(received).toBe(1);
+      ws.close();
+    });
+
+    it('rechaza token inválido, mensaje sin auth y a quien no es del grupo', async () => {
+      const { a } = await setup();
+      const bad = await app.injectWS(wsUrl(a));
+      const badClosed = closeCode(bad);
+      bad.send(JSON.stringify({ type: 'auth', token: 'basura' }));
+      expect(await badClosed).toBe(4401);
+
+      const noAuth = await app.injectWS(wsUrl(a));
+      const noAuthClosed = closeCode(noAuth);
+      noAuth.send(JSON.stringify({ type: 'hola' }));
+      expect(await noAuthClosed).toBe(4401);
+
+      const outsider = await login('ajeno');
+      const out = await app.injectWS(wsUrl(a));
+      const outClosed = closeCode(out);
+      out.send(JSON.stringify({ type: 'auth', token: outsider.token }));
+      expect(await outClosed).toBe(4403);
+      expect(app.tableHub.count(a.groupId)).toBe(0);
+    });
   });
 });
