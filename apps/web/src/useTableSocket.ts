@@ -1,18 +1,32 @@
-import { useEffect, useRef, useState } from 'react';
+import type { ApiRtcClientMessage, ApiRtcServerMessage } from '@pokercontrol/contracts';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { getToken, wsUrl } from './api';
 
 /** Cierres por los que reconectar no sirve: sin sesión válida (4401) o sin acceso al grupo (4403). */
 const FATAL = new Set([4401, 4403]);
 
+export interface TableSocket {
+  /** ¿Hay conexión en vivo? */
+  live: boolean;
+  /** Manda señalización del video; si no hay conexión, se descarta (la renegociación la rehace al reconectar). */
+  send: (msg: Omit<ApiRtcClientMessage, 'type'>) => void;
+}
+
 /**
  * Escucha los avisos de la mesa. El socket solo dice "cambió": los datos se
  * piden por HTTP, así que si se corta no se pierde nada, solo se vuelve al polling.
- * Devuelve si hay conexión en vivo. Reconecta con espera creciente (1 s hasta 15 s).
+ * Por el mismo canal pasa la señalización del video (`onSignal`). Reconecta con espera
+ * creciente (1 s hasta 15 s).
  */
-export function useTableSocket(groupId: string, onChanged: () => void): boolean {
+export function useTableSocket(
+  groupId: string, onChanged: () => void, onSignal?: (msg: ApiRtcServerMessage) => void,
+): TableSocket {
   const [live, setLive] = useState(false);
   const callback = useRef(onChanged);
   callback.current = onChanged;
+  const signalCallback = useRef(onSignal);
+  signalCallback.current = onSignal;
+  const current = useRef<WebSocket | null>(null);
 
   useEffect(() => {
     let socket: WebSocket | null = null;
@@ -31,14 +45,18 @@ export function useTableSocket(groupId: string, onChanged: () => void): boolean 
           const msg = JSON.parse(String(event.data)) as { type?: string };
           if (msg.type === 'ready') {
             attempt = 0;
+            current.current = ws;
             setLive(true);
             callback.current(); // por si hubo cambios mientras no estaba conectado
           } else if (msg.type === 'changed') {
             callback.current();
+          } else if (msg.type === 'rtc') {
+            signalCallback.current?.(msg as ApiRtcServerMessage);
           }
         } catch { /* mensaje ajeno: se ignora */ }
       };
       ws.onclose = event => {
+        if (current.current === ws) current.current = null;
         setLive(false);
         if (stopped || FATAL.has(event.code)) return;
         timer = setTimeout(connect, Math.min(15_000, 1000 * 2 ** attempt++));
@@ -50,9 +68,15 @@ export function useTableSocket(groupId: string, onChanged: () => void): boolean 
       stopped = true;
       clearTimeout(timer);
       socket?.close();
+      current.current = null;
       setLive(false);
     };
   }, [groupId]);
 
-  return live;
+  const send = useCallback((msg: Omit<ApiRtcClientMessage, 'type'>) => {
+    const ws = current.current;
+    if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'rtc', ...msg }));
+  }, []);
+
+  return { live, send };
 }

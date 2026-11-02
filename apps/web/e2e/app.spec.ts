@@ -641,3 +641,68 @@ test('mesa online: un administrador agrega jugadores sin usuario y juega por ell
   await page.getByRole('dialog').getByRole('button', { name: 'Cerrar partida' }).click();
   await expect(page.getByRole('link', { name: 'Ver resultados y saldos' })).toBeVisible();
 });
+
+test.describe('mesa online: video', () => {
+  // Cámara y micrófono falsos del navegador (ver launchOptions en playwright.config.ts).
+  test.use({ permissions: ['camera', 'microphone'] });
+
+  test('un jugador transmite, el otro lo ve, y al detener vuelve la inicial', async ({ page, browser }) => {
+    test.setTimeout(60000);
+    await login(page, 'Seba');
+    const code = await createGroup(page);
+    await nav(page, 'Mesa');
+    await page.getByText('Quiero jugar yo también').click();
+    await page.getByLabel('Tu nick').fill('Seba');
+    await page.getByRole('button', { name: 'Crear mi jugador' }).click();
+
+    const context2 = await browser.newContext({ permissions: ['camera', 'microphone'] });
+    const page2 = await context2.newPage();
+    await login(page2, 'Nico', 'reader');
+    await page2.goto('/');
+    await page2.getByLabel('Código de invitación').fill(code);
+    await page2.getByRole('button', { name: 'Unirme' }).click();
+    await page2.getByLabel('Tu nick').fill('Nico');
+    await page2.getByRole('button', { name: 'Crear mi jugador' }).click();
+    await nav(page2, 'Mesa');
+    await expect(page2.getByText('Nico (vos)')).toBeVisible();
+
+    const start = page.getByRole('button', { name: /Iniciar partida \(2 jugadores\)/ });
+    await expect(start).toBeEnabled({ timeout: 10000 });
+    await start.click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Iniciar partida' }).click();
+    await expect(page.getByTestId('felt')).toBeVisible();
+    await expect(page2.getByTestId('felt')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('En vivo')).toBeVisible({ timeout: 10000 });
+    await expect(page2.getByText('En vivo')).toBeVisible({ timeout: 10000 });
+
+    // Sin transmitir, nadie tiene video: se ven las iniciales.
+    await expect(page2.locator('.pseat-video')).toHaveCount(0);
+
+    // Seba transmite: se ve a sí mismo y Nico lo recibe por WebRTC (frames reales).
+    await page.getByRole('button', { name: 'Transmitir video' }).click();
+    await expect(page.getByRole('button', { name: 'Detener transmisión' })).toBeVisible();
+    const seba = page2.getByTestId('seat-Seba').locator('video.pseat-video');
+    await expect(seba).toBeVisible({ timeout: 15000 });
+    await expect.poll(() => seba.evaluate((v: HTMLVideoElement) => v.videoWidth), { timeout: 15000 }).toBeGreaterThan(0);
+    await expect(page.getByTestId('seat-Seba').locator('video.pseat-video')).toBeVisible();
+    // Audio apagado por defecto: el stream recibido no trae pista de audio.
+    expect(await seba.evaluate((v: HTMLVideoElement) => (v.srcObject as MediaStream).getAudioTracks().length)).toBe(0);
+
+    // Detener: Nico vuelve a ver la inicial y la cámara de Seba se apaga.
+    const sebaTrack = page.evaluate(() => (document.querySelector('video.pseat-video') as HTMLVideoElement).srcObject !== null);
+    expect(await sebaTrack).toBe(true);
+    await page.getByRole('button', { name: 'Detener transmisión' }).click();
+    await expect(page.getByRole('button', { name: 'Transmitir video' })).toBeVisible();
+    await expect(page2.locator('.pseat-video')).toHaveCount(0, { timeout: 10000 });
+    await expect(page.locator('.pseat-video')).toHaveCount(0);
+
+    // Con micrófono: el otro recibe una pista de audio.
+    await page.getByLabel('Micrófono').check();
+    await page.getByRole('button', { name: 'Transmitir video' }).click();
+    await expect(seba).toBeVisible({ timeout: 15000 });
+    await expect.poll(() => seba.evaluate((v: HTMLVideoElement) => (v.srcObject as MediaStream).getAudioTracks().length), { timeout: 15000 }).toBe(1);
+    await page.getByRole('button', { name: 'Detener transmisión' }).click();
+    await expect(page2.locator('.pseat-video')).toHaveCount(0, { timeout: 10000 });
+    await context2.close();
+  });
+});

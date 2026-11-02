@@ -267,9 +267,15 @@ input[type="text"], input[type="search"], select {
 .pseat-stack { font-weight: 700; }
 .pseat-bet { background: #78350F; }
 .pseat-status { background: #fff; color: #1A1D21; font-weight: 700; }
-.pseat-turn .avatar { box-shadow: 0 0 0 3px #FBBF24; }
-.pseat-folded .avatar { filter: grayscale(1); }
-.pseat-won .avatar { box-shadow: 0 0 0 3px #34D399; }
+.pseat-video {
+  flex: none; width: 56px; height: 56px; border-radius: 50%; object-fit: cover; background: #000; border: 2px solid #fff;
+}
+.video-mirror { transform: scaleX(-1); }
+.pseat-turn .avatar, .pseat-turn .pseat-video { box-shadow: 0 0 0 3px #FBBF24; }
+.pseat-folded .avatar, .pseat-folded .pseat-video { filter: grayscale(1); }
+.pseat-won .avatar, .pseat-won .pseat-video { box-shadow: 0 0 0 3px #34D399; }
+.video-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-bottom: 12px; }
+.video-mic { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; font-size: 14px; }
 .dealer { background: #fff; color: #1A1D21; border-radius: 999px; padding: 0 4px; font-weight: 700; }
 .hero { display: flex; flex-direction: column; align-items: center; gap: 6px; margin-bottom: 12px; }
 .hero-cards { display: flex; gap: 8px; }
@@ -282,6 +288,7 @@ input[type="text"], input[type="search"], select {
   .felt-wrap { padding: 60px 70px 70px; }
   .pcard-sm { width: 44px; height: 62px; font-size: 19px; }
   .pseat { width: 110px; }
+  .pseat-video { width: 72px; height: 72px; }
   .board .pcard-md { width: 68px; height: 96px; font-size: 28px; }
   .pcard-lg { width: 104px; height: 146px; font-size: 40px; }
 }

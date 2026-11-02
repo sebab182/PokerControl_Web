@@ -1,5 +1,6 @@
 import type { ApiHandView, ApiTableView } from '@pokercontrol/contracts';
 import { formatMoney } from '@pokercontrol/core';
+import { StreamVideo, useSeatStream, useVideo } from '../video';
 import { Avatar } from './ui';
 
 const SUIT = { s: { sym: '♠', name: 'picas', red: false }, h: { sym: '♥', name: 'corazones', red: true },
@@ -40,6 +41,8 @@ export function seatPosition(offset: number, total: number): { left: string; top
 export function PlayerSeat({ view, hand, playerId, offset, total, showCards }: {
   view: ApiTableView; hand: ApiHandView; playerId: string; offset: number; total: number; showCards: boolean;
 }) {
+  const video = useVideo();
+  const stream = useSeatStream(playerId);
   const p = hand.players.find(x => x.playerId === playerId);
   const seat = view.seats.find(s => s.playerId === playerId);
   if (!p || !seat) return null;
@@ -55,7 +58,9 @@ export function PlayerSeat({ view, hand, playerId, offset, total, showCards }: {
           ? <PokerCard key={i} card={c} size="sm" />
           : null)}
       </div>
-      <Avatar name={seat.name} />
+      {stream
+        ? <StreamVideo stream={stream} className="pseat-video" muted={seat.isYou || video?.muteOthers} mirrored={seat.isYou} />
+        : <Avatar name={seat.name} />}
       <div className="pseat-name ellipsis">{seat.isYou ? 'Vos' : seat.name}{dealer && <span className="dealer" title="Botón"> D</span>}</div>
       <div className="pseat-stack num">{formatMoney(p.stack)}</div>
       {p.bet > 0 && <div className="pseat-bet num">Apuesta {formatMoney(p.bet)}</div>}

@@ -1,4 +1,4 @@
-import type { ApiPlayer, ApiTableAction, ApiTableView } from '@pokercontrol/contracts';
+import type { ApiPlayer, ApiRtcServerMessage, ApiTableAction, ApiTableView } from '@pokercontrol/contracts';
 import { evaluate, formatMoney, parseAmount } from '@pokercontrol/core';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
@@ -10,6 +10,7 @@ import {
 } from '../components/ui';
 import { useGroup } from '../context';
 import { useTableSocket } from '../useTableSocket';
+import { VideoControls, VideoProvider, useTableVideo } from '../video';
 import { NickChooser } from './auth';
 
 const HEARTBEAT_MS = 20_000;
@@ -48,7 +49,12 @@ function TableView() {
 
   // Cualquier aviso refresca la mesa. No se compara la versión: sentarse o levantarse cambia lo que
   // se ve sin cambiar la versión de la mano (que solo protege las jugadas). Un GET repetido sale barato.
-  const live = useTableSocket(group.id, () => { void qc.invalidateQueries({ queryKey }); });
+  // El socket necesita el manejador de video y el video necesita el socket: se une por ref.
+  const signal = useRef<(msg: ApiRtcServerMessage) => void>(() => {});
+  const socket = useTableSocket(group.id, () => { void qc.invalidateQueries({ queryKey }); }, msg => signal.current(msg));
+  const { live } = socket;
+  const video = useTableVideo(socket, group.playerId);
+  signal.current = video.onSignal;
   const query = useQuery({
     queryKey,
     queryFn: () => api<ApiTableView>(path('/table')),
@@ -119,12 +125,13 @@ function TableView() {
   };
 
   return (
-    <>
+    <VideoProvider state={video.state}>
       <div className="page-head">
         <h1 className="grow">Mesa</h1>
         {live && <span className="badge badge-muted" title="Recibís los cambios al instante">En vivo</span>}
         {view.status === 'playing' && <span className="badge badge-green">Partida en curso</span>}
       </div>
+      <VideoControls />
       {closedId && view.status === 'waiting' && (
         <div className="notice notice-ok" role="status">
           Partida cerrada. <Link to={`/sessions/${closedId}`}>Ver resultados y saldos</Link>
@@ -163,7 +170,7 @@ function TableView() {
           setStartOpen(false);
           setClosedId(null);
         })} busy={busy} />
-    </>
+    </VideoProvider>
   );
 }
 
@@ -321,12 +328,14 @@ function NoChips({ view, sitting, busy, onLeave, onRebuy }: {
   );
 }
 
-/** Al terminar la mano: mostrar las cartas a la mesa. Una sola carta, si todos los demás se retiraron. */
+/** Al terminar la mano, hasta que se reparta la próxima: mostrar las cartas o foldear (no mostrarlas). Una sola carta, si todos los demás se retiraron. */
 function ShowCards({ hand, playerId, you, name, busy, onReveal }: {
   hand: Hand; playerId: string; you: boolean; name: string; busy: boolean; onReveal: (playerId: string, cards?: number[]) => void;
 }) {
+  // Foldear = no mostrar: se oculta el panel hasta la próxima mano (las cartas siguen ocultas para los demás).
+  const [mucked, setMucked] = useState(0);
   const p = hand.players.find(x => x.playerId === playerId);
-  if (!p || p.hole.length < 2 || p.hole.includes('??') || p.shown.length >= 2) return null;
+  if (!p || p.hole.length < 2 || p.hole.includes('??') || p.shown.length >= 2 || mucked === hand.handNo) return null;
   // Quedó solo porque los demás se retiraron: no hay showdown y decide qué enseñar.
   const alone = hand.showdown.length === 0 && !p.folded && hand.players.filter(x => !x.folded).length === 1;
   return (
@@ -340,6 +349,7 @@ function ShowCards({ hand, playerId, you, name, busy, onReveal }: {
             Mostrar una carta ({cardText(c)})
           </Btn>
         ))}
+        <Btn variant="danger" busy={busy} onClick={() => setMucked(hand.handNo)}>Foldear</Btn>
       </div>
     </div>
   );

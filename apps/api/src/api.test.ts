@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parse } from 'yaml';
 import { buildApp } from './app';
 import { ApiError } from './errors';
@@ -1558,6 +1558,89 @@ describe('mesa online', () => {
       await new Promise(r => setTimeout(r, 300));
       expect(received).toBe(1);
       ws.close();
+    });
+
+    describe('video', () => {
+      type Msg = { type: string; kind?: string; from?: string; playerId?: string | null; data?: unknown };
+      /** Conecta y autentica; guarda lo que llega para poder revisarlo después. */
+      const join = async (c: Client) => {
+        const ws = await app.injectWS(wsUrl(c));
+        const inbox: Msg[] = [];
+        ws.on('message', (d: Buffer) => inbox.push(JSON.parse(d.toString())));
+        ws.send(JSON.stringify({ type: 'auth', token: c.token }));
+        await vi.waitFor(() => expect(inbox.some(m => m.type === 'ready')).toBe(true));
+        return { ws, inbox, rtc: () => inbox.filter(m => m.type === 'rtc') };
+      };
+      const settle = () => new Promise(r => setTimeout(r, 150));
+
+      it('avisa a los demás cuando alguien empieza y corta su transmisión', async () => {
+        const { a, b } = await setup();
+        const pa = await join(a);
+        const pb = await join(b);
+        pa.ws.send(JSON.stringify({ type: 'rtc', kind: 'start' }));
+        await vi.waitFor(() => expect(pb.rtc()).toHaveLength(1));
+        expect(pb.rtc()[0]).toMatchObject({ kind: 'start', playerId: expect.any(String) });
+        expect(pa.rtc()).toHaveLength(0); // quien transmite no recibe su propio aviso
+
+        pa.ws.send(JSON.stringify({ type: 'rtc', kind: 'stop' }));
+        await vi.waitFor(() => expect(pb.rtc()).toHaveLength(2));
+        expect(pb.rtc()[1]).toMatchObject({ kind: 'stop', from: pb.rtc()[0]!.from });
+        pa.ws.close(); pb.ws.close();
+      });
+
+      it('al conectarse, informa quién ya está transmitiendo, y si se cae avisa que cortó', async () => {
+        const { a, b } = await setup();
+        const pa = await join(a);
+        pa.ws.send(JSON.stringify({ type: 'rtc', kind: 'start' }));
+        await settle();
+        const pb = await join(b);
+        await vi.waitFor(() => expect(pb.rtc()).toHaveLength(1));
+        expect(pb.rtc()[0]).toMatchObject({ kind: 'start' });
+
+        pa.ws.terminate(); // corte abrupto, como una pestaña cerrada o sin red
+        await vi.waitFor(() => expect(pb.rtc()).toHaveLength(2));
+        expect(pb.rtc()[1]).toMatchObject({ kind: 'stop' });
+        pb.ws.close();
+      });
+
+      it('la negociación va solo a la conexión indicada, con el remitente puesto por el servidor', async () => {
+        const { a, b } = await setup();
+        const pa = await join(a);
+        const pb = await join(b);
+        pa.ws.send(JSON.stringify({ type: 'rtc', kind: 'start' }));
+        await vi.waitFor(() => expect(pb.rtc()).toHaveLength(1));
+        const broadcaster = pb.rtc()[0]!.from!;
+
+        pb.ws.send(JSON.stringify({ type: 'rtc', kind: 'watch', to: broadcaster, from: 'falso' }));
+        await settle();
+        expect(pa.rtc()).toHaveLength(0); // el campo "from" enviado por el cliente no es válido: se descarta
+        pb.ws.send(JSON.stringify({ type: 'rtc', kind: 'watch', to: broadcaster }));
+        await vi.waitFor(() => expect(pa.rtc()).toHaveLength(1));
+        expect(pa.rtc()[0]).toMatchObject({ kind: 'watch' });
+        expect(pa.rtc()[0]!.from).not.toBe(broadcaster);
+
+        pa.ws.send(JSON.stringify({ type: 'rtc', kind: 'offer', to: pa.rtc()[0]!.from, data: { type: 'offer', sdp: 'v=0' } }));
+        pa.ws.send(JSON.stringify({ type: 'rtc', kind: 'offer', to: pa.rtc()[0]!.from, data: { type: 'offer', sdp: 'v=0' } }));
+        await vi.waitFor(() => expect(pb.rtc().filter(m => m.kind === 'offer')).toHaveLength(2));
+        expect(pb.rtc().at(-1)!.data).toEqual({ type: 'offer', sdp: 'v=0' });
+        pa.ws.close(); pb.ws.close();
+      });
+
+      it('descarta mensajes mal formados y los dirigidos mal', async () => {
+        const { a, b } = await setup();
+        const pa = await join(a);
+        const pb = await join(b);
+        for (const bad of [
+          { type: 'rtc', kind: 'nada' },
+          { type: 'rtc', kind: 'offer' }, // falta el destino
+          { type: 'rtc', kind: 'start', to: 'x' }, // start no se dirige
+          { type: 'otra-cosa' },
+        ]) pa.ws.send(JSON.stringify(bad));
+        pa.ws.send('no es json');
+        await settle();
+        expect(pb.rtc()).toHaveLength(0);
+        pa.ws.close(); pb.ws.close();
+      });
     });
 
     it('rechaza token inválido, mensaje sin auth y a quien no es del grupo', async () => {
