@@ -262,13 +262,13 @@ describe('playerStats y ranking', () => {
     const ranking = globalRanking([...players, { id: '3', name: 'Caro', createdAt: '' }], sessions, [], 't2');
     expect(ranking.map(r => r.playerId)).toEqual(['2', '1']);
   });
-  it('ranking histórico incluye ajustes y marca archivados', () => {
+  it('ranking histórico incluye ajustes y excluye archivados, sin cambiar los balances de los demás', () => {
     const ranking = globalRanking([
       { ...players[1], archivedAt: ctx.now() },
       { ...players[0], adjustments: [{ id: 'x', description: '', amount: 500, date: ctx.now() }] },
     ], sessions, []);
-    expect(ranking[0]).toMatchObject({ playerId: '1', totalBalance: 550, archived: false });
-    expect(ranking[1]).toMatchObject({ playerId: '2', archived: true });
+    expect(ranking).toHaveLength(1);
+    expect(ranking[0]).toMatchObject({ playerId: '1', totalBalance: 550 });
   });
 });
 

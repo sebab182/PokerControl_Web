@@ -20,29 +20,47 @@ export const ErrorResponse = T.Object(
 );
 
 // ─── Auth y grupos ───────────────────────────────────────────────────────────
-export const User = Obj({ id: T.String(), name: T.String(), email: T.String(), pictureUrl: Nullable(T.String()) }, 'User');
-export const GroupRef = Obj({ id: T.String(), name: T.String() }, 'GroupRef');
+export const Role = T.Union([T.Literal('master'), T.Literal('admin'), T.Literal('reader')]);
+export const User = Obj({ id: T.String(), name: T.String(), email: T.String(), pictureUrl: Nullable(T.String()), role: Role }, 'User');
+/** playerId: el jugador del usuario en ese grupo; null si todavía no eligió su nick. */
+export const GroupRef = Obj({ id: T.String(), name: T.String(), playerId: Nullable(T.String()) }, 'GroupRef');
 export const AuthResponse = Obj({ token: T.String(), user: User, groups: T.Array(GroupRef) }, 'AuthResponse');
 export const GoogleLoginBody = Obj({ idToken: T.String({ minLength: 1 }) });
 export const TokenResponse = Obj({ token: T.String() }, 'TokenResponse');
 export const MeResponse = Obj({ user: User, groups: T.Array(GroupRef) }, 'MeResponse');
 
-export const GroupMember = Obj({ id: T.String(), name: T.String(), email: T.String(), joinedAt: T.String() }, 'GroupMember');
+/** email e inviteCode solo llegan a master y admins. */
+export const GroupMember = Obj({
+  id: T.String(), name: T.String(), email: T.Optional(T.String()), joinedAt: T.String(), playerId: Nullable(T.String()),
+}, 'GroupMember');
 export const Group = Obj({
-  id: T.String(), name: T.String(), inviteCode: T.String(), timezone: T.String(), createdAt: T.String(),
-  members: T.Array(GroupMember),
+  id: T.String(), name: T.String(), inviteCode: Nullable(T.String()), timezone: T.String(), createdAt: T.String(),
+  isMember: T.Boolean(), members: T.Array(GroupMember),
 }, 'Group');
 export const CreateGroupBody = Obj({ name: Name, timezone: T.Optional(T.String({ minLength: 1, maxLength: 64 })) });
 export const UpdateGroupBody = Obj({ name: T.Optional(Name), timezone: T.Optional(T.String({ minLength: 1, maxLength: 64 })) });
 export const JoinGroupBody = Obj({ inviteCode: T.String({ minLength: 4, maxLength: 16 }) });
 
+// ─── Administradores ─────────────────────────────────────────────────────────
+const Email = T.String({ maxLength: 320, pattern: '^[^\\s@]+@[^\\s@]+$' });
+export const AdminOverview = Obj({
+  users: T.Array(Obj({ id: T.String(), name: T.String(), email: T.String(), role: Role })),
+  pending: T.Array(Obj({ email: T.String(), createdAt: T.String() })),
+}, 'AdminOverview');
+export const GrantAdminBody = Obj({ email: Email });
+export const AdminEmailParams = Obj({ email: T.String() });
+
 // ─── Jugadores ───────────────────────────────────────────────────────────────
 export const PlayerAdjustment = Obj({ id: T.String(), description: T.String(), amount: T.Number(), date: T.String() }, 'PlayerAdjustment');
 export const Player = Obj({
   id: T.String(), name: T.String(), createdAt: T.String(), archivedAt: Nullable(T.String()),
-  adjustments: T.Array(PlayerAdjustment),
+  linked: T.Boolean(), adjustments: T.Array(PlayerAdjustment),
 }, 'Player');
 export const CreatePlayerBody = Obj({ name: Name });
+/** Exactamente uno: elegir un jugador libre o crear uno nuevo con ese nick. */
+export const ClaimPlayerBody = Obj({ playerId: T.Optional(T.String()), name: T.Optional(Name) });
+/** null primero: con coerceTypes, un string antes convertiría null en ''. */
+export const LinkPlayerBody = Obj({ userId: T.Union([T.Null(), T.String()]) });
 export const UpdatePlayerBody = Obj({ name: Name });
 export const DeletePlayerResponse = Obj({ archived: T.Boolean() }, 'DeletePlayerResponse');
 export const AdjustmentBody = Obj({ description: T.String({ maxLength: 200 }), amount: Amount });
@@ -59,7 +77,7 @@ const statsProps = {
 };
 export const PlayerStats = Obj(statsProps, 'PlayerStats');
 export const PlayerStatsResponse = Nullable(PlayerStats);
-export const RankingEntry = Obj({ playerId: T.String(), name: T.String(), archived: T.Boolean(), ...statsProps }, 'RankingEntry');
+export const RankingEntry = Obj({ playerId: T.String(), name: T.String(), ...statsProps }, 'RankingEntry');
 
 const SessionRef = Obj({ sessionId: T.String(), sessionName: T.String(), date: T.String() }, 'SessionRef');
 export const PlayerReport = Obj({
@@ -183,6 +201,8 @@ export const Ok = Obj({ ok: T.Boolean() }, 'Ok');
 export const Deleted = Obj({ deleted: T.Boolean() }, 'Deleted');
 
 // ─── Tipos para clientes ─────────────────────────────────────────────────────
+export type ApiRole = Static<typeof Role>;
+export type ApiAdminOverview = Static<typeof AdminOverview>;
 export type ApiUser = Static<typeof User>;
 export type ApiGroupRef = Static<typeof GroupRef>;
 export type ApiGroup = Static<typeof Group>;

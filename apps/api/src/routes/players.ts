@@ -1,24 +1,36 @@
 import { randomUUID } from 'node:crypto';
 import {
-  AdjustmentBody, AdjustmentParams, CreatePlayerBody, Deleted, DeletePlayerResponse, ErrorResponse, GroupParams,
-  IdParams, Player, PlayerDebts, PlayerReportResponse, PlayersQuery, PlayerStatsResponse, RankingEntry, SeasonQuery,
-  UpdatePlayerBody,
+  AdjustmentBody, AdjustmentParams, ClaimPlayerBody, CreatePlayerBody, Deleted, DeletePlayerResponse, ErrorResponse,
+  GroupParams, IdParams, LinkPlayerBody, Player, PlayerDebts, PlayerReportResponse, PlayersQuery, PlayerStatsResponse,
+  RankingEntry, SeasonQuery, UpdatePlayerBody,
 } from '@pokercontrol/contracts';
 import { buildPlayerReport, debtsForPlayer, globalRanking, playerStats, round2, type Player as CorePlayer } from '@pokercontrol/core';
 import { Type, type Static } from '@sinclair/typebox';
-import { and, eq, or, sql } from 'drizzle-orm';
+import { and, eq, isNotNull, ne, or, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import * as schema from '../db/schema';
 import { ApiError, notFound } from '../errors';
-import { loadDebts, loadPlayers, loadSessions, toApiDebt, type Conn } from '../repo';
+import { loadDebts, loadPlayers, loadSessions, lockGroup, toApiDebt, type Conn } from '../repo';
 
 type G = { Params: Static<typeof GroupParams> };
 type I = { Params: Static<typeof IdParams> };
 type A = { Params: Static<typeof AdjustmentParams> };
 
-const toApi = (p: CorePlayer) => ({
-  id: p.id, name: p.name, createdAt: p.createdAt, archivedAt: p.archivedAt ?? null, adjustments: p.adjustments ?? [],
+const toApi = (p: CorePlayer, linked: boolean) => ({
+  id: p.id, name: p.name, createdAt: p.createdAt, archivedAt: p.archivedAt ?? null, linked, adjustments: p.adjustments ?? [],
 });
+
+/** Aparte de loadPlayers, porque esos modelos se exportan al backup: no llevan usuarios. */
+async function linkedPlayerIds(db: Conn, groupId: string): Promise<Set<string>> {
+  const rows = await db.select({ id: schema.players.id }).from(schema.players)
+    .where(and(eq(schema.players.groupId, groupId), isNotNull(schema.players.userId)));
+  return new Set(rows.map(r => r.id));
+}
+
+async function apiPlayer(db: Conn, groupId: string, id: string) {
+  const player = await findPlayer(db, groupId, id);
+  return toApi(player, (await linkedPlayerIds(db, groupId)).has(id));
+}
 
 function cleanName(raw: string): string {
   const name = raw.trim();
@@ -58,6 +70,39 @@ async function hasHistory(db: Conn, groupId: string, playerId: string): Promise<
   return false;
 }
 
+export async function claimPlayerRoutes(app: FastifyInstance) {
+  app.post<G & { Body: Static<typeof ClaimPlayerBody> }>('/me/player', {
+    schema: { tags: ['players'], params: GroupParams, body: ClaimPlayerBody, response: { 200: Player, '4xx': ErrorResponse } },
+  }, async req => app.db.transaction(async tx => {
+    const groupId = req.group.id;
+    const { playerId, name } = req.body;
+    if ((playerId === undefined) === (name === undefined)) {
+      throw new ApiError(422, 'invalid_claim', 'Elegí un jugador o ingresá un nick nuevo.');
+    }
+    await lockGroup(tx, groupId);
+    const rows = await tx.select().from(schema.players).where(eq(schema.players.groupId, groupId));
+    if (rows.some(p => p.userId === req.user.sub)) {
+      throw new ApiError(409, 'already_linked', 'Ya tenés un jugador en este grupo.');
+    }
+    if (playerId !== undefined) {
+      const player = rows.find(p => p.id === playerId);
+      if (!player) throw notFound('Jugador');
+      if (player.archivedAt) throw new ApiError(409, 'player_archived', 'El jugador está archivado.');
+      if (player.userId) throw new ApiError(409, 'player_taken', 'Ese jugador ya está asociado a otro usuario.');
+      await tx.update(schema.players).set({ userId: req.user.sub }).where(eq(schema.players.id, playerId));
+      return apiPlayer(tx, groupId, playerId);
+    }
+    const nick = cleanName(name as string);
+    const same = rows.find(p => !p.archivedAt && p.name.toLowerCase() === nick.toLowerCase());
+    if (same) {
+      throw new ApiError(409, 'player_name_taken', `Ya existe un jugador "${same.name}". Si sos vos y está libre, elegilo de la lista.`);
+    }
+    const id = randomUUID();
+    await tx.insert(schema.players).values({ id, groupId, name: nick, userId: req.user.sub });
+    return apiPlayer(tx, groupId, id);
+  }));
+}
+
 export async function playerRoutes(app: FastifyInstance) {
   const err = { '4xx': ErrorResponse };
   const tags = ['players'];
@@ -66,15 +111,42 @@ export async function playerRoutes(app: FastifyInstance) {
     schema: { tags, params: GroupParams, querystring: PlayersQuery, response: { 200: Type.Array(Player), ...err } },
   }, async req => {
     const players = await loadPlayers(app.db, req.group.id);
-    return (req.query.includeArchived ? players : players.filter(p => !p.archivedAt)).map(toApi);
+    const linked = await linkedPlayerIds(app.db, req.group.id);
+    return (req.query.includeArchived ? players : players.filter(p => !p.archivedAt)).map(p => toApi(p, linked.has(p.id)));
   });
+
+  app.post<I & { Body: Static<typeof LinkPlayerBody> }>('/players/:id/user', {
+    schema: { tags, params: IdParams, body: LinkPlayerBody, response: { 200: Player, ...err } },
+  }, async req => app.db.transaction(async tx => {
+    const groupId = req.group.id;
+    const { userId } = req.body;
+    await lockGroup(tx, groupId);
+    const player = await findPlayer(tx, groupId, req.params.id);
+    if (userId !== null) {
+      if (player.archivedAt) throw new ApiError(409, 'player_archived', 'El jugador está archivado.');
+      const [user] = await tx.select({ role: schema.users.role, member: schema.groupMembers.userId }).from(schema.users)
+        .leftJoin(schema.groupMembers, and(
+          eq(schema.groupMembers.groupId, groupId),
+          eq(schema.groupMembers.userId, schema.users.id),
+        ))
+        .where(eq(schema.users.id, userId));
+      if (!user || (!user.member && user.role === 'reader')) {
+        throw new ApiError(422, 'invalid_user', 'Ese usuario no pertenece al grupo.');
+      }
+      await tx.update(schema.players).set({ userId: null }).where(and(
+        eq(schema.players.groupId, groupId), eq(schema.players.userId, userId), ne(schema.players.id, player.id),
+      ));
+    }
+    await tx.update(schema.players).set({ userId }).where(eq(schema.players.id, player.id));
+    return apiPlayer(tx, groupId, player.id);
+  }));
 
   app.post<G & { Body: Static<typeof CreatePlayerBody> }>('/players', {
     schema: { tags, params: GroupParams, body: CreatePlayerBody, response: { 200: Player, ...err } },
   }, async req => {
     const id = randomUUID();
     await app.db.insert(schema.players).values({ id, groupId: req.group.id, name: cleanName(req.body.name) });
-    return toApi(await findPlayer(app.db, req.group.id, id));
+    return apiPlayer(app.db, req.group.id, id);
   });
 
   app.patch<I & { Body: Static<typeof UpdatePlayerBody> }>('/players/:id', {
@@ -82,7 +154,7 @@ export async function playerRoutes(app: FastifyInstance) {
   }, async req => {
     await findPlayer(app.db, req.group.id, req.params.id);
     await app.db.update(schema.players).set({ name: cleanName(req.body.name) }).where(eq(schema.players.id, req.params.id));
-    return toApi(await findPlayer(app.db, req.group.id, req.params.id));
+    return apiPlayer(app.db, req.group.id, req.params.id);
   });
 
   app.delete<I>('/players/:id', {
@@ -102,7 +174,7 @@ export async function playerRoutes(app: FastifyInstance) {
   }, async req => {
     await findPlayer(app.db, req.group.id, req.params.id);
     await app.db.update(schema.players).set({ archivedAt: null }).where(eq(schema.players.id, req.params.id));
-    return toApi(await findPlayer(app.db, req.group.id, req.params.id));
+    return apiPlayer(app.db, req.group.id, req.params.id);
   });
 
   app.post<I & { Body: Static<typeof AdjustmentBody> }>('/players/:id/adjustments', {
@@ -118,7 +190,7 @@ export async function playerRoutes(app: FastifyInstance) {
       amount: req.body.amount,
       occurredAt: new Date(),
     });
-    return toApi(await findPlayer(app.db, req.group.id, req.params.id));
+    return apiPlayer(app.db, req.group.id, req.params.id);
   });
 
   const adjustmentWhere = (req: { group: { id: string }; params: A['Params'] }) => and(
@@ -135,7 +207,7 @@ export async function playerRoutes(app: FastifyInstance) {
       .set({ description: req.body.description.trim(), amount: req.body.amount })
       .where(adjustmentWhere(req)).returning({ id: schema.playerAdjustments.id });
     if (updated.length === 0) throw notFound('Ajuste');
-    return toApi(await findPlayer(app.db, req.group.id, req.params.id));
+    return apiPlayer(app.db, req.group.id, req.params.id);
   });
 
   app.delete<A>('/players/:id/adjustments/:adjustmentId', {

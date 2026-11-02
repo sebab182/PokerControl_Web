@@ -17,7 +17,7 @@ const POLL_MS = 15000;
 
 export function SessionPage() {
   const { sessionId = '' } = useParams();
-  const { path, key, invalidate, group } = useGroup();
+  const { path, key, invalidate, group, canEdit } = useGroup();
   const qc = useQueryClient();
   const navigate = useNavigate();
   const { confirm, notify } = useFeedback();
@@ -54,6 +54,7 @@ export function SessionPage() {
 
   const session = query.data;
   const isClosed = session.status === 'closed';
+  const editable = !isClosed && canEdit;
   const { totalPot, diff, status } = session.calc;
   const inSession = new Set(session.participants.map(p => p.playerId));
   const addable = (available.data ?? []).filter(p => !inSession.has(p.id));
@@ -166,7 +167,7 @@ export function SessionPage() {
               <div className="row">
                 <Avatar name={p.name} />
                 <h3 className="grow ellipsis">{p.name}</h3>
-                {!isClosed && (
+                {editable && (
                   <button type="button" className="icon-btn" aria-label={`Quitar a ${p.name}`} onClick={() => { void removeParticipant(p); }}>✕</button>
                 )}
               </div>
@@ -184,7 +185,7 @@ export function SessionPage() {
                 <div className="row small" key={b.id}>
                   <span className="grow"><Emoji>🎰</Emoji> <Money amount={b.amount} /></span>
                   <span className="xs muted">{new Date(b.timestamp).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}</span>
-                  {!isClosed && (
+                  {editable && (
                     <button type="button" className="icon-btn" aria-label={`Eliminar compra de ${formatMoney(b.amount)}`}
                       onClick={() => { void removeBuy(b.id, b.amount); }}><Emoji>🗑</Emoji></button>
                   )}
@@ -204,7 +205,7 @@ export function SessionPage() {
                 <span className="strong" data-testid="balance">{has ? <Money amount={balance} signed tone /> : '—'}</span>
               </div>
 
-              {!isClosed && (
+              {editable && (
                 <div className="row" style={{ marginTop: 10 }}>
                   <Btn variant="ghost" className="grow" onClick={() => { setBuyFor(p); setBuyAmount(''); }}>+ Compra</Btn>
                   <Btn variant="ghost" className="grow" onClick={() => { setFinalFor(p); setFinalAmount(has ? String(p.finalAmount) : ''); }}>
@@ -217,7 +218,7 @@ export function SessionPage() {
         })}
       </div>
 
-      {!isClosed && (
+      {editable && (
         <div className="stack" style={{ marginTop: 4 }}>
           <Btn variant="ghost" block onClick={() => setAddOpen(true)}>Agregar jugador a la partida</Btn>
           {session.participants.length > 0 && (

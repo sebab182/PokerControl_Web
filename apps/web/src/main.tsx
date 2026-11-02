@@ -6,7 +6,7 @@ import { BrowserRouter, NavLink, Navigate, Outlet, Route, Routes } from 'react-r
 import { ApiRequestError } from './api';
 import { Btn, Emoji, Empty, FeedbackProvider, Loading } from './components/ui';
 import { SessionProvider, applyStoredTheme, useSession } from './context';
-import { LoginPage, OnboardingPage } from './pages/auth';
+import { LoginPage, NickPage, OnboardingPage } from './pages/auth';
 import { PendingDebtsPage } from './pages/debts';
 import { PlayersPage, RankingPage, StatsPage } from './pages/players';
 import { SeasonSessionsPage, SeasonsPage } from './pages/seasons';
@@ -64,7 +64,7 @@ function GroupSwitcher() {
 }
 
 function Shell() {
-  const { me, group, loading, loadError, retry } = useSession();
+  const { me, group, canEdit, loading, loadError, retry } = useSession();
   if (loading) return <Loading />;
   if (loadError) {
     return (
@@ -75,6 +75,7 @@ function Shell() {
   }
   if (!me) return <Navigate to="/login" replace />;
   if (!group) return <Navigate to="/onboarding" replace />;
+  if (!canEdit && !group.playerId) return <NickPage key={group.id} />;
   return (
     <div className="shell">
       <nav className="sidebar" aria-label="Principal">

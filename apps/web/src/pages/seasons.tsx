@@ -12,7 +12,7 @@ import { useGroup } from '../context';
 const date = (iso: string) => new Date(iso).toLocaleDateString('es-AR');
 
 export function SeasonsPage() {
-  const { path, key, invalidate } = useGroup();
+  const { path, key, invalidate, canEdit } = useGroup();
   const navigate = useNavigate();
   const { confirm } = useFeedback();
   const { busy, run } = useAction();
@@ -60,7 +60,7 @@ export function SeasonsPage() {
     <>
       <div className="page-head">
         <h1 className="grow">Temporadas</h1>
-        <Btn onClick={() => { setName(defaultSeasonName(seasons.length)); setCreating(true); }}>+ Nueva temporada</Btn>
+        {canEdit && <Btn onClick={() => { setName(defaultSeasonName(seasons.length)); setCreating(true); }}>+ Nueva temporada</Btn>}
       </div>
 
       {seasons.length > 1 && (
@@ -70,7 +70,7 @@ export function SeasonsPage() {
       )}
 
       {list.length === 0 && (
-        <Empty icon="♠" title="No hay temporadas aún"><p>Creá la primera para empezar a cargar partidas.</p></Empty>
+        <Empty icon="♠" title="No hay temporadas aún">{canEdit && <p>Creá la primera para empezar a cargar partidas.</p>}</Empty>
       )}
 
       <div className="grid-2">
@@ -94,15 +94,17 @@ export function SeasonsPage() {
             )}
             <div className="row-wrap" style={{ marginTop: 8 }}>
               <Link className="btn btn-ghost" to={`/seasons/${s.id}`}>Ver partidas</Link>
-              <button type="button" className="icon-btn" aria-label={`Renombrar ${s.name}`}
-                onClick={() => { setRenaming(s); setRenameValue(s.name); }}><Emoji>✏️</Emoji></button>
-              {s.status === 'active' && (
+              {canEdit && (
+                <button type="button" className="icon-btn" aria-label={`Renombrar ${s.name}`}
+                  onClick={() => { setRenaming(s); setRenameValue(s.name); }}><Emoji>✏️</Emoji></button>
+              )}
+              {canEdit && s.status === 'active' && (
                 <button type="button" className="icon-btn" aria-label={`Cerrar ${s.name}`} onClick={() => { void close(s); }}><Emoji>🔒</Emoji></button>
               )}
-              {s.status === 'closed' && (
+              {canEdit && s.status === 'closed' && (
                 <button type="button" className="icon-btn" aria-label={`Reabrir ${s.name}`} onClick={() => { void reopen(s); }}><Emoji>↺</Emoji></button>
               )}
-              {s.sessionCount === 0 && (
+              {canEdit && s.sessionCount === 0 && (
                 <button type="button" className="icon-btn" aria-label={`Borrar ${s.name}`} onClick={() => { void remove(s); }}><Emoji>🗑</Emoji></button>
               )}
             </div>
@@ -155,7 +157,7 @@ function defaultPartyName(): string {
 
 export function SeasonSessionsPage() {
   const { seasonId = '' } = useParams();
-  const { path, key, invalidate } = useGroup();
+  const { path, key, invalidate, canEdit } = useGroup();
   const navigate = useNavigate();
   const { confirm, notify } = useFeedback();
   const { busy, run } = useAction();
@@ -221,10 +223,10 @@ export function SeasonSessionsPage() {
       <div className="page-head">
         <h1 className="grow">{season?.name ?? 'Partidas'}</h1>
         <Link className="btn btn-ghost" to={`/ranking?seasonId=${seasonId}`}><Emoji>🏆</Emoji> Ranking</Link>
-        <Btn onClick={() => { setName(defaultPartyName()); setAmount(''); setSelected(new Set()); setOpen(true); }}>+ Nueva partida</Btn>
+        {canEdit && <Btn onClick={() => { setName(defaultPartyName()); setAmount(''); setSelected(new Set()); setOpen(true); }}>+ Nueva partida</Btn>}
       </div>
 
-      {sessions.length === 0 && <Empty icon="🃏" title="No hay partidas aún"><p>Creá la primera con “Nueva partida”.</p></Empty>}
+      {sessions.length === 0 && <Empty icon="🃏" title="No hay partidas aún">{canEdit && <p>Creá la primera con “Nueva partida”.</p>}</Empty>}
 
       <div className="grid-2">
         {sessions.map(s => (
@@ -240,7 +242,7 @@ export function SeasonSessionsPage() {
                 {date(s.createdAt)} · {s.playerCount} jugador{s.playerCount === 1 ? '' : 'es'} · <span className="money">{formatMoney(s.pot)}</span>
               </p>
             </Link>
-            <button type="button" className="icon-btn" aria-label={`Eliminar ${s.name}`} onClick={() => { void remove(s); }}><Emoji>🗑</Emoji></button>
+            {canEdit && <button type="button" className="icon-btn" aria-label={`Eliminar ${s.name}`} onClick={() => { void remove(s); }}><Emoji>🗑</Emoji></button>}
           </div>
         ))}
       </div>

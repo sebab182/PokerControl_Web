@@ -12,8 +12,10 @@ import type { Db } from './repo';
 import { authRoutes } from './routes/auth';
 import { backupRoutes } from './routes/backup';
 import { debtRoutes } from './routes/debts';
-import { groupRoutes, requireMembership } from './routes/groups';
-import { playerRoutes } from './routes/players';
+import { adminRoutes } from './routes/admin';
+import type { Role } from './routes/auth';
+import { groupRoutes, requireEditor, requireMembership } from './routes/groups';
+import { claimPlayerRoutes, playerRoutes } from './routes/players';
 import { seasonRoutes } from './routes/seasons';
 import { sessionRoutes } from './routes/sessions';
 
@@ -37,6 +39,7 @@ declare module 'fastify' {
   }
   interface FastifyRequest {
     group: { id: string; timezone: string };
+    role: Role;
   }
 }
 
@@ -58,6 +61,7 @@ export async function buildApp(options: AppOptions) {
   app.decorate('verifier', options.verifier ?? googleVerifier(options.googleClientIds ?? []));
   app.decorate('rateLimitMax', options.rateLimitMax ?? 10);
   app.decorateRequest('group', null as unknown as { id: string; timezone: string });
+  app.decorateRequest('role', 'reader' as Role);
 
   // La API solo sirve JSON y Swagger UI: la CSP no aplica y rompería /docs.
   await app.register(helmet, { contentSecurityPolicy: false });
@@ -110,14 +114,23 @@ export async function buildApp(options: AppOptions) {
           throw new ApiError(401, 'unauthorized', 'Sesión inválida o vencida.');
         }
       });
+      await authed.register(adminRoutes);
       await authed.register(groupRoutes);
       await authed.register(async scoped => {
-        scoped.addHook('preHandler', requireMembership);
-        await scoped.register(playerRoutes);
-        await scoped.register(seasonRoutes);
-        await scoped.register(sessionRoutes);
-        await scoped.register(debtRoutes);
-        await scoped.register(backupRoutes);
+        // preValidation: una request sin permiso recibe 403 aunque el cuerpo sea inválido.
+        scoped.addHook('preValidation', requireMembership);
+        // Lo único que solo lectura escribe dentro de un grupo: elegir su propio jugador.
+        await scoped.register(claimPlayerRoutes);
+        await scoped.register(async guarded => {
+          guarded.addHook('preValidation', async req => {
+            if (req.method !== 'GET') await requireEditor(req);
+          });
+          await guarded.register(playerRoutes);
+          await guarded.register(seasonRoutes);
+          await guarded.register(sessionRoutes);
+          await guarded.register(debtRoutes);
+          await guarded.register(backupRoutes);
+        });
       }, { prefix: '/groups/:groupId' });
     });
   }, { prefix: '/api/v1' });

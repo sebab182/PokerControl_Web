@@ -70,6 +70,7 @@ paths:
                       - name
                       - email
                       - pictureUrl
+                      - role
                     properties:
                       id:
                         type: string
@@ -80,6 +81,17 @@ paths:
                       pictureUrl:
                         type: string
                         nullable: true
+                      role:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - master
+                          - type: string
+                            enum:
+                              - admin
+                          - type: string
+                            enum:
+                              - reader
                   groups:
                     type: array
                     items:
@@ -89,11 +101,15 @@ paths:
                       required:
                         - id
                         - name
+                        - playerId
                       properties:
                         id:
                           type: string
                         name:
                           type: string
+                        playerId:
+                          type: string
+                          nullable: true
         4XX:
           description: Default Response
           content:
@@ -170,6 +186,7 @@ paths:
                       - name
                       - email
                       - pictureUrl
+                      - role
                     properties:
                       id:
                         type: string
@@ -180,6 +197,17 @@ paths:
                       pictureUrl:
                         type: string
                         nullable: true
+                      role:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - master
+                          - type: string
+                            enum:
+                              - admin
+                          - type: string
+                            enum:
+                              - reader
                   groups:
                     type: array
                     items:
@@ -189,10 +217,254 @@ paths:
                       required:
                         - id
                         - name
+                        - playerId
                       properties:
                         id:
                           type: string
                         name:
+                          type: string
+                        playerId:
+                          type: string
+                          nullable: true
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /api/v1/admin/users:
+    get:
+      tags: &a1
+        - admin
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: AdminOverview
+                type: object
+                required:
+                  - users
+                  - pending
+                properties:
+                  users:
+                    type: array
+                    items:
+                      additionalProperties: false
+                      type: object
+                      required:
+                        - id
+                        - name
+                        - email
+                        - role
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+                        email:
+                          type: string
+                        role:
+                          anyOf:
+                            - type: string
+                              enum:
+                                - master
+                            - type: string
+                              enum:
+                                - admin
+                            - type: string
+                              enum:
+                                - reader
+                  pending:
+                    type: array
+                    items:
+                      additionalProperties: false
+                      type: object
+                      required:
+                        - email
+                        - createdAt
+                      properties:
+                        email:
+                          type: string
+                        createdAt:
+                          type: string
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /api/v1/admin/admins:
+    post:
+      tags: *a1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              type: object
+              required:
+                - email
+              properties:
+                email:
+                  maxLength: 320
+                  pattern: ^[^\s@]+@[^\s@]+$
+                  type: string
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: AdminOverview
+                type: object
+                required:
+                  - users
+                  - pending
+                properties:
+                  users:
+                    type: array
+                    items:
+                      additionalProperties: false
+                      type: object
+                      required:
+                        - id
+                        - name
+                        - email
+                        - role
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+                        email:
+                          type: string
+                        role:
+                          anyOf:
+                            - type: string
+                              enum:
+                                - master
+                            - type: string
+                              enum:
+                                - admin
+                            - type: string
+                              enum:
+                                - reader
+                  pending:
+                    type: array
+                    items:
+                      additionalProperties: false
+                      type: object
+                      required:
+                        - email
+                        - createdAt
+                      properties:
+                        email:
+                          type: string
+                        createdAt:
+                          type: string
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /api/v1/admin/admins/{email}:
+    delete:
+      tags: *a1
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: email
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: AdminOverview
+                type: object
+                required:
+                  - users
+                  - pending
+                properties:
+                  users:
+                    type: array
+                    items:
+                      additionalProperties: false
+                      type: object
+                      required:
+                        - id
+                        - name
+                        - email
+                        - role
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+                        email:
+                          type: string
+                        role:
+                          anyOf:
+                            - type: string
+                              enum:
+                                - master
+                            - type: string
+                              enum:
+                                - admin
+                            - type: string
+                              enum:
+                                - reader
+                  pending:
+                    type: array
+                    items:
+                      additionalProperties: false
+                      type: object
+                      required:
+                        - email
+                        - createdAt
+                      properties:
+                        email:
+                          type: string
+                        createdAt:
                           type: string
         4XX:
           description: Default Response
@@ -228,11 +500,15 @@ paths:
                   required:
                     - id
                     - name
+                    - playerId
                   properties:
                     id:
                       type: string
                     name:
                       type: string
+                    playerId:
+                      type: string
+                      nullable: true
         4XX:
           description: Default Response
           content:
@@ -285,6 +561,7 @@ paths:
                   - inviteCode
                   - timezone
                   - createdAt
+                  - isMember
                   - members
                 properties:
                   id:
@@ -293,10 +570,13 @@ paths:
                     type: string
                   inviteCode:
                     type: string
+                    nullable: true
                   timezone:
                     type: string
                   createdAt:
                     type: string
+                  isMember:
+                    type: boolean
                   members:
                     type: array
                     items:
@@ -306,8 +586,8 @@ paths:
                       required:
                         - id
                         - name
-                        - email
                         - joinedAt
+                        - playerId
                       properties:
                         id:
                           type: string
@@ -317,6 +597,9 @@ paths:
                           type: string
                         joinedAt:
                           type: string
+                        playerId:
+                          type: string
+                          nullable: true
         4XX:
           description: Default Response
           content:
@@ -363,11 +646,15 @@ paths:
                 required:
                   - id
                   - name
+                  - playerId
                 properties:
                   id:
                     type: string
                   name:
                     type: string
+                  playerId:
+                    type: string
+                    nullable: true
         4XX:
           description: Default Response
           content:
@@ -409,6 +696,7 @@ paths:
                   - inviteCode
                   - timezone
                   - createdAt
+                  - isMember
                   - members
                 properties:
                   id:
@@ -417,10 +705,13 @@ paths:
                     type: string
                   inviteCode:
                     type: string
+                    nullable: true
                   timezone:
                     type: string
                   createdAt:
                     type: string
+                  isMember:
+                    type: boolean
                   members:
                     type: array
                     items:
@@ -430,8 +721,8 @@ paths:
                       required:
                         - id
                         - name
-                        - email
                         - joinedAt
+                        - playerId
                       properties:
                         id:
                           type: string
@@ -441,6 +732,9 @@ paths:
                           type: string
                         joinedAt:
                           type: string
+                        playerId:
+                          type: string
+                          nullable: true
         4XX:
           description: Default Response
           content:
@@ -497,6 +791,7 @@ paths:
                   - inviteCode
                   - timezone
                   - createdAt
+                  - isMember
                   - members
                 properties:
                   id:
@@ -505,10 +800,13 @@ paths:
                     type: string
                   inviteCode:
                     type: string
+                    nullable: true
                   timezone:
                     type: string
                   createdAt:
                     type: string
+                  isMember:
+                    type: boolean
                   members:
                     type: array
                     items:
@@ -518,8 +816,8 @@ paths:
                       required:
                         - id
                         - name
-                        - email
                         - joinedAt
+                        - playerId
                       properties:
                         id:
                           type: string
@@ -529,6 +827,9 @@ paths:
                           type: string
                         joinedAt:
                           type: string
+                        playerId:
+                          type: string
+                          nullable: true
         4XX:
           description: Default Response
           content:
@@ -570,6 +871,7 @@ paths:
                   - inviteCode
                   - timezone
                   - createdAt
+                  - isMember
                   - members
                 properties:
                   id:
@@ -578,10 +880,13 @@ paths:
                     type: string
                   inviteCode:
                     type: string
+                    nullable: true
                   timezone:
                     type: string
                   createdAt:
                     type: string
+                  isMember:
+                    type: boolean
                   members:
                     type: array
                     items:
@@ -591,8 +896,8 @@ paths:
                       required:
                         - id
                         - name
-                        - email
                         - joinedAt
+                        - playerId
                       properties:
                         id:
                           type: string
@@ -602,6 +907,9 @@ paths:
                           type: string
                         joinedAt:
                           type: string
+                        playerId:
+                          type: string
+                          nullable: true
         4XX:
           description: Default Response
           content:
@@ -658,9 +966,97 @@ paths:
                     type: string
                   message:
                     type: string
+  /api/v1/groups/{groupId}/me/player:
+    post:
+      tags:
+        - players
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              type: object
+              properties:
+                playerId:
+                  type: string
+                name:
+                  minLength: 1
+                  maxLength: 120
+                  type: string
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: Player
+                type: object
+                required:
+                  - id
+                  - name
+                  - createdAt
+                  - archivedAt
+                  - linked
+                  - adjustments
+                properties:
+                  id:
+                    type: string
+                  name:
+                    type: string
+                  createdAt:
+                    type: string
+                  archivedAt:
+                    type: string
+                    nullable: true
+                  linked:
+                    type: boolean
+                  adjustments:
+                    type: array
+                    items:
+                      additionalProperties: false
+                      title: PlayerAdjustment
+                      type: object
+                      required:
+                        - id
+                        - description
+                        - amount
+                        - date
+                      properties:
+                        id:
+                          type: string
+                        description:
+                          type: string
+                        amount:
+                          type: number
+                        date:
+                          type: string
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
   /api/v1/groups/{groupId}/players:
     get:
-      tags: &a1
+      tags: &a2
         - players
       parameters:
         - schema:
@@ -689,6 +1085,7 @@ paths:
                     - name
                     - createdAt
                     - archivedAt
+                    - linked
                     - adjustments
                   properties:
                     id:
@@ -700,6 +1097,8 @@ paths:
                     archivedAt:
                       type: string
                       nullable: true
+                    linked:
+                      type: boolean
                     adjustments:
                       type: array
                       items:
@@ -737,7 +1136,7 @@ paths:
                   message:
                     type: string
     post:
-      tags: *a1
+      tags: *a2
       requestBody:
         required: true
         content:
@@ -772,6 +1171,7 @@ paths:
                   - name
                   - createdAt
                   - archivedAt
+                  - linked
                   - adjustments
                 properties:
                   id:
@@ -783,6 +1183,99 @@ paths:
                   archivedAt:
                     type: string
                     nullable: true
+                  linked:
+                    type: boolean
+                  adjustments:
+                    type: array
+                    items:
+                      additionalProperties: false
+                      title: PlayerAdjustment
+                      type: object
+                      required:
+                        - id
+                        - description
+                        - amount
+                        - date
+                      properties:
+                        id:
+                          type: string
+                        description:
+                          type: string
+                        amount:
+                          type: number
+                        date:
+                          type: string
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /api/v1/groups/{groupId}/players/{id}/user:
+    post:
+      tags: *a2
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              type: object
+              required:
+                - userId
+              properties:
+                userId:
+                  type: string
+                  nullable: true
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+        - schema:
+            type: string
+          in: path
+          name: id
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: Player
+                type: object
+                required:
+                  - id
+                  - name
+                  - createdAt
+                  - archivedAt
+                  - linked
+                  - adjustments
+                properties:
+                  id:
+                    type: string
+                  name:
+                    type: string
+                  createdAt:
+                    type: string
+                  archivedAt:
+                    type: string
+                    nullable: true
+                  linked:
+                    type: boolean
                   adjustments:
                     type: array
                     items:
@@ -821,7 +1314,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/players/{id}:
     patch:
-      tags: *a1
+      tags: *a2
       requestBody:
         required: true
         content:
@@ -861,6 +1354,7 @@ paths:
                   - name
                   - createdAt
                   - archivedAt
+                  - linked
                   - adjustments
                 properties:
                   id:
@@ -872,6 +1366,8 @@ paths:
                   archivedAt:
                     type: string
                     nullable: true
+                  linked:
+                    type: boolean
                   adjustments:
                     type: array
                     items:
@@ -909,7 +1405,7 @@ paths:
                   message:
                     type: string
     delete:
-      tags: *a1
+      tags: *a2
       parameters:
         - schema:
             type: string
@@ -953,7 +1449,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/players/{id}/unarchive:
     post:
-      tags: *a1
+      tags: *a2
       parameters:
         - schema:
             type: string
@@ -979,6 +1475,7 @@ paths:
                   - name
                   - createdAt
                   - archivedAt
+                  - linked
                   - adjustments
                 properties:
                   id:
@@ -990,6 +1487,8 @@ paths:
                   archivedAt:
                     type: string
                     nullable: true
+                  linked:
+                    type: boolean
                   adjustments:
                     type: array
                     items:
@@ -1028,7 +1527,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/players/{id}/adjustments:
     post:
-      tags: *a1
+      tags: *a2
       requestBody:
         required: true
         content:
@@ -1072,6 +1571,7 @@ paths:
                   - name
                   - createdAt
                   - archivedAt
+                  - linked
                   - adjustments
                 properties:
                   id:
@@ -1083,6 +1583,8 @@ paths:
                   archivedAt:
                     type: string
                     nullable: true
+                  linked:
+                    type: boolean
                   adjustments:
                     type: array
                     items:
@@ -1121,7 +1623,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/players/{id}/adjustments/{adjustmentId}:
     patch:
-      tags: *a1
+      tags: *a2
       requestBody:
         required: true
         content:
@@ -1170,6 +1672,7 @@ paths:
                   - name
                   - createdAt
                   - archivedAt
+                  - linked
                   - adjustments
                 properties:
                   id:
@@ -1181,6 +1684,8 @@ paths:
                   archivedAt:
                     type: string
                     nullable: true
+                  linked:
+                    type: boolean
                   adjustments:
                     type: array
                     items:
@@ -1218,7 +1723,7 @@ paths:
                   message:
                     type: string
     delete:
-      tags: *a1
+      tags: *a2
       parameters:
         - schema:
             type: string
@@ -1267,7 +1772,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/players/{id}/stats:
     get:
-      tags: *a1
+      tags: *a2
       parameters:
         - schema:
             type: string
@@ -1441,7 +1946,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/players/{id}/report:
     get:
-      tags: *a1
+      tags: *a2
       parameters:
         - schema:
             type: string
@@ -1582,7 +2087,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/players/{id}/debts:
     get:
-      tags: *a1
+      tags: *a2
       parameters:
         - schema:
             type: string
@@ -1854,7 +2359,6 @@ paths:
                   required:
                     - playerId
                     - name
-                    - archived
                     - totalGames
                     - wins
                     - losses
@@ -1873,8 +2377,6 @@ paths:
                       type: string
                     name:
                       type: string
-                    archived:
-                      type: boolean
                     totalGames:
                       type: number
                     wins:
@@ -2007,7 +2509,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/seasons:
     get:
-      tags: &a2
+      tags: &a3
         - seasons
       parameters:
         - schema:
@@ -2089,7 +2591,7 @@ paths:
                   message:
                     type: string
     post:
-      tags: *a2
+      tags: *a3
       requestBody:
         required: true
         content:
@@ -2180,7 +2682,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/seasons/{id}:
     patch:
-      tags: *a2
+      tags: *a3
       requestBody:
         required: true
         content:
@@ -2278,7 +2780,7 @@ paths:
                   message:
                     type: string
     delete:
-      tags: *a2
+      tags: *a3
       parameters:
         - schema:
             type: string
@@ -2322,7 +2824,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/seasons/{id}/close:
     post:
-      tags: *a2
+      tags: *a3
       parameters:
         - schema:
             type: string
@@ -2407,7 +2909,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/seasons/{id}/reopen:
     post:
-      tags: *a2
+      tags: *a3
       parameters:
         - schema:
             type: string
@@ -2492,7 +2994,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/seasons/{seasonId}/sessions:
     get:
-      tags: &a3
+      tags: &a4
         - sessions
       parameters:
         - schema:
@@ -2559,7 +3061,7 @@ paths:
                   message:
                     type: string
     post:
-      tags: *a3
+      tags: *a4
       requestBody:
         required: true
         content:
@@ -2716,7 +3218,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/sessions/{id}:
     get:
-      tags: *a3
+      tags: *a4
       parameters:
         - schema:
             type: string
@@ -2851,7 +3353,7 @@ paths:
                   message:
                     type: string
     delete:
-      tags: *a3
+      tags: *a4
       parameters:
         - schema:
             type: string
@@ -2895,7 +3397,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/sessions/{id}/participants:
     post:
-      tags: *a3
+      tags: *a4
       requestBody:
         required: true
         content:
@@ -3043,7 +3545,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/sessions/{id}/participants/{playerId}:
     delete:
-      tags: *a3
+      tags: *a4
       parameters:
         - schema:
             type: string
@@ -3183,7 +3685,7 @@ paths:
                   message:
                     type: string
     patch:
-      tags: *a3
+      tags: *a4
       requestBody:
         required: true
         content:
@@ -3338,7 +3840,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/sessions/{id}/buys:
     post:
-      tags: *a3
+      tags: *a4
       requestBody:
         required: true
         content:
@@ -3491,7 +3993,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/sessions/{id}/buys/{buyId}:
     delete:
-      tags: *a3
+      tags: *a4
       parameters:
         - schema:
             type: string
@@ -3632,7 +4134,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/sessions/{id}/close:
     post:
-      tags: *a3
+      tags: *a4
       requestBody:
         required: true
         content:
@@ -3887,7 +4389,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/sessions/{id}/debts:
     get:
-      tags: *a3
+      tags: *a4
       parameters:
         - schema:
             type: string
@@ -4091,7 +4593,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/debts:
     get:
-      tags: &a4
+      tags: &a5
         - debts
       parameters:
         - schema:
@@ -4242,7 +4744,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/debts/pending-by-debtor:
     get:
-      tags: *a4
+      tags: *a5
       parameters:
         - schema:
             type: string
@@ -4398,7 +4900,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/debts/reorganize-status:
     get:
-      tags: *a4
+      tags: *a5
       parameters:
         - schema:
             type: string
@@ -4454,7 +4956,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/debts/{id}/payments:
     post:
-      tags: *a4
+      tags: *a5
       requestBody:
         required: true
         content:
@@ -4605,7 +5107,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/debts/{id}/mark-paid:
     post:
-      tags: *a4
+      tags: *a5
       parameters:
         - schema:
             type: string
@@ -4739,7 +5241,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/debts/mark-paid:
     post:
-      tags: *a4
+      tags: *a5
       requestBody:
         required: true
         content:
@@ -4885,7 +5387,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/debts/manual:
     post:
-      tags: *a4
+      tags: *a5
       requestBody:
         required: true
         content:
@@ -5039,7 +5541,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/debts/manual/{id}:
     delete:
-      tags: *a4
+      tags: *a5
       parameters:
         - schema:
             type: string
@@ -5083,7 +5585,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/debts/renet:
     post:
-      tags: *a4
+      tags: *a5
       parameters:
         - schema:
             type: string
@@ -5214,7 +5716,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/debts/renet/undo:
     post:
-      tags: *a4
+      tags: *a5
       parameters:
         - schema:
             type: string
@@ -5345,7 +5847,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/backup/export:
     get:
-      tags: &a5
+      tags: &a6
         - backup
       parameters:
         - schema:
@@ -5377,7 +5879,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/backup/import:
     post:
-      tags: *a5
+      tags: *a6
       requestBody:
         required: true
         content:

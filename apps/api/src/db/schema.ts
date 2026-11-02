@@ -25,6 +25,17 @@ export const users = pgTable('users', {
   email: text('email').notNull(),
   name: text('name').notNull(),
   pictureUrl: text('picture_url'),
+  role: text('role').notNull().default('reader').$type<'master' | 'admin' | 'reader'>(),
+  createdAt: ts('created_at').notNull().defaultNow(),
+}, t => [
+  check('ck_users_role', sql`${t.role} in ('master', 'admin', 'reader')`),
+  uniqueIndex('idx_users_single_master').on(t.role).where(sql`role = 'master'`),
+]);
+
+/** Admins nombrados por email antes de su primer login. */
+export const adminGrants = pgTable('admin_grants', {
+  email: text('email').primaryKey(),
+  grantedBy: text('granted_by').notNull().references(() => users.id, { onDelete: 'cascade' }),
   createdAt: ts('created_at').notNull().defaultNow(),
 });
 
@@ -47,10 +58,12 @@ export const players = pgTable('players', {
   id: text('id').primaryKey(),
   groupId: text('group_id').notNull().references(() => groups.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
+  userId: text('user_id').references(() => users.id, { onDelete: 'set null' }),
   createdAt: ts('created_at').notNull().defaultNow(),
   archivedAt: ts('archived_at'),
 }, t => [
   unique('uq_players_group_id').on(t.groupId, t.id),
+  uniqueIndex('idx_players_group_user').on(t.groupId, t.userId),
   index('idx_players_group_archived').on(t.groupId, t.archivedAt),
 ]);
 

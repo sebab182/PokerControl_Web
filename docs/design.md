@@ -62,7 +62,8 @@ Reglas de accesibilidad:
 4. Los participantes sin resultado quedan fuera de las deudas.
 5. Las partidas cerradas no se reabren ni se editan.
 6. Con historial, un jugador se archiva; sin historial, se borra. Renombrarlo cambia también su pasado.
-7. Un archivado sigue en ranking y líderes, y no se puede sumar a partidas ni deudas manuales.
+7. Un archivado sale de ranking y líderes, sigue en partidas pasadas y deudas, y no se puede sumar a partidas ni deudas manuales.
+8. Roles globales: master (el primer usuario, nombra admins por email), admin (ve todos los grupos y modifica datos) y solo lectura (entra con invitación y elige su jugador). Ver [`apk-integration.md`](./apk-integration.md#roles).
 8. Una consolidada acumula los pagos heredados y su estado es `partial`.
 9. Solo la parte manual de una deuda (`manualAmount`) cuenta en `manualDebtsNet`.
 

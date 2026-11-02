@@ -8,6 +8,13 @@
       "when": 1793562831243,
       "tag": "0000_public_unicorn",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1793579529269,
+      "tag": "0001_wakeful_nighthawk",
+      "breakpoints": true
     }
   ]
 }
