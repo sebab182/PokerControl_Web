@@ -18,6 +18,7 @@ import { groupRoutes, requireEditor, requireMembership } from './routes/groups';
 import { claimPlayerRoutes, playerRoutes } from './routes/players';
 import { seasonRoutes } from './routes/seasons';
 import { sessionRoutes } from './routes/sessions';
+import { tableRoutes } from './routes/table';
 
 export interface AppOptions {
   db: Db;
@@ -121,6 +122,8 @@ export async function buildApp(options: AppOptions) {
         scoped.addHook('preValidation', requireMembership);
         // Lo único que solo lectura escribe dentro de un grupo: elegir su propio jugador.
         await scoped.register(claimPlayerRoutes);
+        // La mesa online la juega cualquier miembro (incluido solo lectura): no exige editor.
+        await scoped.register(tableRoutes);
         await scoped.register(async guarded => {
           guarded.addHook('preValidation', async req => {
             if (req.method !== 'GET') await requireEditor(req);

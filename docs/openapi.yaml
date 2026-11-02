@@ -1054,9 +1054,2065 @@ paths:
                     type: string
                   message:
                     type: string
-  /api/v1/groups/{groupId}/players:
+  /api/v1/groups/{groupId}/table:
     get:
       tags: &a2
+        - table
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: TableView
+                type: object
+                required:
+                  - id
+                  - status
+                  - sessionId
+                  - smallBlind
+                  - bigBlind
+                  - buyIn
+                  - version
+                  - seats
+                  - myPlayerId
+                  - hand
+                properties:
+                  id:
+                    type: string
+                  status:
+                    anyOf:
+                      - type: string
+                        enum:
+                          - waiting
+                      - type: string
+                        enum:
+                          - playing
+                  sessionId:
+                    type: string
+                    nullable: true
+                  smallBlind:
+                    type: integer
+                  bigBlind:
+                    type: integer
+                  buyIn:
+                    type: integer
+                  version:
+                    type: integer
+                  seats:
+                    type: array
+                    items:
+                      additionalProperties: false
+                      title: TableSeat
+                      type: object
+                      required:
+                        - playerId
+                        - name
+                        - stack
+                        - status
+                        - online
+                        - isYou
+                      properties:
+                        playerId:
+                          type: string
+                        name:
+                          type: string
+                        stack:
+                          type: integer
+                        status:
+                          anyOf:
+                            - type: string
+                              enum:
+                                - sitting
+                            - type: string
+                              enum:
+                                - out
+                        online:
+                          type: boolean
+                        isYou:
+                          type: boolean
+                  myPlayerId:
+                    type: string
+                    nullable: true
+                  hand:
+                    additionalProperties: false
+                    title: HandView
+                    type: object
+                    required:
+                      - handNo
+                      - street
+                      - board
+                      - pot
+                      - currentBet
+                      - minRaise
+                      - button
+                      - toActPlayerId
+                      - players
+                      - legal
+                      - payouts
+                      - showdown
+                    properties:
+                      handNo:
+                        type: integer
+                      street:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - preflop
+                          - type: string
+                            enum:
+                              - flop
+                          - type: string
+                            enum:
+                              - turn
+                          - type: string
+                            enum:
+                              - river
+                          - type: string
+                            enum:
+                              - done
+                      board:
+                        type: array
+                        items:
+                          type: string
+                      pot:
+                        type: integer
+                      currentBet:
+                        type: integer
+                      minRaise:
+                        type: integer
+                      button:
+                        type: integer
+                      toActPlayerId:
+                        type: string
+                        nullable: true
+                      players:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          title: HandPlayerView
+                          type: object
+                          required:
+                            - playerId
+                            - stack
+                            - bet
+                            - totalBet
+                            - folded
+                            - allIn
+                            - hole
+                          properties:
+                            playerId:
+                              type: string
+                            stack:
+                              type: integer
+                            bet:
+                              type: integer
+                            totalBet:
+                              type: integer
+                            folded:
+                              type: boolean
+                            allIn:
+                              type: boolean
+                            hole:
+                              type: array
+                              items:
+                                type: string
+                      legal:
+                        additionalProperties: false
+                        title: LegalActions
+                        type: object
+                        required:
+                          - toCall
+                          - canCheck
+                          - canCall
+                          - callAmount
+                          - canRaise
+                          - minRaiseTo
+                          - maxRaiseTo
+                        properties:
+                          toCall:
+                            type: integer
+                          canCheck:
+                            type: boolean
+                          canCall:
+                            type: boolean
+                          callAmount:
+                            type: integer
+                          canRaise:
+                            type: boolean
+                          minRaiseTo:
+                            type: integer
+                          maxRaiseTo:
+                            type: integer
+                        nullable: true
+                      payouts:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - playerId
+                            - amount
+                          properties:
+                            playerId:
+                              type: string
+                            amount:
+                              type: integer
+                      showdown:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - playerId
+                            - hole
+                            - handName
+                          properties:
+                            playerId:
+                              type: string
+                            hole:
+                              type: array
+                              items:
+                                type: string
+                            handName:
+                              type: string
+                    nullable: true
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /api/v1/groups/{groupId}/table/join:
+    post:
+      tags: *a2
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: TableView
+                type: object
+                required:
+                  - id
+                  - status
+                  - sessionId
+                  - smallBlind
+                  - bigBlind
+                  - buyIn
+                  - version
+                  - seats
+                  - myPlayerId
+                  - hand
+                properties:
+                  id:
+                    type: string
+                  status:
+                    anyOf:
+                      - type: string
+                        enum:
+                          - waiting
+                      - type: string
+                        enum:
+                          - playing
+                  sessionId:
+                    type: string
+                    nullable: true
+                  smallBlind:
+                    type: integer
+                  bigBlind:
+                    type: integer
+                  buyIn:
+                    type: integer
+                  version:
+                    type: integer
+                  seats:
+                    type: array
+                    items:
+                      additionalProperties: false
+                      title: TableSeat
+                      type: object
+                      required:
+                        - playerId
+                        - name
+                        - stack
+                        - status
+                        - online
+                        - isYou
+                      properties:
+                        playerId:
+                          type: string
+                        name:
+                          type: string
+                        stack:
+                          type: integer
+                        status:
+                          anyOf:
+                            - type: string
+                              enum:
+                                - sitting
+                            - type: string
+                              enum:
+                                - out
+                        online:
+                          type: boolean
+                        isYou:
+                          type: boolean
+                  myPlayerId:
+                    type: string
+                    nullable: true
+                  hand:
+                    additionalProperties: false
+                    title: HandView
+                    type: object
+                    required:
+                      - handNo
+                      - street
+                      - board
+                      - pot
+                      - currentBet
+                      - minRaise
+                      - button
+                      - toActPlayerId
+                      - players
+                      - legal
+                      - payouts
+                      - showdown
+                    properties:
+                      handNo:
+                        type: integer
+                      street:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - preflop
+                          - type: string
+                            enum:
+                              - flop
+                          - type: string
+                            enum:
+                              - turn
+                          - type: string
+                            enum:
+                              - river
+                          - type: string
+                            enum:
+                              - done
+                      board:
+                        type: array
+                        items:
+                          type: string
+                      pot:
+                        type: integer
+                      currentBet:
+                        type: integer
+                      minRaise:
+                        type: integer
+                      button:
+                        type: integer
+                      toActPlayerId:
+                        type: string
+                        nullable: true
+                      players:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          title: HandPlayerView
+                          type: object
+                          required:
+                            - playerId
+                            - stack
+                            - bet
+                            - totalBet
+                            - folded
+                            - allIn
+                            - hole
+                          properties:
+                            playerId:
+                              type: string
+                            stack:
+                              type: integer
+                            bet:
+                              type: integer
+                            totalBet:
+                              type: integer
+                            folded:
+                              type: boolean
+                            allIn:
+                              type: boolean
+                            hole:
+                              type: array
+                              items:
+                                type: string
+                      legal:
+                        additionalProperties: false
+                        title: LegalActions
+                        type: object
+                        required:
+                          - toCall
+                          - canCheck
+                          - canCall
+                          - callAmount
+                          - canRaise
+                          - minRaiseTo
+                          - maxRaiseTo
+                        properties:
+                          toCall:
+                            type: integer
+                          canCheck:
+                            type: boolean
+                          canCall:
+                            type: boolean
+                          callAmount:
+                            type: integer
+                          canRaise:
+                            type: boolean
+                          minRaiseTo:
+                            type: integer
+                          maxRaiseTo:
+                            type: integer
+                        nullable: true
+                      payouts:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - playerId
+                            - amount
+                          properties:
+                            playerId:
+                              type: string
+                            amount:
+                              type: integer
+                      showdown:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - playerId
+                            - hole
+                            - handName
+                          properties:
+                            playerId:
+                              type: string
+                            hole:
+                              type: array
+                              items:
+                                type: string
+                            handName:
+                              type: string
+                    nullable: true
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /api/v1/groups/{groupId}/table/leave:
+    post:
+      tags: *a2
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: TableView
+                type: object
+                required:
+                  - id
+                  - status
+                  - sessionId
+                  - smallBlind
+                  - bigBlind
+                  - buyIn
+                  - version
+                  - seats
+                  - myPlayerId
+                  - hand
+                properties:
+                  id:
+                    type: string
+                  status:
+                    anyOf:
+                      - type: string
+                        enum:
+                          - waiting
+                      - type: string
+                        enum:
+                          - playing
+                  sessionId:
+                    type: string
+                    nullable: true
+                  smallBlind:
+                    type: integer
+                  bigBlind:
+                    type: integer
+                  buyIn:
+                    type: integer
+                  version:
+                    type: integer
+                  seats:
+                    type: array
+                    items:
+                      additionalProperties: false
+                      title: TableSeat
+                      type: object
+                      required:
+                        - playerId
+                        - name
+                        - stack
+                        - status
+                        - online
+                        - isYou
+                      properties:
+                        playerId:
+                          type: string
+                        name:
+                          type: string
+                        stack:
+                          type: integer
+                        status:
+                          anyOf:
+                            - type: string
+                              enum:
+                                - sitting
+                            - type: string
+                              enum:
+                                - out
+                        online:
+                          type: boolean
+                        isYou:
+                          type: boolean
+                  myPlayerId:
+                    type: string
+                    nullable: true
+                  hand:
+                    additionalProperties: false
+                    title: HandView
+                    type: object
+                    required:
+                      - handNo
+                      - street
+                      - board
+                      - pot
+                      - currentBet
+                      - minRaise
+                      - button
+                      - toActPlayerId
+                      - players
+                      - legal
+                      - payouts
+                      - showdown
+                    properties:
+                      handNo:
+                        type: integer
+                      street:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - preflop
+                          - type: string
+                            enum:
+                              - flop
+                          - type: string
+                            enum:
+                              - turn
+                          - type: string
+                            enum:
+                              - river
+                          - type: string
+                            enum:
+                              - done
+                      board:
+                        type: array
+                        items:
+                          type: string
+                      pot:
+                        type: integer
+                      currentBet:
+                        type: integer
+                      minRaise:
+                        type: integer
+                      button:
+                        type: integer
+                      toActPlayerId:
+                        type: string
+                        nullable: true
+                      players:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          title: HandPlayerView
+                          type: object
+                          required:
+                            - playerId
+                            - stack
+                            - bet
+                            - totalBet
+                            - folded
+                            - allIn
+                            - hole
+                          properties:
+                            playerId:
+                              type: string
+                            stack:
+                              type: integer
+                            bet:
+                              type: integer
+                            totalBet:
+                              type: integer
+                            folded:
+                              type: boolean
+                            allIn:
+                              type: boolean
+                            hole:
+                              type: array
+                              items:
+                                type: string
+                      legal:
+                        additionalProperties: false
+                        title: LegalActions
+                        type: object
+                        required:
+                          - toCall
+                          - canCheck
+                          - canCall
+                          - callAmount
+                          - canRaise
+                          - minRaiseTo
+                          - maxRaiseTo
+                        properties:
+                          toCall:
+                            type: integer
+                          canCheck:
+                            type: boolean
+                          canCall:
+                            type: boolean
+                          callAmount:
+                            type: integer
+                          canRaise:
+                            type: boolean
+                          minRaiseTo:
+                            type: integer
+                          maxRaiseTo:
+                            type: integer
+                        nullable: true
+                      payouts:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - playerId
+                            - amount
+                          properties:
+                            playerId:
+                              type: string
+                            amount:
+                              type: integer
+                      showdown:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - playerId
+                            - hole
+                            - handName
+                          properties:
+                            playerId:
+                              type: string
+                            hole:
+                              type: array
+                              items:
+                                type: string
+                            handName:
+                              type: string
+                    nullable: true
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /api/v1/groups/{groupId}/table/start:
+    post:
+      tags: *a2
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              type: object
+              properties:
+                smallBlind:
+                  minimum: 1
+                  maximum: 1000000000
+                  type: integer
+                bigBlind:
+                  minimum: 1
+                  maximum: 1000000000
+                  type: integer
+                buyIn:
+                  minimum: 1
+                  maximum: 1000000000
+                  type: integer
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: TableView
+                type: object
+                required:
+                  - id
+                  - status
+                  - sessionId
+                  - smallBlind
+                  - bigBlind
+                  - buyIn
+                  - version
+                  - seats
+                  - myPlayerId
+                  - hand
+                properties:
+                  id:
+                    type: string
+                  status:
+                    anyOf:
+                      - type: string
+                        enum:
+                          - waiting
+                      - type: string
+                        enum:
+                          - playing
+                  sessionId:
+                    type: string
+                    nullable: true
+                  smallBlind:
+                    type: integer
+                  bigBlind:
+                    type: integer
+                  buyIn:
+                    type: integer
+                  version:
+                    type: integer
+                  seats:
+                    type: array
+                    items:
+                      additionalProperties: false
+                      title: TableSeat
+                      type: object
+                      required:
+                        - playerId
+                        - name
+                        - stack
+                        - status
+                        - online
+                        - isYou
+                      properties:
+                        playerId:
+                          type: string
+                        name:
+                          type: string
+                        stack:
+                          type: integer
+                        status:
+                          anyOf:
+                            - type: string
+                              enum:
+                                - sitting
+                            - type: string
+                              enum:
+                                - out
+                        online:
+                          type: boolean
+                        isYou:
+                          type: boolean
+                  myPlayerId:
+                    type: string
+                    nullable: true
+                  hand:
+                    additionalProperties: false
+                    title: HandView
+                    type: object
+                    required:
+                      - handNo
+                      - street
+                      - board
+                      - pot
+                      - currentBet
+                      - minRaise
+                      - button
+                      - toActPlayerId
+                      - players
+                      - legal
+                      - payouts
+                      - showdown
+                    properties:
+                      handNo:
+                        type: integer
+                      street:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - preflop
+                          - type: string
+                            enum:
+                              - flop
+                          - type: string
+                            enum:
+                              - turn
+                          - type: string
+                            enum:
+                              - river
+                          - type: string
+                            enum:
+                              - done
+                      board:
+                        type: array
+                        items:
+                          type: string
+                      pot:
+                        type: integer
+                      currentBet:
+                        type: integer
+                      minRaise:
+                        type: integer
+                      button:
+                        type: integer
+                      toActPlayerId:
+                        type: string
+                        nullable: true
+                      players:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          title: HandPlayerView
+                          type: object
+                          required:
+                            - playerId
+                            - stack
+                            - bet
+                            - totalBet
+                            - folded
+                            - allIn
+                            - hole
+                          properties:
+                            playerId:
+                              type: string
+                            stack:
+                              type: integer
+                            bet:
+                              type: integer
+                            totalBet:
+                              type: integer
+                            folded:
+                              type: boolean
+                            allIn:
+                              type: boolean
+                            hole:
+                              type: array
+                              items:
+                                type: string
+                      legal:
+                        additionalProperties: false
+                        title: LegalActions
+                        type: object
+                        required:
+                          - toCall
+                          - canCheck
+                          - canCall
+                          - callAmount
+                          - canRaise
+                          - minRaiseTo
+                          - maxRaiseTo
+                        properties:
+                          toCall:
+                            type: integer
+                          canCheck:
+                            type: boolean
+                          canCall:
+                            type: boolean
+                          callAmount:
+                            type: integer
+                          canRaise:
+                            type: boolean
+                          minRaiseTo:
+                            type: integer
+                          maxRaiseTo:
+                            type: integer
+                        nullable: true
+                      payouts:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - playerId
+                            - amount
+                          properties:
+                            playerId:
+                              type: string
+                            amount:
+                              type: integer
+                      showdown:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - playerId
+                            - hole
+                            - handName
+                          properties:
+                            playerId:
+                              type: string
+                            hole:
+                              type: array
+                              items:
+                                type: string
+                            handName:
+                              type: string
+                    nullable: true
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /api/v1/groups/{groupId}/table/deal:
+    post:
+      tags: *a2
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: TableView
+                type: object
+                required:
+                  - id
+                  - status
+                  - sessionId
+                  - smallBlind
+                  - bigBlind
+                  - buyIn
+                  - version
+                  - seats
+                  - myPlayerId
+                  - hand
+                properties:
+                  id:
+                    type: string
+                  status:
+                    anyOf:
+                      - type: string
+                        enum:
+                          - waiting
+                      - type: string
+                        enum:
+                          - playing
+                  sessionId:
+                    type: string
+                    nullable: true
+                  smallBlind:
+                    type: integer
+                  bigBlind:
+                    type: integer
+                  buyIn:
+                    type: integer
+                  version:
+                    type: integer
+                  seats:
+                    type: array
+                    items:
+                      additionalProperties: false
+                      title: TableSeat
+                      type: object
+                      required:
+                        - playerId
+                        - name
+                        - stack
+                        - status
+                        - online
+                        - isYou
+                      properties:
+                        playerId:
+                          type: string
+                        name:
+                          type: string
+                        stack:
+                          type: integer
+                        status:
+                          anyOf:
+                            - type: string
+                              enum:
+                                - sitting
+                            - type: string
+                              enum:
+                                - out
+                        online:
+                          type: boolean
+                        isYou:
+                          type: boolean
+                  myPlayerId:
+                    type: string
+                    nullable: true
+                  hand:
+                    additionalProperties: false
+                    title: HandView
+                    type: object
+                    required:
+                      - handNo
+                      - street
+                      - board
+                      - pot
+                      - currentBet
+                      - minRaise
+                      - button
+                      - toActPlayerId
+                      - players
+                      - legal
+                      - payouts
+                      - showdown
+                    properties:
+                      handNo:
+                        type: integer
+                      street:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - preflop
+                          - type: string
+                            enum:
+                              - flop
+                          - type: string
+                            enum:
+                              - turn
+                          - type: string
+                            enum:
+                              - river
+                          - type: string
+                            enum:
+                              - done
+                      board:
+                        type: array
+                        items:
+                          type: string
+                      pot:
+                        type: integer
+                      currentBet:
+                        type: integer
+                      minRaise:
+                        type: integer
+                      button:
+                        type: integer
+                      toActPlayerId:
+                        type: string
+                        nullable: true
+                      players:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          title: HandPlayerView
+                          type: object
+                          required:
+                            - playerId
+                            - stack
+                            - bet
+                            - totalBet
+                            - folded
+                            - allIn
+                            - hole
+                          properties:
+                            playerId:
+                              type: string
+                            stack:
+                              type: integer
+                            bet:
+                              type: integer
+                            totalBet:
+                              type: integer
+                            folded:
+                              type: boolean
+                            allIn:
+                              type: boolean
+                            hole:
+                              type: array
+                              items:
+                                type: string
+                      legal:
+                        additionalProperties: false
+                        title: LegalActions
+                        type: object
+                        required:
+                          - toCall
+                          - canCheck
+                          - canCall
+                          - callAmount
+                          - canRaise
+                          - minRaiseTo
+                          - maxRaiseTo
+                        properties:
+                          toCall:
+                            type: integer
+                          canCheck:
+                            type: boolean
+                          canCall:
+                            type: boolean
+                          callAmount:
+                            type: integer
+                          canRaise:
+                            type: boolean
+                          minRaiseTo:
+                            type: integer
+                          maxRaiseTo:
+                            type: integer
+                        nullable: true
+                      payouts:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - playerId
+                            - amount
+                          properties:
+                            playerId:
+                              type: string
+                            amount:
+                              type: integer
+                      showdown:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - playerId
+                            - hole
+                            - handName
+                          properties:
+                            playerId:
+                              type: string
+                            hole:
+                              type: array
+                              items:
+                                type: string
+                            handName:
+                              type: string
+                    nullable: true
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /api/v1/groups/{groupId}/table/action:
+    post:
+      tags: *a2
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              type: object
+              required:
+                - version
+                - action
+              properties:
+                version:
+                  type: integer
+                action:
+                  anyOf:
+                    - additionalProperties: false
+                      type: object
+                      required:
+                        - type
+                      properties:
+                        type:
+                          type: string
+                          enum:
+                            - fold
+                    - additionalProperties: false
+                      type: object
+                      required:
+                        - type
+                      properties:
+                        type:
+                          type: string
+                          enum:
+                            - check
+                    - additionalProperties: false
+                      type: object
+                      required:
+                        - type
+                      properties:
+                        type:
+                          type: string
+                          enum:
+                            - call
+                    - additionalProperties: false
+                      type: object
+                      required:
+                        - type
+                      properties:
+                        type:
+                          type: string
+                          enum:
+                            - allin
+                    - additionalProperties: false
+                      type: object
+                      required:
+                        - type
+                        - to
+                      properties:
+                        type:
+                          type: string
+                          enum:
+                            - raise
+                        to:
+                          minimum: 1
+                          maximum: 1000000000
+                          type: integer
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: TableView
+                type: object
+                required:
+                  - id
+                  - status
+                  - sessionId
+                  - smallBlind
+                  - bigBlind
+                  - buyIn
+                  - version
+                  - seats
+                  - myPlayerId
+                  - hand
+                properties:
+                  id:
+                    type: string
+                  status:
+                    anyOf:
+                      - type: string
+                        enum:
+                          - waiting
+                      - type: string
+                        enum:
+                          - playing
+                  sessionId:
+                    type: string
+                    nullable: true
+                  smallBlind:
+                    type: integer
+                  bigBlind:
+                    type: integer
+                  buyIn:
+                    type: integer
+                  version:
+                    type: integer
+                  seats:
+                    type: array
+                    items:
+                      additionalProperties: false
+                      title: TableSeat
+                      type: object
+                      required:
+                        - playerId
+                        - name
+                        - stack
+                        - status
+                        - online
+                        - isYou
+                      properties:
+                        playerId:
+                          type: string
+                        name:
+                          type: string
+                        stack:
+                          type: integer
+                        status:
+                          anyOf:
+                            - type: string
+                              enum:
+                                - sitting
+                            - type: string
+                              enum:
+                                - out
+                        online:
+                          type: boolean
+                        isYou:
+                          type: boolean
+                  myPlayerId:
+                    type: string
+                    nullable: true
+                  hand:
+                    additionalProperties: false
+                    title: HandView
+                    type: object
+                    required:
+                      - handNo
+                      - street
+                      - board
+                      - pot
+                      - currentBet
+                      - minRaise
+                      - button
+                      - toActPlayerId
+                      - players
+                      - legal
+                      - payouts
+                      - showdown
+                    properties:
+                      handNo:
+                        type: integer
+                      street:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - preflop
+                          - type: string
+                            enum:
+                              - flop
+                          - type: string
+                            enum:
+                              - turn
+                          - type: string
+                            enum:
+                              - river
+                          - type: string
+                            enum:
+                              - done
+                      board:
+                        type: array
+                        items:
+                          type: string
+                      pot:
+                        type: integer
+                      currentBet:
+                        type: integer
+                      minRaise:
+                        type: integer
+                      button:
+                        type: integer
+                      toActPlayerId:
+                        type: string
+                        nullable: true
+                      players:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          title: HandPlayerView
+                          type: object
+                          required:
+                            - playerId
+                            - stack
+                            - bet
+                            - totalBet
+                            - folded
+                            - allIn
+                            - hole
+                          properties:
+                            playerId:
+                              type: string
+                            stack:
+                              type: integer
+                            bet:
+                              type: integer
+                            totalBet:
+                              type: integer
+                            folded:
+                              type: boolean
+                            allIn:
+                              type: boolean
+                            hole:
+                              type: array
+                              items:
+                                type: string
+                      legal:
+                        additionalProperties: false
+                        title: LegalActions
+                        type: object
+                        required:
+                          - toCall
+                          - canCheck
+                          - canCall
+                          - callAmount
+                          - canRaise
+                          - minRaiseTo
+                          - maxRaiseTo
+                        properties:
+                          toCall:
+                            type: integer
+                          canCheck:
+                            type: boolean
+                          canCall:
+                            type: boolean
+                          callAmount:
+                            type: integer
+                          canRaise:
+                            type: boolean
+                          minRaiseTo:
+                            type: integer
+                          maxRaiseTo:
+                            type: integer
+                        nullable: true
+                      payouts:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - playerId
+                            - amount
+                          properties:
+                            playerId:
+                              type: string
+                            amount:
+                              type: integer
+                      showdown:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - playerId
+                            - hole
+                            - handName
+                          properties:
+                            playerId:
+                              type: string
+                            hole:
+                              type: array
+                              items:
+                                type: string
+                            handName:
+                              type: string
+                    nullable: true
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /api/v1/groups/{groupId}/table/rebuy:
+    post:
+      tags: *a2
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: TableView
+                type: object
+                required:
+                  - id
+                  - status
+                  - sessionId
+                  - smallBlind
+                  - bigBlind
+                  - buyIn
+                  - version
+                  - seats
+                  - myPlayerId
+                  - hand
+                properties:
+                  id:
+                    type: string
+                  status:
+                    anyOf:
+                      - type: string
+                        enum:
+                          - waiting
+                      - type: string
+                        enum:
+                          - playing
+                  sessionId:
+                    type: string
+                    nullable: true
+                  smallBlind:
+                    type: integer
+                  bigBlind:
+                    type: integer
+                  buyIn:
+                    type: integer
+                  version:
+                    type: integer
+                  seats:
+                    type: array
+                    items:
+                      additionalProperties: false
+                      title: TableSeat
+                      type: object
+                      required:
+                        - playerId
+                        - name
+                        - stack
+                        - status
+                        - online
+                        - isYou
+                      properties:
+                        playerId:
+                          type: string
+                        name:
+                          type: string
+                        stack:
+                          type: integer
+                        status:
+                          anyOf:
+                            - type: string
+                              enum:
+                                - sitting
+                            - type: string
+                              enum:
+                                - out
+                        online:
+                          type: boolean
+                        isYou:
+                          type: boolean
+                  myPlayerId:
+                    type: string
+                    nullable: true
+                  hand:
+                    additionalProperties: false
+                    title: HandView
+                    type: object
+                    required:
+                      - handNo
+                      - street
+                      - board
+                      - pot
+                      - currentBet
+                      - minRaise
+                      - button
+                      - toActPlayerId
+                      - players
+                      - legal
+                      - payouts
+                      - showdown
+                    properties:
+                      handNo:
+                        type: integer
+                      street:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - preflop
+                          - type: string
+                            enum:
+                              - flop
+                          - type: string
+                            enum:
+                              - turn
+                          - type: string
+                            enum:
+                              - river
+                          - type: string
+                            enum:
+                              - done
+                      board:
+                        type: array
+                        items:
+                          type: string
+                      pot:
+                        type: integer
+                      currentBet:
+                        type: integer
+                      minRaise:
+                        type: integer
+                      button:
+                        type: integer
+                      toActPlayerId:
+                        type: string
+                        nullable: true
+                      players:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          title: HandPlayerView
+                          type: object
+                          required:
+                            - playerId
+                            - stack
+                            - bet
+                            - totalBet
+                            - folded
+                            - allIn
+                            - hole
+                          properties:
+                            playerId:
+                              type: string
+                            stack:
+                              type: integer
+                            bet:
+                              type: integer
+                            totalBet:
+                              type: integer
+                            folded:
+                              type: boolean
+                            allIn:
+                              type: boolean
+                            hole:
+                              type: array
+                              items:
+                                type: string
+                      legal:
+                        additionalProperties: false
+                        title: LegalActions
+                        type: object
+                        required:
+                          - toCall
+                          - canCheck
+                          - canCall
+                          - callAmount
+                          - canRaise
+                          - minRaiseTo
+                          - maxRaiseTo
+                        properties:
+                          toCall:
+                            type: integer
+                          canCheck:
+                            type: boolean
+                          canCall:
+                            type: boolean
+                          callAmount:
+                            type: integer
+                          canRaise:
+                            type: boolean
+                          minRaiseTo:
+                            type: integer
+                          maxRaiseTo:
+                            type: integer
+                        nullable: true
+                      payouts:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - playerId
+                            - amount
+                          properties:
+                            playerId:
+                              type: string
+                            amount:
+                              type: integer
+                      showdown:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - playerId
+                            - hole
+                            - handName
+                          properties:
+                            playerId:
+                              type: string
+                            hole:
+                              type: array
+                              items:
+                                type: string
+                            handName:
+                              type: string
+                    nullable: true
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /api/v1/groups/{groupId}/table/close:
+    post:
+      tags: *a2
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: CloseTableResponse
+                type: object
+                required:
+                  - sessionId
+                  - table
+                properties:
+                  sessionId:
+                    type: string
+                  table:
+                    additionalProperties: false
+                    title: TableView
+                    type: object
+                    required:
+                      - id
+                      - status
+                      - sessionId
+                      - smallBlind
+                      - bigBlind
+                      - buyIn
+                      - version
+                      - seats
+                      - myPlayerId
+                      - hand
+                    properties:
+                      id:
+                        type: string
+                      status:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - waiting
+                          - type: string
+                            enum:
+                              - playing
+                      sessionId:
+                        type: string
+                        nullable: true
+                      smallBlind:
+                        type: integer
+                      bigBlind:
+                        type: integer
+                      buyIn:
+                        type: integer
+                      version:
+                        type: integer
+                      seats:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          title: TableSeat
+                          type: object
+                          required:
+                            - playerId
+                            - name
+                            - stack
+                            - status
+                            - online
+                            - isYou
+                          properties:
+                            playerId:
+                              type: string
+                            name:
+                              type: string
+                            stack:
+                              type: integer
+                            status:
+                              anyOf:
+                                - type: string
+                                  enum:
+                                    - sitting
+                                - type: string
+                                  enum:
+                                    - out
+                            online:
+                              type: boolean
+                            isYou:
+                              type: boolean
+                      myPlayerId:
+                        type: string
+                        nullable: true
+                      hand:
+                        additionalProperties: false
+                        title: HandView
+                        type: object
+                        required:
+                          - handNo
+                          - street
+                          - board
+                          - pot
+                          - currentBet
+                          - minRaise
+                          - button
+                          - toActPlayerId
+                          - players
+                          - legal
+                          - payouts
+                          - showdown
+                        properties:
+                          handNo:
+                            type: integer
+                          street:
+                            anyOf:
+                              - type: string
+                                enum:
+                                  - preflop
+                              - type: string
+                                enum:
+                                  - flop
+                              - type: string
+                                enum:
+                                  - turn
+                              - type: string
+                                enum:
+                                  - river
+                              - type: string
+                                enum:
+                                  - done
+                          board:
+                            type: array
+                            items:
+                              type: string
+                          pot:
+                            type: integer
+                          currentBet:
+                            type: integer
+                          minRaise:
+                            type: integer
+                          button:
+                            type: integer
+                          toActPlayerId:
+                            type: string
+                            nullable: true
+                          players:
+                            type: array
+                            items:
+                              additionalProperties: false
+                              title: HandPlayerView
+                              type: object
+                              required:
+                                - playerId
+                                - stack
+                                - bet
+                                - totalBet
+                                - folded
+                                - allIn
+                                - hole
+                              properties:
+                                playerId:
+                                  type: string
+                                stack:
+                                  type: integer
+                                bet:
+                                  type: integer
+                                totalBet:
+                                  type: integer
+                                folded:
+                                  type: boolean
+                                allIn:
+                                  type: boolean
+                                hole:
+                                  type: array
+                                  items:
+                                    type: string
+                          legal:
+                            additionalProperties: false
+                            title: LegalActions
+                            type: object
+                            required:
+                              - toCall
+                              - canCheck
+                              - canCall
+                              - callAmount
+                              - canRaise
+                              - minRaiseTo
+                              - maxRaiseTo
+                            properties:
+                              toCall:
+                                type: integer
+                              canCheck:
+                                type: boolean
+                              canCall:
+                                type: boolean
+                              callAmount:
+                                type: integer
+                              canRaise:
+                                type: boolean
+                              minRaiseTo:
+                                type: integer
+                              maxRaiseTo:
+                                type: integer
+                            nullable: true
+                          payouts:
+                            type: array
+                            items:
+                              additionalProperties: false
+                              type: object
+                              required:
+                                - playerId
+                                - amount
+                              properties:
+                                playerId:
+                                  type: string
+                                amount:
+                                  type: integer
+                          showdown:
+                            type: array
+                            items:
+                              additionalProperties: false
+                              type: object
+                              required:
+                                - playerId
+                                - hole
+                                - handName
+                              properties:
+                                playerId:
+                                  type: string
+                                hole:
+                                  type: array
+                                  items:
+                                    type: string
+                                handName:
+                                  type: string
+                        nullable: true
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /api/v1/groups/{groupId}/players:
+    get:
+      tags: &a3
         - players
       parameters:
         - schema:
@@ -1136,7 +3192,7 @@ paths:
                   message:
                     type: string
     post:
-      tags: *a2
+      tags: *a3
       requestBody:
         required: true
         content:
@@ -1223,7 +3279,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/players/{id}/user:
     post:
-      tags: *a2
+      tags: *a3
       requestBody:
         required: true
         content:
@@ -1314,7 +3370,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/players/{id}:
     patch:
-      tags: *a2
+      tags: *a3
       requestBody:
         required: true
         content:
@@ -1405,7 +3461,7 @@ paths:
                   message:
                     type: string
     delete:
-      tags: *a2
+      tags: *a3
       parameters:
         - schema:
             type: string
@@ -1449,7 +3505,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/players/{id}/unarchive:
     post:
-      tags: *a2
+      tags: *a3
       parameters:
         - schema:
             type: string
@@ -1527,7 +3583,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/players/{id}/adjustments:
     post:
-      tags: *a2
+      tags: *a3
       requestBody:
         required: true
         content:
@@ -1623,7 +3679,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/players/{id}/adjustments/{adjustmentId}:
     patch:
-      tags: *a2
+      tags: *a3
       requestBody:
         required: true
         content:
@@ -1723,7 +3779,7 @@ paths:
                   message:
                     type: string
     delete:
-      tags: *a2
+      tags: *a3
       parameters:
         - schema:
             type: string
@@ -1772,7 +3828,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/players/{id}/stats:
     get:
-      tags: *a2
+      tags: *a3
       parameters:
         - schema:
             type: string
@@ -1946,7 +4002,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/players/{id}/report:
     get:
-      tags: *a2
+      tags: *a3
       parameters:
         - schema:
             type: string
@@ -2087,7 +4143,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/players/{id}/debts:
     get:
-      tags: *a2
+      tags: *a3
       parameters:
         - schema:
             type: string
@@ -2509,7 +4565,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/seasons:
     get:
-      tags: &a3
+      tags: &a4
         - seasons
       parameters:
         - schema:
@@ -2591,7 +4647,7 @@ paths:
                   message:
                     type: string
     post:
-      tags: *a3
+      tags: *a4
       requestBody:
         required: true
         content:
@@ -2682,7 +4738,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/seasons/{id}:
     patch:
-      tags: *a3
+      tags: *a4
       requestBody:
         required: true
         content:
@@ -2780,7 +4836,7 @@ paths:
                   message:
                     type: string
     delete:
-      tags: *a3
+      tags: *a4
       parameters:
         - schema:
             type: string
@@ -2824,7 +4880,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/seasons/{id}/close:
     post:
-      tags: *a3
+      tags: *a4
       parameters:
         - schema:
             type: string
@@ -2909,7 +4965,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/seasons/{id}/reopen:
     post:
-      tags: *a3
+      tags: *a4
       parameters:
         - schema:
             type: string
@@ -2994,7 +5050,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/seasons/{seasonId}/sessions:
     get:
-      tags: &a4
+      tags: &a5
         - sessions
       parameters:
         - schema:
@@ -3061,7 +5117,7 @@ paths:
                   message:
                     type: string
     post:
-      tags: *a4
+      tags: *a5
       requestBody:
         required: true
         content:
@@ -3218,7 +5274,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/sessions/{id}:
     get:
-      tags: *a4
+      tags: *a5
       parameters:
         - schema:
             type: string
@@ -3353,7 +5409,7 @@ paths:
                   message:
                     type: string
     delete:
-      tags: *a4
+      tags: *a5
       parameters:
         - schema:
             type: string
@@ -3397,7 +5453,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/sessions/{id}/participants:
     post:
-      tags: *a4
+      tags: *a5
       requestBody:
         required: true
         content:
@@ -3545,7 +5601,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/sessions/{id}/participants/{playerId}:
     delete:
-      tags: *a4
+      tags: *a5
       parameters:
         - schema:
             type: string
@@ -3685,7 +5741,7 @@ paths:
                   message:
                     type: string
     patch:
-      tags: *a4
+      tags: *a5
       requestBody:
         required: true
         content:
@@ -3840,7 +5896,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/sessions/{id}/buys:
     post:
-      tags: *a4
+      tags: *a5
       requestBody:
         required: true
         content:
@@ -3993,7 +6049,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/sessions/{id}/buys/{buyId}:
     delete:
-      tags: *a4
+      tags: *a5
       parameters:
         - schema:
             type: string
@@ -4134,7 +6190,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/sessions/{id}/close:
     post:
-      tags: *a4
+      tags: *a5
       requestBody:
         required: true
         content:
@@ -4389,7 +6445,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/sessions/{id}/debts:
     get:
-      tags: *a4
+      tags: *a5
       parameters:
         - schema:
             type: string
@@ -4593,7 +6649,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/debts:
     get:
-      tags: &a5
+      tags: &a6
         - debts
       parameters:
         - schema:
@@ -4744,7 +6800,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/debts/pending-by-debtor:
     get:
-      tags: *a5
+      tags: *a6
       parameters:
         - schema:
             type: string
@@ -4900,7 +6956,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/debts/reorganize-status:
     get:
-      tags: *a5
+      tags: *a6
       parameters:
         - schema:
             type: string
@@ -4956,7 +7012,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/debts/{id}/payments:
     post:
-      tags: *a5
+      tags: *a6
       requestBody:
         required: true
         content:
@@ -5107,7 +7163,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/debts/{id}/mark-paid:
     post:
-      tags: *a5
+      tags: *a6
       parameters:
         - schema:
             type: string
@@ -5241,7 +7297,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/debts/mark-paid:
     post:
-      tags: *a5
+      tags: *a6
       requestBody:
         required: true
         content:
@@ -5387,7 +7443,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/debts/manual:
     post:
-      tags: *a5
+      tags: *a6
       requestBody:
         required: true
         content:
@@ -5541,7 +7597,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/debts/manual/{id}:
     delete:
-      tags: *a5
+      tags: *a6
       parameters:
         - schema:
             type: string
@@ -5585,7 +7641,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/debts/renet:
     post:
-      tags: *a5
+      tags: *a6
       parameters:
         - schema:
             type: string
@@ -5716,7 +7772,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/debts/renet/undo:
     post:
-      tags: *a5
+      tags: *a6
       parameters:
         - schema:
             type: string
@@ -5847,7 +7903,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/backup/export:
     get:
-      tags: &a6
+      tags: &a7
         - backup
       parameters:
         - schema:
@@ -5879,7 +7935,7 @@ paths:
                     type: string
   /api/v1/groups/{groupId}/backup/import:
     post:
-      tags: *a6
+      tags: *a7
       requestBody:
         required: true
         content:

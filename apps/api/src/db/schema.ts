@@ -4,6 +4,7 @@
  * que la base impida referencias cruzadas entre grupos.
  */
 
+import type { Action, HandState } from '@pokercontrol/core';
 import { sql } from 'drizzle-orm';
 import {
   bigint, boolean, check, customType, foreignKey, index, integer, jsonb, pgTable, primaryKey, text,
@@ -189,3 +190,72 @@ export const idempotencyKeys = pgTable('idempotency_keys', {
   response: jsonb('response'),
   createdAt: ts('created_at').notNull().defaultNow(),
 }, t => [primaryKey({ columns: [t.groupId, t.key] })]);
+
+// ─── Mesa online (Texas Hold'em) ─────────────────────────────────────────────
+// Una única mesa por grupo. Las fichas son enteros y valen 1:1 con pesos al cerrar.
+
+export const pokerTables = pgTable('poker_tables', {
+  id: text('id').primaryKey(),
+  groupId: text('group_id').notNull().references(() => groups.id, { onDelete: 'cascade' }),
+  status: text('status').notNull().default('waiting').$type<'waiting' | 'playing'>(),
+  /** Partida (sessions) a la que está ligada mientras se juega. */
+  sessionId: text('session_id'),
+  smallBlind: integer('small_blind').notNull().default(10),
+  bigBlind: integer('big_blind').notNull().default(20),
+  buyIn: integer('buy_in').notNull().default(1000),
+  handCount: integer('hand_count').notNull().default(0),
+  /** Índice (en orden de asiento) del botón de la última mano. */
+  button: integer('button').notNull().default(0),
+  /** Se incrementa en cada cambio visible: evita acciones sobre estados viejos. */
+  version: integer('version').notNull().default(0),
+  createdAt: ts('created_at').notNull().defaultNow(),
+}, t => [
+  unique('uq_poker_tables_group').on(t.groupId),
+  unique('uq_poker_tables_group_id').on(t.groupId, t.id),
+  foreignKey({ columns: [t.groupId, t.sessionId], foreignColumns: [sessions.groupId, sessions.id], name: 'fk_poker_tables_session' }).onDelete('restrict'),
+  check('ck_poker_tables_status', sql`${t.status} in ('waiting', 'playing')`),
+  check('ck_poker_tables_blinds', sql`${t.smallBlind} > 0 and ${t.bigBlind} >= ${t.smallBlind} and ${t.buyIn} > 0`),
+  check('ck_poker_tables_session', sql`(${t.status} = 'playing') = (${t.sessionId} is not null)`),
+]);
+
+export const pokerSeats = pgTable('poker_seats', {
+  tableId: text('table_id').notNull().references(() => pokerTables.id, { onDelete: 'cascade' }),
+  playerId: text('player_id').notNull(),
+  groupId: text('group_id').notNull(),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  /** Fichas en la mesa, fuera de la mano en curso. */
+  stack: integer('stack').notNull().default(0),
+  /** sitting: juega las próximas manos. out: se levantó pero sus fichas siguen en la mesa. */
+  status: text('status').notNull().default('sitting').$type<'sitting' | 'out'>(),
+  joinedAt: ts('joined_at').notNull().defaultNow(),
+  /** Presencia: la web la renueva con cada join (heartbeat). */
+  lastSeenAt: ts('last_seen_at').notNull().defaultNow(),
+}, t => [
+  primaryKey({ columns: [t.tableId, t.playerId] }),
+  foreignKey({ columns: [t.groupId, t.playerId], foreignColumns: [players.groupId, players.id], name: 'fk_poker_seats_player' }).onDelete('cascade'),
+  check('ck_poker_seats_stack', sql`${t.stack} >= 0`),
+  check('ck_poker_seats_status', sql`${t.status} in ('sitting', 'out')`),
+]);
+
+/** Una fila por mano. `state` guarda el mazo mientras la mano está activa; al terminar se vacía. */
+export const pokerHands = pgTable('poker_hands', {
+  id: bigint('id', { mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
+  tableId: text('table_id').notNull().references(() => pokerTables.id, { onDelete: 'cascade' }),
+  handNo: integer('hand_no').notNull(),
+  status: text('status').notNull().default('active').$type<'active' | 'done'>(),
+  state: jsonb('state').notNull().$type<HandState>(),
+  startedAt: ts('started_at').notNull().defaultNow(),
+  finishedAt: ts('finished_at'),
+}, t => [
+  unique('uq_poker_hands_table_no').on(t.tableId, t.handNo),
+  check('ck_poker_hands_status', sql`${t.status} in ('active', 'done')`),
+]);
+
+export const pokerActions = pgTable('poker_actions', {
+  id: bigint('id', { mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
+  handId: bigint('hand_id', { mode: 'number' }).notNull().references(() => pokerHands.id, { onDelete: 'cascade' }),
+  seq: integer('seq').notNull(),
+  playerId: text('player_id').notNull(),
+  action: jsonb('action').notNull().$type<Action>(),
+  createdAt: ts('created_at').notNull().defaultNow(),
+}, t => [unique('uq_poker_actions_hand_seq').on(t.handId, t.seq)]);
