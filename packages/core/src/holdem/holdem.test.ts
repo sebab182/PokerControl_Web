@@ -236,12 +236,19 @@ describe('fuzz: conservación de fichas', () => {
       expect(() => revealCards(start(), 'a')).toThrow(HoldemError);
     });
 
-    it('en un showdown ya se ven las dos y no se puede repetir', () => {
+    it('en un showdown el ganador muestra; el perdedor elige mostrar o no', () => {
       let s = start();
       while (s.street !== 'done') s = applyAction(s, legalActions(s)!.playerId, legalActions(s)!.canCheck ? { type: 'check' } : { type: 'call' });
       expect(s.showdown).toHaveLength(2);
-      expect(shownCards(s, 'a')).toEqual([0, 1]);
-      expect(() => revealCards(s, 'a')).toThrow(HoldemError);
+      const win = s.payouts[0].playerId;
+      const lose = s.players.find((p) => p.id !== win)!;
+      expect(shownCards(s, win)).toEqual([0, 1]);
+      expect(() => revealCards(s, win)).toThrow(HoldemError);
+      expect(shownCards(s, lose.id)).toEqual([]);
+      const view = publicView(s, win);
+      expect(view.players.find((p) => p.id === lose.id)!.hole).toEqual(['??', '??']);
+      expect(view.showdown.find((e) => e.playerId === lose.id)).toMatchObject({ hole: ['??', '??'], handName: '' });
+      expect(shownCards(revealCards(s, lose.id), lose.id)).toEqual([0, 1]);
     });
   });
 });

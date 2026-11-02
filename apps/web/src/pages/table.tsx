@@ -321,12 +321,14 @@ function NoChips({ view, sitting, busy, onLeave, onRebuy }: {
   );
 }
 
-/** Al terminar la mano: mostrar las cartas a la mesa. Una sola carta, si todos los demás se retiraron. */
+/** Al terminar la mano, hasta que se reparta la próxima: mostrar las cartas o foldear (no mostrarlas). Una sola carta, si todos los demás se retiraron. */
 function ShowCards({ hand, playerId, you, name, busy, onReveal }: {
   hand: Hand; playerId: string; you: boolean; name: string; busy: boolean; onReveal: (playerId: string, cards?: number[]) => void;
 }) {
+  // Foldear = no mostrar: se oculta el panel hasta la próxima mano (las cartas siguen ocultas para los demás).
+  const [mucked, setMucked] = useState(0);
   const p = hand.players.find(x => x.playerId === playerId);
-  if (!p || p.hole.length < 2 || p.hole.includes('??') || p.shown.length >= 2) return null;
+  if (!p || p.hole.length < 2 || p.hole.includes('??') || p.shown.length >= 2 || mucked === hand.handNo) return null;
   // Quedó solo porque los demás se retiraron: no hay showdown y decide qué enseñar.
   const alone = hand.showdown.length === 0 && !p.folded && hand.players.filter(x => !x.folded).length === 1;
   return (
@@ -340,6 +342,7 @@ function ShowCards({ hand, playerId, you, name, busy, onReveal }: {
             Mostrar una carta ({cardText(c)})
           </Btn>
         ))}
+        <Btn variant="danger" busy={busy} onClick={() => setMucked(hand.handNo)}>Foldear</Btn>
       </div>
     </div>
   );

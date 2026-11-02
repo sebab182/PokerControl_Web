@@ -322,6 +322,11 @@ export function publicView(s: HandState, viewerId: string | string[] | null): Om
   void _deck;
   return {
     ...rest,
+    // Los perdedores del showdown pueden no mostrar: sin cartas visibles tampoco se revela su jugada.
+    showdown: rest.showdown.map((e) => {
+      const shown = shownCards(s, e.playerId);
+      return shown.length === 2 ? e : { ...e, hole: e.hole.map((c, i) => (shown.includes(i) ? c : '??')), handName: '' };
+    }),
     players: rest.players.map((p) => {
       if (own.has(p.id)) return p;
       const shown = shownCards(s, p.id);
@@ -330,9 +335,12 @@ export function publicView(s: HandState, viewerId: string | string[] | null): Om
   };
 }
 
-/** Índices de las cartas de `hole` que ven todos: las del showdown (ambas) o las que el jugador decidió mostrar. */
+/**
+ * Índices de las cartas de `hole` que ven todos. En el showdown ganar obliga a mostrar las dos; el resto
+ * (y quien ganó sin showdown) las muestra solo si lo decide.
+ */
 export function shownCards(s: HandState, playerId: string): number[] {
-  if (s.showdown.some((e) => e.playerId === playerId)) return [0, 1];
+  if (s.showdown.some((e) => e.playerId === playerId) && s.payouts.some((w) => w.playerId === playerId)) return [0, 1];
   return s.revealed?.[playerId] ?? [];
 }
 
@@ -352,7 +360,7 @@ export function revealCards(prev: HandState, playerId: string, cards: number[] =
   if (!p) throw new HoldemError('El jugador no jugó esta mano');
   const idx = [...new Set(cards)].sort();
   if (idx.length === 0 || idx.some((i) => i !== 0 && i !== 1)) throw new HoldemError('Carta inválida');
-  if (s.showdown.some((e) => e.playerId === playerId)) throw new HoldemError('Tus cartas ya se mostraron');
+  if (shownCards(s, playerId).length === 2) throw new HoldemError('Tus cartas ya se mostraron');
   if (idx.length === 1 && !(isUncontested(s) && !p.folded)) {
     throw new HoldemError('Solo quien queda como único jugador puede mostrar una carta');
   }
