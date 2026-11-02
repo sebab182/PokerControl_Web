@@ -234,6 +234,53 @@ test('el ranking es la vista inicial y arranca en la temporada activa', async ({
   await expect(selected).toHaveText('Histórico');
 });
 
+test('invitación: compartir el link y unirse desde él', async ({ page, browser }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'share', {
+      value: async ({ text }: { text: string }) => { (window as unknown as { shared: string }).shared = text; },
+    });
+  });
+  await login(page, 'Seba');
+  const code = await createGroup(page);
+  await page.goto('/settings');
+  await page.getByRole('button', { name: 'Compartir por WhatsApp' }).click();
+  const shared = await page.evaluate(() => (window as unknown as { shared: string }).shared);
+  expect(shared).toContain('Los viernes');
+  const link = shared.split('\n')[1];
+  expect(link).toMatch(new RegExp(`/join/${code}$`));
+
+  // Sin sesión pide el login sin perder el link.
+  const anonymous = await browser.newContext();
+  const visitor = await anonymous.newPage();
+  await visitor.goto(link);
+  await expect(visitor.getByText('Iniciá sesión para unirte al grupo.')).toBeVisible();
+  await expect(visitor).toHaveURL(new RegExp(`/join/${code}$`));
+  await anonymous.close();
+
+  // Con sesión se une con un clic.
+  const context2 = await browser.newContext();
+  const reader = await context2.newPage();
+  await login(reader, 'Caro', 'reader');
+  await reader.goto(link);
+  await expect(reader.getByTestId('join-code')).toHaveText(code);
+  await checkPage(reader, 'invitación');
+  await reader.getByRole('button', { name: 'Unirme al grupo' }).click();
+  await expect(reader.getByRole('heading', { name: '¿Quién sos en Los viernes?' })).toBeVisible();
+
+  // Volver a abrirlo no falla: avisa y entra.
+  await reader.goto(link);
+  await reader.getByRole('button', { name: 'Unirme al grupo' }).click();
+  await expect(reader.getByRole('alert')).toContainText('Ya sos miembro');
+  await expect(reader.getByRole('heading', { name: '¿Quién sos en Los viernes?' })).toBeVisible();
+
+  // Un código que ya no existe se informa y no saca de la pantalla.
+  await reader.goto('/join/NOEXISTE');
+  await reader.getByRole('button', { name: 'Unirme al grupo' }).click();
+  await expect(reader.getByRole('alert')).toContainText('no es válido');
+  await expect(reader.getByTestId('join-code')).toBeVisible();
+  await context2.close();
+});
+
 test('jugadores: archivar con historial, restaurar y renombrar', async ({ page }) => {
   await login(page, 'Seba');
   await createGroup(page);

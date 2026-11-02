@@ -6,7 +6,7 @@ import { BrowserRouter, NavLink, Navigate, Outlet, Route, Routes } from 'react-r
 import { ApiRequestError } from './api';
 import { Btn, Emoji, Empty, FeedbackProvider, Loading } from './components/ui';
 import { SessionProvider, applyStoredTheme, useSession } from './context';
-import { LoginPage, NickPage, OnboardingPage } from './pages/auth';
+import { JoinPage, LoginPage, NickPage, OnboardingPage } from './pages/auth';
 import { PendingDebtsPage } from './pages/debts';
 import { PlayersPage, RankingPage, StatsPage } from './pages/players';
 import { SeasonSessionsPage, SeasonsPage } from './pages/seasons';
@@ -104,6 +104,7 @@ function App() {
       <Routes>
         <Route path="/login" element={<PublicOnly page="login" />} />
         <Route path="/onboarding" element={<PublicOnly page="onboarding" />} />
+        <Route path="/join/:code" element={<JoinPage />} />
         <Route element={<Shell />}>
           <Route index element={<Navigate to="/ranking" replace />} />
           <Route path="/seasons" element={<SeasonsPage />} />

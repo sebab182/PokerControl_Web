@@ -2,12 +2,13 @@ import type { ApiAuthResponse, ApiGroup, ApiGroupRef, ApiPlayer } from '@pokerco
 import { GoogleLogin } from '@react-oauth/google';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { api, setToken } from '../api';
+import { useNavigate, useParams } from 'react-router-dom';
+import { ApiRequestError, api, setToken } from '../api';
 import { Avatar, Btn, Emoji, Loading, QueryError, TextField, useAction, useFeedback } from '../components/ui';
 import { useGroup, useSession } from '../context';
+import { shareInvite } from '../share';
 
-export function LoginPage() {
+export function LoginPage({ message = 'Compras, resultados y deudas de tus partidas entre amigos.' }: { message?: string }) {
   const { signIn } = useSession();
   const { notify } = useFeedback();
   const { busy, run } = useAction();
@@ -15,9 +16,7 @@ export function LoginPage() {
   return (
     <main className="main" style={{ maxWidth: 420, textAlign: 'center', paddingTop: '18vh' }}>
       <h1><Emoji>♠</Emoji> PokerControl</h1>
-      <p className="muted" style={{ margin: '12px 0 28px' }}>
-        Compras, resultados y deudas de tus partidas entre amigos.
-      </p>
+      <p className="muted" style={{ margin: '12px 0 28px' }}>{message}</p>
       <div style={{ display: 'flex', justifyContent: 'center' }}>
         <GoogleLogin
           text="continue_with"
@@ -39,9 +38,56 @@ export function LoginPage() {
   );
 }
 
+function useJoinGroup() {
+  const { refreshMe, selectGroup } = useSession();
+  return async (inviteCode: string) => {
+    const group = await api<ApiGroupRef>('/groups/join', { method: 'POST', body: { inviteCode } });
+    await refreshMe();
+    selectGroup(group.id);
+  };
+}
+
+/** Destino del link de invitación. Sin sesión pide el login acá mismo, para no perder el código. */
+export function JoinPage() {
+  const { code = '' } = useParams();
+  const navigate = useNavigate();
+  const { me, loading } = useSession();
+  const { notify } = useFeedback();
+  const { busy, run } = useAction();
+  const joinGroup = useJoinGroup();
+
+  if (loading) return <Loading />;
+  if (!me) return <LoginPage message="Iniciá sesión para unirte al grupo." />;
+
+  const join = () => {
+    void run(async () => {
+      try {
+        await joinGroup(code);
+      } catch (e) {
+        if (!(e instanceof ApiRequestError && e.code === 'already_member')) throw e;
+        notify(e.message);
+      }
+      navigate('/ranking', { replace: true });
+    });
+  };
+
+  return (
+    <main className="main center" style={{ maxWidth: 480 }}>
+      <h1><Emoji>♠</Emoji> Te invitaron a un grupo</h1>
+      <p className="muted" style={{ margin: '12px 0 16px' }}>Código de invitación:</p>
+      <p className="big num" data-testid="join-code">{code.toUpperCase()}</p>
+      <div className="modal-actions" style={{ justifyContent: 'center' }}>
+        <Btn variant="ghost" onClick={() => navigate('/', { replace: true })}>Ahora no</Btn>
+        <Btn busy={busy} onClick={join}>Unirme al grupo</Btn>
+      </div>
+    </main>
+  );
+}
+
 /** Crear o unirse a un grupo. Se usa en el primer ingreso y desde Configuración. */
 export function GroupChooser({ onDone }: { onDone: () => void }) {
   const { refreshMe, selectGroup, canEdit } = useSession();
+  const joinGroup = useJoinGroup();
   const create = useAction();
   const join = useAction();
   const { notify } = useFeedback();
@@ -59,6 +105,9 @@ export function GroupChooser({ onDone }: { onDone: () => void }) {
           <Btn variant="ghost" onClick={() => {
             void navigator.clipboard.writeText(created.inviteCode ?? '').then(() => notify('Código copiado.'));
           }}>Copiar</Btn>
+          <Btn variant="ghost" onClick={() => { void shareInvite(created.name, created.inviteCode ?? '', notify); }}>
+            <Emoji>📤</Emoji> Compartir por WhatsApp
+          </Btn>
           {/* Refrescar antes desmontaría esta vista: el onboarding redirige al tener grupo. */}
           <Btn busy={create.busy} onClick={() => {
             void create.run(async () => {
@@ -93,9 +142,7 @@ export function GroupChooser({ onDone }: { onDone: () => void }) {
         e.preventDefault();
         if (!code.trim()) return notify('Ingresá el código de invitación.');
         void join.run(async () => {
-          const group = await api<ApiGroupRef>('/groups/join', { method: 'POST', body: { inviteCode: code.trim() } });
-          await refreshMe();
-          selectGroup(group.id);
+          await joinGroup(code.trim());
           onDone();
         });
       }}>

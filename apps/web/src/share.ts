@@ -17,3 +17,9 @@ export async function shareText(text: string, notify: (message: string) => void)
     if (!opened) notify('No se pudo compartir ni copiar el texto.');
   }
 }
+
+/** Comparte un link que lleva el código de invitación, para no tener que tipearlo. */
+export function shareInvite(groupName: string, inviteCode: string, notify: (message: string) => void): Promise<void> {
+  const link = `${window.location.origin}/join/${inviteCode}`;
+  return shareText(`♠ Sumate a "${groupName}" en PokerControl:\n${link}`, notify);
+}

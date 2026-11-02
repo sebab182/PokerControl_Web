@@ -4,6 +4,7 @@ import { useRef, useState } from 'react';
 import { api } from '../api';
 import { Avatar, Btn, Emoji, Loading, Modal, QueryError, TextField, useAction, useFeedback } from '../components/ui';
 import { useGroup, useSession, useTheme, type Theme } from '../context';
+import { shareInvite } from '../share';
 import { GroupChooser, NickChooser } from './auth';
 
 const THEMES: { value: Theme; label: string }[] = [
@@ -186,7 +187,7 @@ export function SettingsPage() {
   const rotate = async () => {
     const ok = await confirm({
       title: 'Regenerar código', confirmLabel: 'Regenerar',
-      message: 'El código actual deja de funcionar. Los miembros actuales siguen en el grupo.',
+      message: 'El código actual y los links ya compartidos dejan de funcionar. Los miembros actuales siguen en el grupo.',
     });
     if (!ok) return;
     void run(async () => {
@@ -230,6 +231,9 @@ export function SettingsPage() {
               <Btn variant="ghost" onClick={() => {
                 void navigator.clipboard.writeText(inviteCode).then(() => notify('Código copiado.'));
               }}>Copiar</Btn>
+              <Btn variant="ghost" onClick={() => { void shareInvite(group.name, inviteCode, notify); }}>
+                <Emoji>📤</Emoji> Compartir por WhatsApp
+              </Btn>
               <Btn variant="ghost" busy={busy} onClick={() => { void rotate(); }}>Regenerar</Btn>
             </div>
           </>

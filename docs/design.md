@@ -11,6 +11,7 @@ Incluye las vistas de la APK, más login, onboarding y configuración. No incluy
 | Ruta | Vista | Origen en la APK |
 |---|---|---|
 | `/login`, `/onboarding` | Google, crear o unirse a un grupo | Nuevas |
+| `/join/:code` | Link de invitación: pide login si hace falta y confirma el ingreso | Nueva |
 | `/` | Redirige a `/ranking` | En la APK la inicial es `SeasonsScreen` |
 | `/seasons` | Temporadas | `SeasonsScreen` |
 | `/seasons/:seasonId` | Partidas | `HomeScreen` |
@@ -83,7 +84,7 @@ Reglas de accesibilidad:
 | Saldar todo con un jugador | ✅ | Ahora atómico |
 | Stats: balance, gráfico, mejor y peor, compras y rachas, historial | ✅ | |
 | Ranking con podio, global o por temporada | ✅ | |
-| Compartir por WhatsApp | ✅ | Partida y deudas pendientes |
+| Compartir por WhatsApp | ✅ | Partida, deudas pendientes y link de invitación |
 | Backup: exportar e importar | ✅ | |
 | Tema claro, oscuro y sistema | ✅ | |
 | Reportes, premios, compartir premios, PDF | ⏳ | Etapa de informes |
