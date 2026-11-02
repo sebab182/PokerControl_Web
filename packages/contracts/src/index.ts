@@ -284,6 +284,31 @@ export const TableView = Obj({
   myPlayerId: Nullable(T.String()),
   hand: Nullable(HandView),
 }, 'TableView');
+// ─── Video de la mesa (señalización WebRTC por el WebSocket) ─────────────────
+/**
+ * start/stop: un jugador empieza o corta su transmisión (sin `to`: les llega a todos).
+ * watch: un espectador le pide a quien transmite que le mande el video.
+ * offer/answer/ice: negociación WebRTC punto a punto (con `to`).
+ */
+export const RtcKind = T.Union([
+  T.Literal('start'), T.Literal('stop'), T.Literal('watch'),
+  T.Literal('offer'), T.Literal('answer'), T.Literal('ice'),
+]);
+export const RtcClientMessage = Obj({
+  type: T.Literal('rtc'), kind: RtcKind,
+  /** Conexión destino (el `from` de un mensaje anterior). */
+  to: T.Optional(T.String({ maxLength: 64 })),
+  data: T.Optional(T.Unknown()),
+}, 'RtcClientMessage');
+export const RtcServerMessage = Obj({
+  type: T.Literal('rtc'), kind: RtcKind,
+  /** Conexión que lo envió, asignada por el servidor. */
+  from: T.String(),
+  /** Jugador de esa conexión; null si es un administrador sin jugador propio. */
+  playerId: Nullable(T.String()),
+  data: T.Optional(T.Unknown()),
+}, 'RtcServerMessage');
+
 export const StartTableBody = Obj({
   smallBlind: T.Optional(Chips), bigBlind: T.Optional(Chips), buyIn: T.Optional(Chips),
   /** 0 = sin límite; si no, entre 10 y 300 segundos. */
@@ -338,3 +363,6 @@ export type ApiCloseSessionResponse = Static<typeof CloseSessionResponse>;
 export type ApiTableView = Static<typeof TableView>;
 export type ApiHandView = Static<typeof HandView>;
 export type ApiTableAction = Static<typeof TableActionBody>['action'];
+export type ApiRtcKind = Static<typeof RtcKind>;
+export type ApiRtcClientMessage = Static<typeof RtcClientMessage>;
+export type ApiRtcServerMessage = Static<typeof RtcServerMessage>;

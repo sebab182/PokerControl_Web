@@ -3,14 +3,26 @@
  *
  * El navegador no puede mandar headers en un WebSocket y poner el JWT en la URL lo deja en
  * los logs, así que el primer mensaje es { type: "auth", token }. Sin él en 5 s se cierra.
- * Solo se envían avisos { type: "changed", version }; los datos se piden por HTTP.
+ * Los avisos son { type: "changed", version }; los datos se piden por HTTP. Lo único que un cliente
+ * autenticado puede mandar es señalización del video ({ type: "rtc", ... }), que el hub reenvía.
  */
 
+import { RtcClientMessage } from '@pokercontrol/contracts';
+import { Value } from '@sinclair/typebox/value';
+import { and, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
+import * as schema from '../db/schema';
 import { canAccessGroup } from './groups';
 
 const AUTH_TIMEOUT_MS = 5000;
 const PING_MS = 25_000;
+/** Una oferta SDP ronda los 5 KB; el tope corta lo que no es señalización (también lo usa el plugin de WebSocket). */
+export const MAX_SIGNAL_BYTES = 16 * 1024;
+/** Antes de autenticar solo se espera { type: "auth", token }. */
+const MAX_AUTH_BYTES = 2048;
+/** Negociar con 5 pares genera unas decenas de candidatos ICE: el tope solo frena abusos. */
+const SIGNAL_WINDOW_MS = 10_000;
+const SIGNAL_MAX_PER_WINDOW = 300;
 export const WS_CLOSE = { unauthorized: 4401, forbidden: 4403 } as const;
 
 export async function tableSocketRoutes(app: FastifyInstance) {
@@ -32,19 +44,54 @@ export async function tableSocketRoutes(app: FastifyInstance) {
     }, PING_MS);
     socket.on('pong', () => { alive = true; });
 
+    let signals = 0;
+    let signalWindowStart = Date.now();
+    let userId = '';
+    const playerOf = async (): Promise<string | null> => {
+      const [player] = await app.db.select({ id: schema.players.id }).from(schema.players)
+        .where(and(eq(schema.players.groupId, groupId), eq(schema.players.userId, userId)));
+      return player?.id ?? null;
+    };
+
+    /** Mensajes de video; todo lo demás que mande un cliente ya autenticado se ignora. */
+    const handleSignal = async (raw: Buffer) => {
+      if (raw.length > MAX_SIGNAL_BYTES) return;
+      const now = Date.now();
+      if (now - signalWindowStart > SIGNAL_WINDOW_MS) { signalWindowStart = now; signals = 0; }
+      if (++signals > SIGNAL_MAX_PER_WINDOW) return socket.close(1008, 'rate limit');
+      let msg: unknown;
+      try { msg = JSON.parse(raw.toString()); } catch { return; }
+      if (!Value.Check(RtcClientMessage, msg)) return;
+      // Todo menos start/stop va dirigido a una conexión concreta.
+      const targeted = msg.kind !== 'start' && msg.kind !== 'stop';
+      if (targeted !== (msg.to !== undefined)) return;
+      // Quien se sienta o elige su nick con la mesa abierta no estaba como jugador al conectarse.
+      if (msg.kind === 'start') {
+        try { app.tableHub.setPlayer(groupId, socket, await playerOf()); } catch { return; }
+        if (socket.readyState !== socket.OPEN) return;
+      }
+      app.tableHub.relay(groupId, socket, msg);
+    };
+
     socket.on('message', async (raw: Buffer) => {
       alive = true;
-      if (authed) return; // los clientes no mandan nada más: se ignora
+      if (authed) return handleSignal(raw);
+      if (raw.length > MAX_AUTH_BYTES) return socket.close(WS_CLOSE.unauthorized, 'auth too large');
       try {
         const msg = JSON.parse(raw.toString()) as { type?: string; token?: unknown };
         if (msg.type !== 'auth' || typeof msg.token !== 'string') return socket.close(WS_CLOSE.unauthorized, 'auth required');
         const payload = app.jwt.verify<{ sub: string }>(msg.token);
         if (!(await canAccessGroup(app.db, payload.sub, groupId))) return socket.close(WS_CLOSE.forbidden, 'forbidden');
         if (socket.readyState !== socket.OPEN || authed) return;
+        // Sin jugador propio (p. ej. un administrador) mira el video de los demás pero no transmite.
+        userId = payload.sub;
+        const playerId = await playerOf();
+        if (socket.readyState !== socket.OPEN || authed) return;
         authed = true;
         clearTimeout(authTimer);
-        unsubscribe = app.tableHub.subscribe(groupId, socket);
+        unsubscribe = app.tableHub.subscribe(groupId, socket, playerId);
         socket.send(JSON.stringify({ type: 'ready' }));
+        app.tableHub.announceBroadcasters(groupId, socket);
       } catch {
         socket.close(WS_CLOSE.unauthorized, 'invalid token');
       }

@@ -21,7 +21,7 @@ import { claimPlayerRoutes, playerRoutes } from './routes/players';
 import { seasonRoutes } from './routes/seasons';
 import { sessionRoutes } from './routes/sessions';
 import { sweepTurns, tableRoutes } from './routes/table';
-import { tableSocketRoutes } from './routes/table-ws';
+import { MAX_SIGNAL_BYTES, tableSocketRoutes } from './routes/table-ws';
 import { TableHub } from './table-hub';
 
 export interface AppOptions {
@@ -85,8 +85,8 @@ export async function buildApp(options: AppOptions) {
     verify: { algorithms: ['HS256'] },
   });
   await app.register(rateLimit, { global: false });
-  // Los clientes solo mandan el token y pings: 2 KB sobran.
-  await app.register(websocket, { options: { maxPayload: 2048 } });
+  // Los clientes mandan el token y la señalización del video (una oferta SDP pasa de 2 KB).
+  await app.register(websocket, { options: { maxPayload: MAX_SIGNAL_BYTES } });
   await app.register(swagger, {
     openapi: {
       info: { title: 'PokerControl API', version: '1.0.0' },

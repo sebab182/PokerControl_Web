@@ -1,4 +1,4 @@
-import type { ApiPlayer, ApiTableAction, ApiTableView } from '@pokercontrol/contracts';
+import type { ApiPlayer, ApiRtcServerMessage, ApiTableAction, ApiTableView } from '@pokercontrol/contracts';
 import { evaluate, formatMoney, parseAmount } from '@pokercontrol/core';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
@@ -10,6 +10,7 @@ import {
 } from '../components/ui';
 import { useGroup } from '../context';
 import { useTableSocket } from '../useTableSocket';
+import { VideoControls, VideoProvider, useTableVideo } from '../video';
 import { NickChooser } from './auth';
 
 const HEARTBEAT_MS = 20_000;
@@ -48,7 +49,12 @@ function TableView() {
 
   // Cualquier aviso refresca la mesa. No se compara la versión: sentarse o levantarse cambia lo que
   // se ve sin cambiar la versión de la mano (que solo protege las jugadas). Un GET repetido sale barato.
-  const live = useTableSocket(group.id, () => { void qc.invalidateQueries({ queryKey }); });
+  // El socket necesita el manejador de video y el video necesita el socket: se une por ref.
+  const signal = useRef<(msg: ApiRtcServerMessage) => void>(() => {});
+  const socket = useTableSocket(group.id, () => { void qc.invalidateQueries({ queryKey }); }, msg => signal.current(msg));
+  const { live } = socket;
+  const video = useTableVideo(socket, group.playerId);
+  signal.current = video.onSignal;
   const query = useQuery({
     queryKey,
     queryFn: () => api<ApiTableView>(path('/table')),
@@ -119,12 +125,13 @@ function TableView() {
   };
 
   return (
-    <>
+    <VideoProvider state={video.state}>
       <div className="page-head">
         <h1 className="grow">Mesa</h1>
         {live && <span className="badge badge-muted" title="Recibís los cambios al instante">En vivo</span>}
         {view.status === 'playing' && <span className="badge badge-green">Partida en curso</span>}
       </div>
+      <VideoControls />
       {closedId && view.status === 'waiting' && (
         <div className="notice notice-ok" role="status">
           Partida cerrada. <Link to={`/sessions/${closedId}`}>Ver resultados y saldos</Link>
@@ -163,7 +170,7 @@ function TableView() {
           setStartOpen(false);
           setClosedId(null);
         })} busy={busy} />
-    </>
+    </VideoProvider>
   );
 }
 

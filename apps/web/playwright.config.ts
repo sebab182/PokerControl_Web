@@ -10,7 +10,12 @@ export default defineConfig({
   reporter: [['list'], ['html', { outputFolder: `${TEMP}/pw-report`, open: 'never' }]],
   workers: 1,
   timeout: 30000,
-  use: { baseURL: 'http://localhost:5174', trace: 'retain-on-failure' },
+  use: {
+    baseURL: 'http://localhost:5174',
+    trace: 'retain-on-failure',
+    // Cámara y micrófono falsos, sin pedir permiso, para probar el video de la mesa.
+    launchOptions: { args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'] },
+  },
   projects: [
     { name: 'desktop', use: { ...devices['Desktop Chrome'] } },
     { name: 'mobile', use: { ...devices['Pixel 7'] } },
