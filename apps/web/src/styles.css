@@ -233,6 +233,7 @@ input[type="text"], input[type="search"], select {
 }
 
 /* Mesa online */
+:root { --hero-w: clamp(64px, 20vw, 88px); --seat-half: 48px; }
 .pcard {
   display: inline-flex; align-items: center; justify-content: center; flex: none;
   background: #fff; color: #1A1D21; border: 1px solid #C9CED6; border-radius: 6px;
@@ -241,20 +242,31 @@ input[type="text"], input[type="search"], select {
 .pcard-red { color: #B91C1C; }
 .pcard-sm { width: 36px; height: 52px; font-size: 16px; }
 .pcard-md { width: 52px; height: 74px; font-size: 22px; }
-.pcard-lg { width: 88px; height: 124px; font-size: 34px; border-radius: 10px; }
+.pcard-lg {
+  width: var(--hero-w); height: calc(var(--hero-w) * 1.409); font-size: calc(var(--hero-w) * .386); border-radius: 10px;
+}
 .pcard-back { background: repeating-linear-gradient(45deg, #1D4ED8, #1D4ED8 4px, #1E3A8A 4px, #1E3A8A 8px); border-color: #fff; }
 .pcard-empty { background: rgba(255, 255, 255, .12); border: 1px dashed rgba(255, 255, 255, .55); box-shadow: none; }
-.felt-wrap { padding: 54px 44px 64px; max-width: 700px; margin: 0 auto; }
+.felt-wrap { padding: 54px 32px 64px; max-width: 700px; margin: 0 auto; }
 .felt {
-  position: relative; aspect-ratio: 4 / 3; border-radius: 50%;
+  position: relative; aspect-ratio: 4 / 3; border-radius: 50%; container-type: inline-size;
   background: radial-gradient(ellipse at center, #1F8A4C, #0B4F2A); border: 6px solid #5A3B1E;
 }
 .felt-center {
   position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
 }
 .pot { color: #fff; font-weight: 700; background: rgba(0, 0, 0, .35); padding: 2px 12px; border-radius: 999px; font-size: 14px; }
-.board { display: flex; gap: 4px; flex-wrap: nowrap; }
-.board .pcard-md { width: 42px; height: 60px; font-size: 18px; }
+.board { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.board-row { display: flex; gap: 4px; }
+/* Las cartas del board son el 75% de las de mi mano; en una mesa angosta se achican hasta entrar en el paño. */
+/* Mis cartas y las de la mesa miden lo mismo (--card-w). Se define en los hijos del paño, que es el contenedor de las cqw. */
+.felt > * { --card-w: min(calc(var(--hero-w) * .75), 26cqw); }
+@media (orientation: landscape) {
+  .felt > * { --card-w: min(calc(var(--hero-w) * .75), 15cqw); }
+  .board { flex-direction: row; gap: 14px; }
+  .board-row:last-child { gap: 14px; }
+}
+.felt .pcard-md { width: var(--card-w); height: calc(var(--card-w) * 1.409); font-size: calc(var(--card-w) * .386); }
 .pseat {
   position: absolute; transform: translate(-50%, -50%); width: 92px; text-align: center; color: #fff;
   display: flex; flex-direction: column; align-items: center; gap: 1px; font-size: 12px;
@@ -277,32 +289,42 @@ input[type="text"], input[type="search"], select {
 .video-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-bottom: 12px; }
 .video-mic { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; font-size: 14px; }
 .dealer { background: #fff; color: #1A1D21; border-radius: 999px; padding: 0 4px; font-weight: 700; }
-.hero { display: flex; flex-direction: column; align-items: center; gap: 6px; margin-bottom: 12px; }
-.hero-cards { display: flex; gap: 8px; }
 .reveal-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
 .table-status { margin-bottom: 12px; }
-/* Controles a los costados de mi asiento (abajo al centro de la mesa), sin tener que bajar la página. */
+/* Cartas y controles pegados a mi asiento (y al de los jugadores que manejo), fuera del paño. */
 .felt-wrap { position: relative; }
-.felt-wrap:has(.dock-col > *) { padding-bottom: 150px; }
-.dock {
-  position: absolute; left: 4px; right: 4px; bottom: 4px; display: grid;
-  grid-template-columns: minmax(0, 1fr) 104px minmax(0, 1fr); gap: 6px; align-items: end; pointer-events: none;
+.felt-wrap:has(.aside) { padding-bottom: 112px; }
+.aside { position: absolute; z-index: 3; display: flex; gap: 4px; }
+.aside:empty { display: none; }
+.aside-cards { transform: translate(calc(-100% - var(--seat-half) - 4px), -25%); flex-direction: column; align-items: flex-end; }
+.aside-ctl { transform: translate(calc(var(--seat-half) + 4px), -35%); flex-direction: column; width: 118px; }
+.aside-below { flex-direction: column; align-items: center; width: 118px; margin-top: 56px; }
+.aside-below-left { transform: translateX(-30px); }
+.aside-below-right { transform: translateX(calc(-100% + 30px)); }
+.aside-hand .hole { display: flex; }
+.aside-hand .hole .pcard + .pcard { margin-left: calc(var(--card-w) * -.25); }
+.aside-hand p { margin-top: 2px; }
+.dock-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-bottom: 12px; }
+.dock-row:empty { display: none; }
+.dock-box { display: flex; flex-direction: column; gap: 3px; position: relative; font-size: 12px; }
+.dock-title { font-size: 13px; margin: 0; }
+.dock-actions { display: flex; flex-direction: column; gap: 3px; }
+.aside .btn, .dock-row .btn {
+  min-height: 28px; padding: 0 6px; font-size: 12px; border-radius: 8px; white-space: normal; line-height: 1.1; background-color: var(--surface);
 }
-.dock-col { display: flex; flex-direction: column; gap: 6px; pointer-events: auto; position: relative; }
-.dock-left { grid-column: 1; }
-.dock-right { grid-column: 3; }
-.dock-box { display: flex; flex-direction: column; gap: 4px; position: relative; font-size: 13px; }
-.dock-title { font-size: 14px; margin: 0; }
-.dock-actions { display: flex; flex-direction: column; gap: 4px; }
-.dock .btn { min-height: 38px; padding: 0 6px; font-size: 13px; white-space: normal; line-height: 1.15; background-color: var(--surface); }
-.dock .btn-primary { background-color: var(--accent); }
-.dock .btn-chip { min-height: 30px; }
-.dock .video-mic { min-height: 30px; font-size: 12px; color: var(--text); background: var(--surface); border-radius: 8px; padding: 0 6px; }
+.aside .btn-primary, .dock-row .btn-primary { background-color: var(--accent); }
+.aside .btn-chip { min-height: 26px; }
+.aside label.field, .dock-row label.field { margin: 0; font-size: 11px; }
+.aside .field input, .dock-row .field input { min-height: 30px; padding: 0 8px; font-size: 13px; }
+.aside .video-mic, .dock-row .video-mic { min-height: 24px; font-size: 11px; gap: 4px; color: var(--text); background: var(--surface); border-radius: 6px; padding: 0 6px; }
 .dock-popup {
-  position: absolute; bottom: 100%; left: 0; width: 240px; margin-bottom: 6px; z-index: 5;
+  position: absolute; bottom: 100%; right: 0; width: 220px; margin-bottom: 6px; z-index: 5;
   background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 10px;
 }
-.video-controls-dock { flex-direction: column; align-items: stretch; gap: 4px; margin: 0; }
+.aside-below-left .dock-popup { left: 0; right: auto; }
+.video-controls-dock { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 3px; margin: 0; }
+.video-controls-dock > .btn { flex: 1 1 100%; }
+.video-controls-dock .video-mic { flex: 1 1 0; justify-content: center; }
 .controls-row { display: flex; gap: 8px; }
 .controls-row .btn { flex: 1; padding: 0 8px; }
 .btn-chip { min-height: 36px; padding: 0 12px; font-size: 14px; }
@@ -311,11 +333,45 @@ input[type="text"], input[type="search"], select {
   .pcard-sm { width: 44px; height: 62px; font-size: 19px; }
   .pseat { width: 110px; }
   .pseat-video { width: 72px; height: 72px; }
-  .board .pcard-md { width: 68px; height: 96px; font-size: 28px; }
-  .pcard-lg { width: 104px; height: 146px; font-size: 40px; }
+  :root { --hero-w: 104px; --seat-half: 55px; }
 }
 @media (max-width: 420px) {
   .tabbar .nav-link { font-size: 11px; }
 }
 
 .last-action { font-weight: 600; }
+
+/* Celular en horizontal: mesa a pantalla completa, sin menú ni encabezado. */
+.fs-btn { display: none; }
+.table-landscape { --hero-w: 72px; }
+.table-landscape .sidebar, .table-landscape .tabbar, .table-landscape .page-head { display: none !important; }
+.table-landscape .shell { padding-left: 0; }
+.table-landscape .main { max-width: none; padding: 0 8px; }
+.table-landscape .felt-wrap, .table-landscape .felt-wrap:has(.aside) { max-width: none; padding: 58px 8px 100px; }
+.table-landscape .felt { width: min(calc(100vw - 32px), calc((100dvh - 158px) * 2.2)); aspect-ratio: auto; height: calc(100dvh - 158px); margin: 0 auto; }
+.table-landscape .table-status {
+  position: fixed; top: 4px; left: 50%; transform: translateX(-50%); z-index: 6; margin: 0;
+  padding: 2px 10px; font-size: 12px; max-width: 70vw;
+}
+.table-landscape .fs-btn {
+  display: flex; align-items: center; justify-content: center; position: fixed; top: 4px; right: 8px; z-index: 20;
+  width: 36px; height: 36px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 18px;
+}
+.video-controls-dock .video-mic { padding: 0 3px; gap: 3px; }
+.video-controls-dock .video-mic input { margin: 0; width: 14px; height: 14px; }
+
+/* Celular en vertical: la mesa ocupa todo el alto de la pantalla (el estado flota arriba) y las cartas y controles quedan en los costados. */
+@media (orientation: portrait) {
+  .table-active .page-head { position: fixed; top: 4px; right: 8px; z-index: 7; margin: 0; }
+  .table-active .page-head h1, .table-active .page-head .badge-green { display: none; }
+  .table-active .main { padding-top: 8px; }
+  .table-active .table-status {
+    position: fixed; top: 4px; left: 50%; transform: translateX(-50%); z-index: 6; margin: 0;
+    padding: 2px 10px; font-size: 12px; max-width: 70vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .table-active .felt-wrap {
+    display: flex; flex-direction: column; box-sizing: border-box; padding-top: 70px;
+    height: calc(100dvh - var(--nav-h) - 16px - env(safe-area-inset-bottom));
+  }
+  .table-active .felt { flex: 1; min-height: 0; aspect-ratio: auto; }
+}

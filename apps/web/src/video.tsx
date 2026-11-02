@@ -326,13 +326,13 @@ export function VideoControls({ compact = false }: { compact?: boolean }) {
         : <Btn busy={v.starting} onClick={() => { void v.start(wantMic); }}>Transmitir video</Btn>}
       {/* El audio es opcional y arranca apagado. Cambiarlo con la transmisión en curso la reinicia. */}
       <label className="video-mic">
-        <input type="checkbox" checked={live ? v.micOn : wantMic} disabled={v.starting}
+        <input type="checkbox" aria-label="Micrófono" checked={live ? v.micOn : wantMic} disabled={v.starting}
           onChange={e => { if (live) void v.start(e.target.checked); else setWantMic(e.target.checked); }} />
-        Micrófono
+        {compact ? 'Mic' : 'Micrófono'}
       </label>
       <label className="video-mic">
-        <input type="checkbox" checked={v.muteOthers} onChange={e => v.setMuteOthers(e.target.checked)} />
-        Silenciar a los demás
+        <input type="checkbox" aria-label="Silenciar a los demás" checked={v.muteOthers} onChange={e => v.setMuteOthers(e.target.checked)} />
+        {compact ? 'Mudo' : 'Silenciar a los demás'}
       </label>
       {v.error && <div className="notice notice-err" role="alert">{v.error}</div>}
     </div>

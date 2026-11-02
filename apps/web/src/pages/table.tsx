@@ -1,10 +1,10 @@
 import type { ApiPlayer, ApiRtcServerMessage, ApiTableAction, ApiTableView } from '@pokercontrol/contracts';
 import { evaluate, formatMoney, parseAmount } from '@pokercontrol/core';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { Fragment, type ReactNode, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ApiRequestError, api } from '../api';
-import { EmptyCard, PlayerSeat, PokerCard, cardText } from '../components/poker';
+import { EmptyCard, PlayerSeat, PokerCard, cardText, seatPosition } from '../components/poker';
 import {
   Avatar, Btn, Emoji, Loading, Modal, QueryError, TextField, useAction, useFeedback,
 } from '../components/ui';
@@ -20,6 +20,53 @@ const WAIT_POLL_MS = 3_000;
 const LIVE_POLL_MS = 15_000;
 
 type Hand = NonNullable<ApiTableView['hand']>;
+
+/** Celular en horizontal: la mesa ocupa toda la pantalla y se oculta el menú (clase en <html>, ver styles.css). */
+const LANDSCAPE = '(orientation: landscape) and (max-height: 600px) and (pointer: coarse)';
+
+function useLandscapeTable(active: boolean) {
+  useEffect(() => {
+    if (!active) return;
+    const mq = window.matchMedia(LANDSCAPE);
+    const touch = window.matchMedia('(pointer: coarse)');
+    const root = document.documentElement;
+    let asked = false;
+    const apply = () => {
+      // table-active: celular o tablet, la mesa llena el alto; table-landscape: además horizontal y a pantalla completa.
+      root.classList.toggle('table-active', touch.matches);
+      root.classList.toggle('table-landscape', mq.matches);
+      if (!mq.matches) {
+        asked = false;
+        if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
+      }
+    };
+    // El navegador solo permite pantalla completa tras un toque: se pide una vez por cada vez que se gira.
+    const onTap = () => {
+      if (!mq.matches || asked || document.fullscreenElement) return;
+      asked = true;
+      void root.requestFullscreen?.().catch(() => {});
+    };
+    apply();
+    mq.addEventListener('change', apply);
+    window.addEventListener('click', onTap);
+    return () => {
+      mq.removeEventListener('change', apply);
+      window.removeEventListener('click', onTap);
+      root.classList.remove('table-active', 'table-landscape');
+      if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
+    };
+  }, [active]);
+}
+
+/** Solo se ve con la mesa en horizontal: entra o sale de pantalla completa. */
+function FullscreenButton() {
+  const toggle = () => {
+    const root = document.documentElement;
+    if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
+    else void root.requestFullscreen?.().catch(() => {});
+  };
+  return <button type="button" className="fs-btn" aria-label="Pantalla completa" onClick={toggle}>⛶</button>;
+}
 
 export function TablePage() {
   const { group, canEdit } = useGroup();
@@ -72,6 +119,8 @@ function TableView() {
     document.title = '🃏 Tu turno · ' + original;
     return () => { document.title = original; };
   }, [myTurn]);
+
+  useLandscapeTable(view?.status === 'playing' && !!view.hand);
 
   /** Cada operación devuelve la mesa ya actualizada. */
   const post = async (suffix: string, body?: unknown, opts: { idempotent?: boolean; refresh?: boolean } = {}) => {
@@ -126,6 +175,7 @@ function TableView() {
 
   return (
     <VideoProvider state={video.state}>
+      {view.status === 'playing' && view.hand && <FullscreenButton />}
       <div className="page-head">
         <h1 className="grow">Mesa</h1>
         {live && <span className="badge badge-muted" title="Recibís los cambios al instante">En vivo</span>}
@@ -258,31 +308,39 @@ function Playing({ view, canEdit, updatedAt, busy, onJoin, onLeave, onDeal, onCl
   const canRebuy = !!me && me.stack === 0 && (!live || !myPlayer || myPlayer.folded);
   const mine = view.seats.filter(s => s.isYou || s.managed);
   const canDeal = !live && (me?.status === 'sitting' || canEdit);
-  // Todo lo que se toca durante la mano va a los costados de mi asiento, para no tener que bajar.
-  const dockLeft = hand && (
-    <>
-      {hand.street === 'done' && mine.map(s => (
-        <ShowCards key={s.playerId} hand={hand} playerId={s.playerId} you={s.isYou} name={s.name} busy={busy} onReveal={onReveal} />
-      ))}
-      {live && hand.legal && <Controls hand={hand} busy={busy} onAction={onAction} />}
-    </>
-  );
-  const dockRight = hand && (
+  // Mis cartas y mis controles (y los de los jugadores que manejo) van al costado de cada asiento, fuera de la mesa.
+  const global = (
     <>
       {canDeal && <Btn busy={busy} onClick={onDeal}>Repartir próxima mano</Btn>}
       {canRebuy && me && <NoChips view={view} sitting={me.status === 'sitting'} busy={busy} onLeave={onLeave} onRebuy={onRebuy} />}
       <VideoControls compact />
     </>
   );
+  const aside: Record<string, { cards: ReactNode; controls: ReactNode }> = {};
+  if (hand) {
+    for (const s of mine) {
+      if (!hand.players.some(p => p.playerId === s.playerId)) continue;
+      aside[s.playerId] = {
+        cards: <HoleCards hand={hand} playerId={s.playerId} you={s.isYou} />,
+        controls: (
+          <>
+            {live && hand.legal && hand.actingPlayerId === s.playerId && <Controls hand={hand} busy={busy} onAction={onAction} />}
+            {hand.street === 'done' && <ShowCards hand={hand} playerId={s.playerId} you={s.isYou} name={s.name} busy={busy} onReveal={onReveal} />}
+            {s.isYou && global}
+          </>
+        ),
+      };
+    }
+  }
+  // Sin asiento propio en esta mano (recién llegado, o administrador sin jugador): los controles van debajo de la mesa.
+  const loose = hand && !(me && aside[me.playerId]) ? global : null;
   const waitingSeats = view.seats.filter(s => !hand?.players.some(p => p.playerId === s.playerId));
 
   return (
     <>
-      {hand && <Felt view={view} hand={hand} left={dockLeft} right={dockRight} />}
+      {hand && <Felt view={view} hand={hand} aside={aside} />}
+      {loose && <div className="dock-row">{loose}</div>}
       {hand && <Status view={view} hand={hand} updatedAt={updatedAt} />}
-      {hand && mine.map(s => (
-        <MyHand key={s.playerId} hand={hand} playerId={s.playerId} you={s.isYou} label={s.isYou ? 'Tus cartas' : `Cartas de ${s.name}`} />
-      ))}
 
       {waitingSeats.length > 0 && (
         <p className="muted small center" style={{ marginBottom: 12 }}>
@@ -358,33 +416,55 @@ function ShowCards({ hand, playerId, you, name, busy, onReveal }: {
   );
 }
 
-function Felt({ view, hand, left, right }: { view: ApiTableView; hand: Hand; left?: ReactNode; right?: ReactNode }) {
+function Felt({ view, hand, aside }: { view: ApiTableView; hand: Hand; aside: Record<string, { cards: ReactNode; controls: ReactNode }> }) {
   const players = hand.players;
   const myIdx = Math.max(0, players.findIndex(p => p.playerId === view.myPlayerId));
-  const showdown = hand.showdown.length > 0;
   return (
     <div className="felt-wrap">
       <div className="felt" data-testid="felt">
         <div className="felt-center">
           <div className="pot num" data-testid="pot">Pozo {formatMoney(hand.pot)}</div>
+          {/* Vertical: flop arriba y turn + river abajo. Horizontal: en línea, separados 3 | 1 | 1. */}
           <div className="board" role="group" aria-label="Cartas comunitarias">
-            {Array.from({ length: 5 }, (_, i) => hand.board[i]
-              ? <PokerCard key={i} card={hand.board[i]} />
-              : <EmptyCard key={i} />)}
+            <div className="board-row">
+              {[0, 1, 2].map(i => hand.board[i] ? <PokerCard key={i} card={hand.board[i]} /> : <EmptyCard key={i} />)}
+            </div>
+            <div className="board-row">
+              {[3, 4].map(i => hand.board[i] ? <PokerCard key={i} card={hand.board[i]} /> : <EmptyCard key={i} />)}
+            </div>
           </div>
         </div>
-        {players.map((p, i) => (
-          <PlayerSeat key={p.playerId} view={view} hand={hand} playerId={p.playerId}
-            offset={(i - myIdx + players.length) % players.length} total={players.length}
-            showCards={showdown || !!view.seats.find(x => x.playerId === p.playerId)?.managed} />
-        ))}
-      </div>
-      <div className="dock">
-        <div className="dock-col dock-left">{left}</div>
-        <div className="dock-col dock-right">{right}</div>
+        {players.map((p, i) => {
+          const offset = (i - myIdx + players.length) % players.length;
+          const a = aside[p.playerId];
+          return (
+            <Fragment key={p.playerId}>
+              <PlayerSeat view={view} hand={hand} playerId={p.playerId} offset={offset} total={players.length} />
+              {a && <SeatAside offset={offset} total={players.length} cards={a.cards} controls={a.controls} />}
+            </Fragment>
+          );
+        })}
       </div>
     </div>
   );
+}
+
+/**
+ * Cartas y controles de un asiento propio, pegados a él. Arriba y abajo van a sus costados (cartas
+ * hacia afuera, controles hacia el otro lado); en los laterales de la mesa, debajo del asiento.
+ */
+function SeatAside({ offset, total, cards, controls }: { offset: number; total: number; cards: ReactNode; controls: ReactNode }) {
+  const pos = seatPosition(offset, total);
+  const cos = Math.cos(Math.PI / 2 + (offset * 2 * Math.PI) / total);
+  if (Math.abs(cos) < 0.5) {
+    return (
+      <>
+        <div className="aside aside-cards" style={pos}>{cards}</div>
+        <div className="aside aside-ctl" style={pos}>{controls}</div>
+      </>
+    );
+  }
+  return <div className={`aside aside-below ${cos < 0 ? 'aside-below-left' : 'aside-below-right'}`} style={pos}>{cards}{controls}</div>;
 }
 
 /** Cuenta regresiva del turno. Se calcula contra la hora del servidor, no la del reloj del dispositivo. */
@@ -450,17 +530,20 @@ function Status({ view, hand, updatedAt }: { view: ApiTableView; hand: Hand; upd
   );
 }
 
-function MyHand({ hand, playerId, label, you }: { hand: Hand; playerId: string; label: string; you: boolean }) {
-  const me = hand.players.find(p => p.playerId === playerId);
-  if (!me || me.hole.length === 0 || me.hole.includes('??')) return null;
-  const cards = [...me.hole, ...hand.board];
+/** Mis cartas (o las de un jugador que manejo) junto al asiento. Las que ya se mostraron pasan a la mesa. */
+function HoleCards({ hand, playerId, you }: { hand: Hand; playerId: string; you: boolean }) {
+  const p = hand.players.find(x => x.playerId === playerId);
+  if (!p || p.hole.length === 0 || p.hole.includes('??')) return null;
+  const hidden = p.hole.map((card, i) => ({ card, i })).filter(x => !p.shown.includes(x.i));
+  if (hidden.length === 0) return null;
+  const cards = [...p.hole, ...hand.board];
   const name = cards.length >= 5 ? evaluate(cards).name : null;
   return (
-    <div className="hero" data-testid="my-hand">
-      <div className="hero-cards">{me.hole.map((c, i) => <PokerCard key={i} card={c} size="lg" />)}</div>
-      <p className="small muted center">
-        {label} · {formatMoney(me.stack)}{name ? ` · ${you ? 'Tenés' : 'Tiene'} ${name.toLowerCase()}` : ''}{me.folded ? ' · Retirado' : ''}
-      </p>
+    <div className="aside-hand" data-testid="my-hand">
+      <div className="hole">{hidden.map(x => <PokerCard key={x.i} card={x.card} />)}</div>
+      {(name || p.folded) && (
+        <p className="xs muted center">{name ? `${you ? 'Tenés' : 'Tiene'} ${name.toLowerCase()}` : ''}{p.folded ? ' · Retirado' : ''}</p>
+      )}
     </div>
   );
 }

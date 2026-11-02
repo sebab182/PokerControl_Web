@@ -38,8 +38,8 @@ export function seatPosition(offset: number, total: number): { left: string; top
   return { left: `${50 + 50 * Math.cos(angle)}%`, top: `${50 + 50 * Math.sin(angle)}%` };
 }
 
-export function PlayerSeat({ view, hand, playerId, offset, total, showCards }: {
-  view: ApiTableView; hand: ApiHandView; playerId: string; offset: number; total: number; showCards: boolean;
+export function PlayerSeat({ view, hand, playerId, offset, total }: {
+  view: ApiTableView; hand: ApiHandView; playerId: string; offset: number; total: number;
 }) {
   const video = useVideo();
   const stream = useSeatStream(playerId);
@@ -54,7 +54,8 @@ export function PlayerSeat({ view, hand, playerId, offset, total, showCards }: {
     <div className={`pseat ${turn ? 'pseat-turn' : ''} ${p.folded ? 'pseat-folded' : ''} ${won ? 'pseat-won' : ''}`}
       style={seatPosition(offset, total)} data-testid={`seat-${seat.name}`}>
       <div className="pseat-cards">
-        {p.hole.map((c, i) => c !== '??' && ((!p.folded && showCards) || p.shown.includes(i))
+        {/* Solo lo que se mostró (showdown o a voluntad); mis cartas sin mostrar quedan al costado del asiento. */}
+        {p.hole.map((c, i) => c !== '??' && p.shown.includes(i)
           ? <PokerCard key={i} card={c} size="sm" />
           : null)}
       </div>
