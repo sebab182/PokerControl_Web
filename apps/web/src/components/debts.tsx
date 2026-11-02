@@ -1,104 +1,108 @@
-import type { ApiDebt } from '@pokercontrol/contracts';
-import { formatMoney, parseAmount } from '@pokercontrol/core';
+import type { ApiBalancePayment, ApiPlayerBalance } from '@pokercontrol/contracts';
+import { formatMoney, parseAmount, round2 } from '@pokercontrol/core';
 import { useState } from 'react';
 import { api } from '../api';
-import { useGroup, useSession } from '../context';
-import { Btn, Emoji, Modal, Money, StatusBadge, TextField, useAction, useFeedback } from './ui';
+import { useGroup } from '../context';
+import { Avatar, Btn, Modal, Money, TextField, useAction, useFeedback } from './ui';
 
-export function PaymentModal({ debt, onClose }: { debt: ApiDebt | null; onClose: () => void }) {
+/** Texto editable de un saldo: con coma decimal como en el resto de la app. */
+export const balanceText = (n: number) => String(round2(n)).replace('.', ',');
+
+/** Un saldo por jugador, con una pista y un campo para corregirlo. */
+export function BalanceInputs({ rows, values, onChange }: {
+  rows: { playerId: string; name: string; hint?: string }[];
+  values: Record<string, string>;
+  onChange: (playerId: string, value: string) => void;
+}) {
+  return (
+    <>
+      {rows.map(r => (
+        <div className="row" key={r.playerId} style={{ marginBottom: 6 }}>
+          <Avatar name={r.name} />
+          <div className="grow" style={{ minWidth: 0 }}>
+            <div className="ellipsis strong small">{r.name}</div>
+            {r.hint && <div className="xs muted">{r.hint}</div>}
+          </div>
+          <input type="text" inputMode="decimal" autoComplete="off" aria-label={`Saldo de ${r.name}`}
+            style={{ width: 110 }} value={values[r.playerId] ?? ''} onChange={e => onChange(r.playerId, e.target.value)} />
+        </div>
+      ))}
+    </>
+  );
+}
+
+/** El deudor paga a un acreedor: el monto se descuenta de ambos saldos. */
+export function PayModal({ debtor, balances, onClose }: {
+  debtor: ApiPlayerBalance | null; balances: ApiPlayerBalance[]; onClose: () => void;
+}) {
   const { path, invalidate } = useGroup();
-  const { notify, confirm } = useFeedback();
+  const { notify } = useFeedback();
   const { busy, run } = useAction();
+  const [toId, setToId] = useState('');
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
 
-  const close = () => { setAmount(''); setNote(''); onClose(); };
+  const creditors = balances.filter(b => b.balance > 0);
+  const target = creditors.find(c => c.playerId === toId) ?? creditors[0];
+  const max = debtor && target ? Math.min(-debtor.balance, target.balance) : 0;
 
-  const partial = () => {
-    if (!debt) return;
-    const value = parseAmount(amount);
+  const close = () => { setToId(''); setAmount(''); setNote(''); onClose(); };
+
+  const save = () => {
+    if (!debtor || !target) return;
+    const value = amount.trim() === '' ? max : parseAmount(amount);
     if (value === null || value <= 0) return notify('Ingresá un monto mayor a cero.');
-    if (value > debt.pendingAmount) return notify(`El máximo pendiente es ${formatMoney(debt.pendingAmount)}.`);
+    if (value > max) return notify(`El máximo es ${formatMoney(max)}.`);
     void run(async () => {
-      await api(path(`/debts/${debt.id}/payments`), { method: 'POST', body: { amount: value, note }, idempotent: true });
-      await invalidate();
-      close();
-    });
-  };
-
-  const full = async () => {
-    if (!debt) return;
-    const ok = await confirm({
-      title: 'Marcar como saldada',
-      message: `¿Confirmar que ${debt.fromPlayer.name} pagó todo (${formatMoney(debt.pendingAmount)})?`,
-    });
-    if (!ok) return;
-    void run(async () => {
-      await api(path(`/debts/${debt.id}/mark-paid`), { method: 'POST', idempotent: true });
+      await api(path('/payments'), {
+        method: 'POST', idempotent: true,
+        body: { fromPlayerId: debtor.playerId, toPlayerId: target.playerId, amount: value, note },
+      });
       await invalidate();
       close();
     });
   };
 
   return (
-    <Modal open={!!debt} onClose={close} title="Registrar pago"
-      description={debt ? `${debt.fromPlayer.name} → ${debt.toPlayer.name} · ${debt.label}` : undefined}>
-      {debt && (
-        <>
-          <div className="stats-row" style={{ marginBottom: 16 }}>
-            <div className="stat"><b><Money amount={debt.originalAmount} /></b><span>Original</span></div>
-            <div className="stat"><b><Money amount={debt.pendingAmount} className="neg" /></b><span>Pendiente</span></div>
-            {debt.payments.length > 0 && (
-              <div className="stat"><b><Money amount={debt.originalAmount - debt.pendingAmount} className="pos" /></b><span>Ya pagó</span></div>
-            )}
-          </div>
-          <TextField label="Monto que paga ahora" value={amount} onChange={setAmount} decimal autoFocus
-            placeholder={`Máx: ${formatMoney(debt.pendingAmount)}`} />
-          <TextField label="Nota (opcional)" value={note} onChange={setNote} placeholder="Ej: pagó en efectivo" maxLength={200} />
+    <Modal open={!!debtor} onClose={close} title="Registrar pago"
+      description={debtor ? `${debtor.name} debe ${formatMoney(-debtor.balance)}` : undefined}>
+      {debtor && creditors.length === 0 && <p className="muted">No hay nadie con saldo a cobrar.</p>}
+      {debtor && creditors.length > 0 && (
+        <form onSubmit={e => { e.preventDefault(); save(); }}>
+          <label className="field">
+            Le paga a
+            <select value={target?.playerId ?? ''} onChange={e => { setToId(e.target.value); setAmount(''); }}>
+              {creditors.map(c => <option key={c.playerId} value={c.playerId}>{c.name} (cobra {formatMoney(c.balance)})</option>)}
+            </select>
+          </label>
+          <TextField label="Monto" value={amount} onChange={setAmount} decimal autoFocus placeholder={`Máx: ${formatMoney(max)}`} />
+          <TextField label="Nota (opcional)" value={note} onChange={setNote} placeholder="Ej: transferencia" maxLength={200} />
           <div className="modal-actions">
             <Btn variant="ghost" onClick={close}>Cancelar</Btn>
-            <Btn variant="ghost" onClick={partial} busy={busy}>Pago parcial</Btn>
-            <Btn onClick={() => { void full(); }} busy={busy}>Saldó todo</Btn>
+            <Btn type="submit" busy={busy}>{amount.trim() === '' ? `Pagar ${formatMoney(max)}` : 'Registrar pago'}</Btn>
           </div>
-        </>
+        </form>
       )}
     </Modal>
   );
 }
 
-export function DebtDetail({ debt, onPay, showPlayers }: { debt: ApiDebt; onPay: (d: ApiDebt) => void; showPlayers?: boolean }) {
-  const paidPct = Math.round(((debt.originalAmount - debt.pendingAmount) / debt.originalAmount) * 100);
-  const paid = debt.status === 'paid';
-  const { canEdit } = useSession();
+export function PaymentHistory({ payments, canEdit, ownPlayerId, onDelete }: {
+  payments: ApiBalancePayment[]; canEdit: boolean; ownPlayerId?: string | null; onDelete: (p: ApiBalancePayment) => void;
+}) {
   return (
-    <div className="card">
-      <div className="row-between">
-        <div className="grow">
-          <div className="strong">
-            {showPlayers ? `${debt.fromPlayer.name} → ${debt.toPlayer.name}` : debt.label}
-          </div>
-          <div className="xs muted">
-            {showPlayers ? `${debt.label} · ` : ''}
-            {new Date(debt.createdAt).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' })}
-          </div>
-        </div>
-        <div style={{ textAlign: 'right' }}>
-          <StatusBadge status={debt.status} />
-          {!paid && <div className="strong" style={{ marginTop: 4 }}><Money amount={debt.pendingAmount} className="neg" /></div>}
-        </div>
-      </div>
-      <div className={`progress ${paid ? 'done' : ''}`} role="progressbar" aria-valuenow={paidPct} aria-valuemin={0} aria-valuemax={100} aria-label="Pagado">
-        <div style={{ width: `${paidPct}%` }} />
-      </div>
-      {debt.payments.map((p, i) => (
-        <div key={i} className="row small" style={{ padding: '2px 0' }}>
-          <Emoji>✓</Emoji>
+    <>
+      {payments.map(p => (
+        <div className="list-row" key={p.id} data-testid="payment-item">
+          <span className="grow ellipsis">
+            {p.fromPlayer.name} → {p.toPlayer.name}
+            {p.note && <span className="muted small"> · {p.note}</span>}
+          </span>
+          <span className="xs muted">{new Date(p.createdAt).toLocaleDateString('es-AR', { day: '2-digit', month: 'short' })}</span>
           <Money amount={p.amount} className="strong" />
-          <span className="grow muted ellipsis">{p.note}</span>
-          <span className="xs muted">{new Date(p.date).toLocaleDateString('es-AR', { day: '2-digit', month: 'short' })}</span>
+          {(canEdit || p.fromPlayer.id === ownPlayerId) && <button type="button" className="icon-btn" aria-label={`Eliminar pago de ${p.fromPlayer.name}`} onClick={() => onDelete(p)}>✕</button>}
         </div>
       ))}
-      {!paid && canEdit && <Btn variant="ghost" block style={{ marginTop: 10 }} onClick={() => onPay(debt)}>+ Registrar pago</Btn>}
-    </div>
+    </>
   );
 }

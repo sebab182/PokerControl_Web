@@ -124,12 +124,18 @@ export const CreateSessionBody = Obj({
   name: T.Optional(T.String({ maxLength: 120 })),
   playerIds: T.Array(T.String()),
   initialBuyIn: T.Optional(PositiveAmount),
+  /** Saldo real de cada jugador antes de empezar; los que no vengan quedan en su último saldo conocido. */
+  balances: T.Optional(T.Array(Obj({ playerId: T.String(), amount: Amount }))),
 });
 export const AddParticipantBody = Obj({ playerId: T.String() });
 export const SetFinalAmountBody = Obj({ finalAmount: T.Number({ minimum: 0, maximum: 9_999_999_999.99 }) });
 export const AddBuyBody = Obj({ playerId: T.String(), amount: PositiveAmount });
 /** confirmedDiff: la diferencia que vio el usuario; si cambió, el cierre se rechaza. */
-export const CloseSessionBody = Obj({ confirmedDiff: T.Optional(T.Number()) });
+export const CloseSessionBody = Obj({
+  confirmedDiff: T.Optional(T.Number()),
+  /** Saldo real de cada jugador tras la partida; el resto queda en saldo previo + resultado. */
+  balances: T.Optional(T.Array(Obj({ playerId: T.String(), amount: Amount }))),
+});
 
 // ─── Deudas ──────────────────────────────────────────────────────────────────
 const PlayerRef = Obj({ id: T.String(), name: T.String() }, 'PlayerRef');
@@ -141,7 +147,24 @@ export const Debt = Obj({
   label: T.String(), originalAmount: T.Number(), pendingAmount: T.Number(), status: DebtStatus,
   payments: T.Array(DebtPayment), createdAt: T.String(), isConsolidated: T.Boolean(), manualAmount: T.Number(),
 }, 'Debt');
-export const CloseSessionResponse = Obj({ session: Session, debts: T.Array(Debt) }, 'CloseSessionResponse');
+export const CloseSessionResponse = Obj({ session: Session }, 'CloseSessionResponse');
+
+// ─── Saldos y pagos ──────────────────────────────────────────────────────────
+/** balance > 0: le deben; < 0: debe. */
+export const PlayerBalance = Obj({
+  playerId: T.String(), name: T.String(), balance: T.Number(), archived: T.Boolean(),
+}, 'PlayerBalance');
+export const BalancePayment = Obj({
+  id: T.String(), fromPlayer: PlayerRef, toPlayer: PlayerRef, amount: T.Number(), note: T.String(), createdAt: T.String(),
+}, 'BalancePayment');
+export const CreatePaymentBody = Obj({
+  fromPlayerId: T.String(), toPlayerId: T.String(), amount: PositiveAmount, note: T.Optional(T.String({ maxLength: 200 })),
+});
+export const UpdateBalancesBody = Obj({
+  balances: T.Array(Obj({ playerId: T.String(), amount: Amount }), { minItems: 1 }),
+  note: T.Optional(T.String({ maxLength: 200 })),
+});
+export const PaymentParams = Obj({ groupId: T.String(), paymentId: T.String() });
 export const DebtorGroup = Obj({ player: PlayerRef, debts: T.Array(Debt), totalPending: T.Number() }, 'DebtorGroup');
 export const PlayerDebts = Obj({ owes: T.Array(Debt), owed: T.Array(Debt) }, 'PlayerDebts');
 export const DebtsQuery = Obj({ sessionId: T.Optional(T.String()), status: T.Optional(DebtStatus) });
@@ -157,15 +180,14 @@ export const ReorganizeStatus = Obj({
 }, 'ReorganizeStatus');
 export const SessionDebtsView = Obj({
   balances: T.Array(Obj({
-    playerId: T.String(), name: T.String(), balance: Nullable(T.Number()),
+    playerId: T.String(), name: T.String(),
+    /** Resultado de la partida; null si no tiene resultado cargado. */
+    result: Nullable(T.Number()),
+    /** Saldo antes y después de la partida; null mientras está abierta. */
+    before: Nullable(T.Number()), after: Nullable(T.Number()),
   })),
   allHaveResult: T.Boolean(),
   sessionStatus: Status,
-  items: T.Array(Obj({
-    fromId: T.String(), fromName: T.String(), toId: T.String(), toName: T.String(), amount: T.Number(),
-    state: T.Union([T.Literal('open'), T.Literal('merged')]),
-    debt: Nullable(Debt),
-  })),
 }, 'SessionDebtsView');
 
 // ─── Backup ──────────────────────────────────────────────────────────────────
@@ -216,6 +238,8 @@ export type ApiSeason = Static<typeof Season>;
 export type ApiSession = Static<typeof Session>;
 export type ApiParticipant = Static<typeof Participant>;
 export type ApiSessionSummary = Static<typeof SessionSummary>;
+export type ApiPlayerBalance = Static<typeof PlayerBalance>;
+export type ApiBalancePayment = Static<typeof BalancePayment>;
 export type ApiDebt = Static<typeof Debt>;
 export type ApiDebtorGroup = Static<typeof DebtorGroup>;
 export type ApiPlayerDebts = Static<typeof PlayerDebts>;

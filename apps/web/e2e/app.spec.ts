@@ -104,27 +104,35 @@ test('partida completa: grupo, compras, cierre con diferencia, pagos y stats', a
   await expect(page.getByTestId('diff')).toHaveText('Faltan $21');
 
   await page.getByRole('button', { name: 'Cerrar partida' }).click();
-  await expect(page.getByRole('dialog')).toContainText('El pozo no cuadra: faltan $21');
-  await page.getByRole('button', { name: 'Cerrar de todas formas' }).click();
+  const closing = page.getByRole('dialog');
+  await expect(closing).toContainText('El pozo no cuadra: faltan $21');
+  // Saldo final por defecto: saldo previo (0) + resultado de la partida.
+  await expect(closing.getByLabel('Saldo de Ana')).toHaveValue('29,5');
+  await expect(closing.getByLabel('Saldo de Beto')).toHaveValue('-50,5');
+  await closing.getByRole('button', { name: 'Cerrar partida' }).click();
 
-  // Deudas: Ana +29,50, Beto -50,50.
-  await expect(page.getByRole('heading', { name: 'Deudas de la partida' })).toBeVisible();
-  await page.getByRole('button', { name: '+ Registrar pago' }).click();
-  const pending = page.getByRole('dialog');
-  await pending.getByLabel('Monto que paga ahora').fill('10');
-  await pending.getByLabel('Nota (opcional)').fill('efectivo');
-  await pending.getByRole('button', { name: 'Pago parcial' }).click();
-  await expect(page.getByText('Parcial')).toBeVisible();
-  await expect(page.getByText('efectivo')).toBeVisible();
-  await page.getByRole('button', { name: '+ Registrar pago' }).click();
-  await page.getByRole('button', { name: 'Saldó todo' }).click();
-  await page.getByRole('button', { name: 'Confirmar' }).click();
-  await expect(page.getByText('Saldada')).toBeVisible();
-
+  // Saldos: Ana +29,50, Beto -50,50.
+  await expect(page.getByRole('heading', { name: 'Saldos de la partida' })).toBeVisible();
   // Partida cerrada: sin edición.
   await page.getByRole('link', { name: '← Partida' }).click();
   await expect(page.getByText('✓ Partida cerrada')).toBeVisible();
   await expect(page.getByRole('button', { name: '+ Compra' })).toHaveCount(0);
+
+  await page.goto('/debts');
+  await expect(page.getByTestId('balance-Ana')).toContainText('+$29,5');
+  await expect(page.getByTestId('balance-Beto')).toContainText('$-50,5');
+  await page.getByRole('button', { name: '+ Registrar pago' }).click();
+  const pending = page.getByRole('dialog');
+  await pending.getByLabel('Monto').fill('10');
+  await pending.getByLabel('Nota (opcional)').fill('efectivo');
+  await pending.getByRole('button', { name: 'Registrar pago' }).click();
+  await expect(page.getByText('efectivo')).toBeVisible();
+  await expect(page.getByTestId('balance-Ana')).toContainText('+$19,5');
+  // Sin monto, paga lo máximo posible y deja en cero al acreedor.
+  await page.getByRole('button', { name: '+ Registrar pago' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Pagar $19,5' }).click();
+  await expect(page.getByTestId('balance-Ana')).toHaveCount(0);
+  await expect(page.getByTestId('payment-item')).toHaveCount(2);
 
   // Ranking y stats.
   await nav(page, 'Ranking');
@@ -177,7 +185,30 @@ async function importBackup(page: Page) {
   await expect(page.getByText('Backup importado.')).toBeVisible();
 }
 
-test('importar backup, reorganizar y deshacer; bloqueo por pago', async ({ page }) => {
+/** Cierra una partida por API: Ana +80, Beto -80. Los saldos arrancan en cero tras importar un backup. */
+async function seedBalances(page: Page) {
+  const token = await page.evaluate(() => localStorage.getItem('pc_token'));
+  const headers = { authorization: `Bearer ${token}` };
+  const [group] = await (await page.request.get(`${API}/groups`, { headers })).json();
+  const base = `${API}/groups/${group.id}`;
+  const [season] = await (await page.request.get(`${base}/seasons`, { headers })).json();
+  const players: { id: string; name: string }[] = await (await page.request.get(`${base}/players`, { headers })).json();
+  const id = (name: string) => players.find(p => p.name === name)!.id;
+  let n = 0;
+  const post = async (path: string, data: object) => {
+    const res = await page.request.post(`${base}${path}`, { headers: { ...headers, 'idempotency-key': `seed-${Date.now()}-${++n}` }, data });
+    expect(res.ok(), path).toBe(true);
+    return res.json();
+  };
+  const session = await post(`/seasons/${season.id}/sessions`, { playerIds: [id('Ana'), id('Beto')], initialBuyIn: 100 });
+  for (const [name, finalAmount] of [['Ana', 180], ['Beto', 20]] as const) {
+    const res = await page.request.patch(`${base}/sessions/${session.id}/participants/${id(name)}`, { headers, data: { finalAmount } });
+    expect(res.ok()).toBe(true);
+  }
+  await post(`/sessions/${session.id}/close`, {});
+}
+
+test('importar backup, ver saldos y registrar pagos', async ({ page }) => {
   await login(page, 'Seba');
   await createGroup(page);
   await importBackup(page);
@@ -185,23 +216,40 @@ test('importar backup, reorganizar y deshacer; bloqueo por pago', async ({ page 
   await nav(page, 'Temporadas');
   await expect(page.getByRole('heading', { name: 'Importada' })).toBeVisible();
 
-  await nav(page, 'Deudas');
-  await expect(page.getByTestId('debtor-Beto')).toContainText('$80');
-  await page.getByRole('button', { name: 'Reorganizar deudas' }).click();
-  await page.getByRole('dialog').getByRole('button', { name: 'Reorganizar' }).click();
-  await expect(page.getByText('Deuda consolidada')).toBeVisible();
+  // Tras importar los saldos arrancan en cero.
+  await nav(page, 'Saldos');
+  await expect(page.getByText('Todos en cero')).toBeVisible();
 
-  await page.getByRole('button', { name: 'Deshacer reorganización' }).click();
-  await page.getByRole('dialog').getByRole('button', { name: 'Deshacer' }).click();
-  await expect(page.getByText('Vieja A')).toBeVisible();
+  await seedBalances(page);
+  await page.reload();
+  await expect(page.getByTestId('balance-Ana')).toContainText('+$80');
+  await expect(page.getByTestId('balance-Beto')).toContainText('$-80');
+  // El primero de la lista es el que más tiene para cobrar.
+  await expect(page.locator('[data-testid^="balance-"]').first()).toHaveAttribute('data-testid', 'balance-Ana');
 
-  await page.getByRole('button', { name: 'Reorganizar deudas' }).click();
-  await page.getByRole('dialog').getByRole('button', { name: 'Reorganizar' }).click();
-  await expect(page.getByText('Deuda consolidada')).toBeVisible();
-  await page.getByRole('button', { name: '+ Registrar pago' }).click();
-  await page.getByLabel('Monto que paga ahora').fill('5');
-  await page.getByRole('button', { name: 'Pago parcial' }).click();
-  await expect(page.getByRole('button', { name: /bloqueado por pagos/ })).toBeDisabled();
+  await page.getByTestId('balance-Beto').getByRole('button', { name: '+ Registrar pago' }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('Monto').fill('30');
+  await dialog.getByLabel('Nota (opcional)').fill('transferencia');
+  await dialog.getByRole('button', { name: 'Registrar pago' }).click();
+  await expect(page.getByTestId('balance-Beto')).toContainText('$-50');
+  await expect(page.getByTestId('payment-item')).toContainText('transferencia');
+
+  // Actualizar saldos: Beto pagó 20 por fuera.
+  await page.getByRole('button', { name: 'Actualizar saldos' }).click();
+  await page.getByLabel('Saldo de Beto').fill('-30');
+  await page.getByRole('dialog').getByRole('button', { name: 'Guardar' }).click();
+  await expect(page.getByTestId('balance-Beto')).toContainText('$-30');
+  await page.getByRole('button', { name: 'Actualizar saldos' }).click();
+  await page.getByLabel('Saldo de Beto').fill('-50');
+  await page.getByRole('dialog').getByRole('button', { name: 'Guardar' }).click();
+  await expect(page.getByTestId('balance-Beto')).toContainText('$-50');
+
+  // Deshacer el pago devuelve los saldos.
+  await page.getByRole('button', { name: 'Eliminar pago de Beto' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Eliminar' }).click();
+  await expect(page.getByTestId('balance-Beto')).toContainText('$-80');
+  await expect(page.getByTestId('payment-item')).toHaveCount(0);
 });
 
 test('el ranking es la vista inicial y arranca en la temporada activa', async ({ page }) => {
@@ -342,6 +390,7 @@ test('roles: master, solo lectura con nick, promoción y archivados', async ({ p
   await login(page, 'Master', 'master');
   const code = await createGroup(page);
   await importBackup(page);
+  await seedBalances(page);
 
   // Un archivado sale del ranking y sigue en la partida pasada.
   await nav(page, 'Ranking');
@@ -378,10 +427,9 @@ test('roles: master, solo lectura con nick, promoción y archivados', async ({ p
   await expect(reader.getByText('Caro', { exact: true })).toBeVisible();
   await expect(reader.getByRole('button', { name: '+ Agregar' })).toHaveCount(0);
   await expect(reader.getByRole('button', { name: 'Eliminar a Ana' })).toHaveCount(0);
-  await nav(reader, 'Deudas');
-  await expect(reader.getByTestId('debtor-Beto')).toBeVisible();
+  await nav(reader, 'Saldos');
+  await expect(reader.getByTestId('balance-Beto')).toBeVisible();
   await expect(reader.getByRole('button', { name: '+ Registrar pago' })).toHaveCount(0);
-  await expect(reader.getByRole('button', { name: /Reorganizar/ })).toHaveCount(0);
   await nav(reader, 'Config');
   await expect(reader.getByRole('heading', { name: 'Miembros (2)' })).toBeVisible();
   await expect(reader.getByTestId('settings-invite')).toHaveCount(0);
@@ -411,6 +459,7 @@ test('accesibilidad y responsive en cada vista, en ambos temas', async ({ page }
   await login(page, 'Master', 'master');
   await createGroup(page);
   await importBackup(page);
+  await seedBalances(page);
 
   const seasons = await page.request.get(`${API}/groups`, {
     headers: { authorization: `Bearer ${await page.evaluate(() => localStorage.getItem('pc_token'))}` },
@@ -429,9 +478,9 @@ test('accesibilidad y responsive en cada vista, en ambos temas', async ({ page }
     await page.getByRole('link', { name: /Noche dos/ }).click();
     await expect(page.getByTestId('pot')).toBeVisible();
     await check('partida');
-    await page.locator('main').getByRole('link', { name: /Deudas$/ }).click();
-    await expect(page.getByRole('heading', { name: 'Deudas de la partida' })).toBeVisible();
-    await check('deudas de partida');
+    await page.locator('main').getByRole('link', { name: /Saldos$/ }).click();
+    await expect(page.getByRole('heading', { name: 'Saldos de la partida' })).toBeVisible();
+    await check('saldos de partida');
     await page.goto('/players');
     await expect(page.getByText('Ana')).toBeVisible();
     await check('jugadores');
@@ -443,8 +492,8 @@ test('accesibilidad y responsive en cada vista, en ambos temas', async ({ page }
     await expect(page.locator('.podium')).toBeVisible();
     await check('ranking');
     await page.goto('/debts');
-    await expect(page.getByTestId('debtor-Beto')).toBeVisible();
-    await check('deudas');
+    await expect(page.getByTestId('balance-Beto')).toBeVisible();
+    await check('saldos');
     await page.goto('/settings');
     await expect(page.getByTestId('settings-invite')).toBeVisible();
     await check('configuración');
