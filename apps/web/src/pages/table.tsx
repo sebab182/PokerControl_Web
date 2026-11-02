@@ -181,7 +181,7 @@ function TableView() {
         {live && <span className="badge badge-muted" title="Recibís los cambios al instante">En vivo</span>}
         {view.status === 'playing' && <span className="badge badge-green">Partida en curso</span>}
       </div>
-      {!(view.status === 'playing' && view.hand) && <VideoControls />}
+      {view.status === 'playing' && !view.hand && <VideoControls />}
       {closedId && view.status === 'waiting' && (
         <div className="notice notice-ok" role="status">
           Partida cerrada. <Link to={`/sessions/${closedId}`}>Ver resultados y saldos</Link>
