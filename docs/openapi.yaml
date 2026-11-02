@@ -1156,6 +1156,7 @@ paths:
                       - toActPlayerId
                       - players
                       - legal
+                      - lastAction
                       - payouts
                       - showdown
                     properties:
@@ -1250,6 +1251,35 @@ paths:
                           minRaiseTo:
                             type: integer
                           maxRaiseTo:
+                            type: integer
+                        nullable: true
+                      lastAction:
+                        additionalProperties: false
+                        type: object
+                        required:
+                          - playerId
+                          - type
+                        properties:
+                          playerId:
+                            type: string
+                          type:
+                            anyOf:
+                              - type: string
+                                enum:
+                                  - fold
+                              - type: string
+                                enum:
+                                  - check
+                              - type: string
+                                enum:
+                                  - call
+                              - type: string
+                                enum:
+                                  - raise
+                              - type: string
+                                enum:
+                                  - allin
+                          amount:
                             type: integer
                         nullable: true
                       payouts:
@@ -1401,6 +1431,7 @@ paths:
                       - toActPlayerId
                       - players
                       - legal
+                      - lastAction
                       - payouts
                       - showdown
                     properties:
@@ -1495,6 +1526,35 @@ paths:
                           minRaiseTo:
                             type: integer
                           maxRaiseTo:
+                            type: integer
+                        nullable: true
+                      lastAction:
+                        additionalProperties: false
+                        type: object
+                        required:
+                          - playerId
+                          - type
+                        properties:
+                          playerId:
+                            type: string
+                          type:
+                            anyOf:
+                              - type: string
+                                enum:
+                                  - fold
+                              - type: string
+                                enum:
+                                  - check
+                              - type: string
+                                enum:
+                                  - call
+                              - type: string
+                                enum:
+                                  - raise
+                              - type: string
+                                enum:
+                                  - allin
+                          amount:
                             type: integer
                         nullable: true
                       payouts:
@@ -1646,6 +1706,7 @@ paths:
                       - toActPlayerId
                       - players
                       - legal
+                      - lastAction
                       - payouts
                       - showdown
                     properties:
@@ -1740,6 +1801,35 @@ paths:
                           minRaiseTo:
                             type: integer
                           maxRaiseTo:
+                            type: integer
+                        nullable: true
+                      lastAction:
+                        additionalProperties: false
+                        type: object
+                        required:
+                          - playerId
+                          - type
+                        properties:
+                          playerId:
+                            type: string
+                          type:
+                            anyOf:
+                              - type: string
+                                enum:
+                                  - fold
+                              - type: string
+                                enum:
+                                  - check
+                              - type: string
+                                enum:
+                                  - call
+                              - type: string
+                                enum:
+                                  - raise
+                              - type: string
+                                enum:
+                                  - allin
+                          amount:
                             type: integer
                         nullable: true
                       payouts:
@@ -1911,6 +2001,7 @@ paths:
                       - toActPlayerId
                       - players
                       - legal
+                      - lastAction
                       - payouts
                       - showdown
                     properties:
@@ -2005,6 +2096,35 @@ paths:
                           minRaiseTo:
                             type: integer
                           maxRaiseTo:
+                            type: integer
+                        nullable: true
+                      lastAction:
+                        additionalProperties: false
+                        type: object
+                        required:
+                          - playerId
+                          - type
+                        properties:
+                          playerId:
+                            type: string
+                          type:
+                            anyOf:
+                              - type: string
+                                enum:
+                                  - fold
+                              - type: string
+                                enum:
+                                  - check
+                              - type: string
+                                enum:
+                                  - call
+                              - type: string
+                                enum:
+                                  - raise
+                              - type: string
+                                enum:
+                                  - allin
+                          amount:
                             type: integer
                         nullable: true
                       payouts:
@@ -2156,6 +2276,7 @@ paths:
                       - toActPlayerId
                       - players
                       - legal
+                      - lastAction
                       - payouts
                       - showdown
                     properties:
@@ -2250,6 +2371,35 @@ paths:
                           minRaiseTo:
                             type: integer
                           maxRaiseTo:
+                            type: integer
+                        nullable: true
+                      lastAction:
+                        additionalProperties: false
+                        type: object
+                        required:
+                          - playerId
+                          - type
+                        properties:
+                          playerId:
+                            type: string
+                          type:
+                            anyOf:
+                              - type: string
+                                enum:
+                                  - fold
+                              - type: string
+                                enum:
+                                  - check
+                              - type: string
+                                enum:
+                                  - call
+                              - type: string
+                                enum:
+                                  - raise
+                              - type: string
+                                enum:
+                                  - allin
+                          amount:
                             type: integer
                         nullable: true
                       payouts:
@@ -2466,6 +2616,7 @@ paths:
                       - toActPlayerId
                       - players
                       - legal
+                      - lastAction
                       - payouts
                       - showdown
                     properties:
@@ -2560,6 +2711,35 @@ paths:
                           minRaiseTo:
                             type: integer
                           maxRaiseTo:
+                            type: integer
+                        nullable: true
+                      lastAction:
+                        additionalProperties: false
+                        type: object
+                        required:
+                          - playerId
+                          - type
+                        properties:
+                          playerId:
+                            type: string
+                          type:
+                            anyOf:
+                              - type: string
+                                enum:
+                                  - fold
+                              - type: string
+                                enum:
+                                  - check
+                              - type: string
+                                enum:
+                                  - call
+                              - type: string
+                                enum:
+                                  - raise
+                              - type: string
+                                enum:
+                                  - allin
+                          amount:
                             type: integer
                         nullable: true
                       payouts:
@@ -2711,6 +2891,7 @@ paths:
                       - toActPlayerId
                       - players
                       - legal
+                      - lastAction
                       - payouts
                       - showdown
                     properties:
@@ -2805,6 +2986,35 @@ paths:
                           minRaiseTo:
                             type: integer
                           maxRaiseTo:
+                            type: integer
+                        nullable: true
+                      lastAction:
+                        additionalProperties: false
+                        type: object
+                        required:
+                          - playerId
+                          - type
+                        properties:
+                          playerId:
+                            type: string
+                          type:
+                            anyOf:
+                              - type: string
+                                enum:
+                                  - fold
+                              - type: string
+                                enum:
+                                  - check
+                              - type: string
+                                enum:
+                                  - call
+                              - type: string
+                                enum:
+                                  - raise
+                              - type: string
+                                enum:
+                                  - allin
+                          amount:
                             type: integer
                         nullable: true
                       payouts:
@@ -2966,6 +3176,7 @@ paths:
                           - toActPlayerId
                           - players
                           - legal
+                          - lastAction
                           - payouts
                           - showdown
                         properties:
@@ -3060,6 +3271,35 @@ paths:
                               minRaiseTo:
                                 type: integer
                               maxRaiseTo:
+                                type: integer
+                            nullable: true
+                          lastAction:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - type
+                            properties:
+                              playerId:
+                                type: string
+                              type:
+                                anyOf:
+                                  - type: string
+                                    enum:
+                                      - fold
+                                  - type: string
+                                    enum:
+                                      - check
+                                  - type: string
+                                    enum:
+                                      - call
+                                  - type: string
+                                    enum:
+                                      - raise
+                                  - type: string
+                                    enum:
+                                      - allin
+                              amount:
                                 type: integer
                             nullable: true
                           payouts:

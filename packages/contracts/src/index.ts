@@ -227,6 +227,12 @@ export const HandView = Obj({
   players: T.Array(HandPlayerView),
   /** Solo viene si es tu turno. */
   legal: Nullable(LegalActionsView),
+  /** Última jugada de la mano. amount: lo igualado (call) o el total al que subió (raise, allin). */
+  lastAction: Nullable(Obj({
+    playerId: T.String(),
+    type: T.Union([T.Literal('fold'), T.Literal('check'), T.Literal('call'), T.Literal('raise'), T.Literal('allin')]),
+    amount: T.Optional(T.Integer()),
+  })),
   payouts: T.Array(Obj({ playerId: T.String(), amount: T.Integer() })),
   showdown: T.Array(Obj({ playerId: T.String(), hole: T.Array(T.String()), handName: T.String() })),
 }, 'HandView');

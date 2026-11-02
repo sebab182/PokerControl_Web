@@ -285,3 +285,5 @@ input[type="text"], input[type="search"], select {
 @media (max-width: 420px) {
   .tabbar .nav-link { font-size: 11px; }
 }
+
+.last-action { font-weight: 600; }

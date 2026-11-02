@@ -491,7 +491,10 @@ test('mesa online: sala de espera, iniciar, jugar una mano y cerrar', async ({ p
 
   // Quien tiene el turno se retira: la mano termina y el otro cobra.
   const actor = (await page.getByRole('button', { name: 'Retirarme' }).count()) > 0 ? page : page2;
+  const other = actor === page ? page2 : page;
   await actor.getByRole('button', { name: 'Retirarme' }).click();
+  await expect(actor.getByTestId('last-action')).toContainText('te retiraste');
+  await expect(other.getByTestId('last-action')).toContainText('se retiró', { timeout: 10000 });
   await expect(page.getByRole('status').filter({ hasText: 'ganó' }).or(page.getByRole('status').filter({ hasText: 'ganaste' }))).toBeVisible({ timeout: 10000 });
   await checkPage(page, 'mesa: fin de mano');
 

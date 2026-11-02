@@ -1092,7 +1092,9 @@ describe('mesa online', () => {
 
     // Se levanta con la mano en curso: no puede; el que foldea sí.
     expect((await actor.call('POST', '/g/table/leave')).body.error).toBe('in_hand');
+    expect(started.hand.lastAction).toBeNull();
     const done = await act(actor, started, { type: 'fold' });
+    expect(done.hand.lastAction).toEqual({ playerId: started.hand.toActPlayerId, type: 'fold' });
     expect(done.hand.street).toBe('done');
     expect(done.hand.payouts).toHaveLength(1);
     expect(done.seats.map((s: { stack: number }) => s.stack).sort((x: number, y: number) => x - y)).toEqual([990, 1010]);
@@ -1122,7 +1124,11 @@ describe('mesa online', () => {
         if (i > 50) throw new Error('mano infinita');
         const c = byPlayer(v.hand.toActPlayerId);
         const mine = await view(c);
-        v = await act(c, mine, mine.hand.legal.canCheck ? { type: 'check' } : { type: 'call' });
+        const { canCheck, callAmount } = mine.hand.legal;
+        v = await act(c, mine, canCheck ? { type: 'check' } : { type: 'call' });
+        expect(v.hand.lastAction).toEqual(canCheck
+          ? { playerId: mine.hand.toActPlayerId, type: 'check' }
+          : { playerId: mine.hand.toActPlayerId, type: 'call', amount: callAmount });
       }
       expect(v.hand.board).toHaveLength(5);
       expect(v.hand.showdown).toHaveLength(2);
@@ -1131,6 +1137,24 @@ describe('mesa online', () => {
     const closed = await b.idem('/g/table/close');
     const sess = await a.ok('GET', `/g/sessions/${closed.sessionId}`);
     expect(sess.status).toBe('closed');
+  });
+
+  it('informa la última jugada, con el monto de subidas y all-in', async () => {
+    const { a, b, byPlayer } = await setup();
+    await a.ok('POST', '/g/table/join');
+    await b.ok('POST', '/g/table/join');
+    let v = await a.idem('/g/table/start', {});
+    const first = byPlayer(v.hand.toActPlayerId);
+    v = await act(first, v, { type: 'raise', to: 60 });
+    expect(v.hand.lastAction).toEqual({ playerId: v.hand.players.find((p: { bet: number }) => p.bet === 60).playerId, type: 'raise', amount: 60 });
+    // Lo ve también el otro jugador.
+    const other = first === a ? b : a;
+    expect((await view(other)).hand.lastAction).toMatchObject({ type: 'raise', amount: 60 });
+    v = await act(other, v, { type: 'allin' });
+    expect(v.hand.lastAction).toEqual({ playerId: expect.any(String), type: 'allin', amount: 1000 });
+    v = await act(first, v, { type: 'call' });
+    expect(v.hand.street).toBe('done');
+    expect(v.hand.lastAction).toMatchObject({ type: 'call', amount: 940 });
   });
 
   it('valida requisitos para iniciar', async () => {

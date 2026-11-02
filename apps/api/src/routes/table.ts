@@ -16,6 +16,7 @@ import { type Static } from '@sinclair/typebox';
 import { and, asc, desc, eq, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import * as schema from '../db/schema';
+import type { LoggedAction } from '../db/schema';
 import { ApiError, notFound } from '../errors';
 import { idempotent } from '../idempotency';
 import type { Conn, Tx } from '../repo';
@@ -74,6 +75,10 @@ async function buildView(db: Conn, table: TableRow, userId: string): Promise<Api
   const state = row?.state as HandState | undefined;
   const live = row?.status === 'active' ? state : undefined;
   const now = Date.now();
+  const [last] = row
+    ? await db.select().from(schema.pokerActions).where(eq(schema.pokerActions.handId, row.id))
+      .orderBy(desc(schema.pokerActions.seq)).limit(1)
+    : [];
 
   let hand: ApiTableView['hand'] = null;
   if (row && state) {
@@ -96,6 +101,9 @@ async function buildView(db: Conn, table: TableRow, userId: string): Promise<Api
           toCall: legal.toCall, canCheck: legal.canCheck, canCall: legal.canCall, callAmount: legal.callAmount,
           canRaise: legal.canRaise, minRaiseTo: legal.minRaiseTo, maxRaiseTo: legal.maxRaiseTo,
         }
+        : null,
+      lastAction: last
+        ? { playerId: last.playerId, type: last.action.type, ...(last.action.amount !== undefined ? { amount: last.action.amount } : {}) }
         : null,
       payouts: v.payouts,
       showdown: v.showdown,
@@ -318,6 +326,12 @@ export async function tableRoutes(app: FastifyInstance) {
     }
     const hand = await activeHand(tx, table.id);
     if (!hand) throw new ApiError(409, 'no_hand', 'No hay una mano en juego.');
+    const before = legalActions(hand.state as HandState);
+    const act = req.body.action;
+    const logged: LoggedAction = act.type === 'call' && before ? { type: 'call', amount: before.callAmount }
+      : act.type === 'raise' ? { type: 'raise', to: act.to, amount: act.to }
+        : act.type === 'allin' && before ? { type: 'allin', amount: before.canRaise ? before.maxRaiseTo : before.callAmount }
+          : act;
     let next: HandState;
     try {
       next = applyAction(hand.state as HandState, playerId, req.body.action);
@@ -327,7 +341,7 @@ export async function tableRoutes(app: FastifyInstance) {
     }
     const [{ n }] = await tx.select({ n: sql<number>`count(*)::int` }).from(schema.pokerActions)
       .where(eq(schema.pokerActions.handId, hand.id));
-    await tx.insert(schema.pokerActions).values({ handId: hand.id, seq: n + 1, playerId, action: req.body.action });
+    await tx.insert(schema.pokerActions).values({ handId: hand.id, seq: n + 1, playerId, action: logged });
     await tx.update(schema.pokerHands).set({ state: next }).where(eq(schema.pokerHands.id, hand.id));
     if (next.street === 'done') await finishHand(tx, hand.id, next);
     await tx.update(schema.pokerTables).set({ version: bump }).where(eq(schema.pokerTables.id, table.id));

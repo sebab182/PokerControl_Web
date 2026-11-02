@@ -5,6 +5,9 @@
  */
 
 import type { Action, HandState } from '@pokercontrol/core';
+
+/** Acción tal como se jugó: `amount` es lo igualado (call) o el total al que subió (raise/allin). */
+export type LoggedAction = Action & { amount?: number };
 import { sql } from 'drizzle-orm';
 import {
   bigint, boolean, check, customType, foreignKey, index, integer, jsonb, pgTable, primaryKey, text,
@@ -256,6 +259,6 @@ export const pokerActions = pgTable('poker_actions', {
   handId: bigint('hand_id', { mode: 'number' }).notNull().references(() => pokerHands.id, { onDelete: 'cascade' }),
   seq: integer('seq').notNull(),
   playerId: text('player_id').notNull(),
-  action: jsonb('action').notNull().$type<Action>(),
+  action: jsonb('action').notNull().$type<LoggedAction>(),
   createdAt: ts('created_at').notNull().defaultNow(),
 }, t => [unique('uq_poker_actions_hand_seq').on(t.handId, t.seq)]);

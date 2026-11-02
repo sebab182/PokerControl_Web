@@ -258,6 +258,21 @@ function nameOf(view: ApiTableView, id: string) {
   return s?.isYou ? 'Vos' : s?.name ?? 'Alguien';
 }
 
+/** "Nico igualó $40", "Vos subiste a $100"… */
+function describeLast(view: ApiTableView, la: NonNullable<Hand['lastAction']>): string {
+  const you = la.playerId === view.myPlayerId;
+  const who = nameOf(view, la.playerId);
+  const money = la.amount !== undefined ? formatMoney(la.amount) : '';
+  const verbs: Record<typeof la.type, [string, string]> = {
+    fold: ['te retiraste', 'se retiró'],
+    check: ['pasaste', 'pasó'],
+    call: [`igualaste ${money}`, `igualó ${money}`],
+    raise: [`subiste a ${money}`, `subió a ${money}`],
+    allin: [`fuiste all-in por ${money}`, `fue all-in por ${money}`],
+  };
+  return `${you ? 'Vos' : who} ${verbs[la.type][you ? 0 : 1]}`;
+}
+
 function Status({ view, hand }: { view: ApiTableView; hand: Hand }) {
   let text: string;
   if (hand.street === 'done') {
@@ -276,6 +291,7 @@ function Status({ view, hand }: { view: ApiTableView; hand: Hand }) {
   return (
     <p className={`table-status ${hand.street === 'done' ? 'notice notice-ok' : 'notice notice-info'}`} role="status" aria-live="polite">
       <span className="xs muted">Mano {hand.handNo} · </span>{text}
+      {hand.lastAction && <span className="last-action" data-testid="last-action"> · {describeLast(view, hand.lastAction)}.</span>}
     </p>
   );
 }
