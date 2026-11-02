@@ -218,9 +218,83 @@ export const IdParams = Obj({ groupId: T.String(), id: T.String() });
 export const SeasonParams = Obj({ groupId: T.String(), seasonId: T.String() });
 export const AdjustmentParams = Obj({ groupId: T.String(), id: T.String(), adjustmentId: T.String() });
 export const ParticipantParams = Obj({ groupId: T.String(), id: T.String(), playerId: T.String() });
+export const SeatParams = Obj({ groupId: T.String(), playerId: T.String() });
 export const BuyParams = Obj({ groupId: T.String(), id: T.String(), buyId: T.String() });
 export const Ok = Obj({ ok: T.Boolean() }, 'Ok');
 export const Deleted = Obj({ deleted: T.Boolean() }, 'Deleted');
+
+// ─── Mesa online (Texas Hold'em) ─────────────────────────────────────────────
+const Chips = T.Integer({ minimum: 1, maximum: 1_000_000_000 });
+export const TableStatus = T.Union([T.Literal('waiting'), T.Literal('playing')]);
+export const TableSeat = Obj({
+  playerId: T.String(), name: T.String(), stack: T.Integer(),
+  status: T.Union([T.Literal('sitting'), T.Literal('out')]),
+  /** Conectado: renovó su presencia hace pocos segundos (o lo sentó un administrador). */
+  online: T.Boolean(), isYou: T.Boolean(),
+  /** Un administrador puede jugar por él: es un jugador sin usuario. */
+  managed: T.Boolean(),
+}, 'TableSeat');
+export const HandPlayerView = Obj({
+  playerId: T.String(), stack: T.Integer(), bet: T.Integer(), totalBet: T.Integer(),
+  folded: T.Boolean(), allIn: T.Boolean(),
+  /** Tus cartas, las mostradas en el showdown, o "??" si están ocultas. */
+  hole: T.Array(T.String()),
+}, 'HandPlayerView');
+export const LegalActionsView = Obj({
+  toCall: T.Integer(), canCheck: T.Boolean(), canCall: T.Boolean(), callAmount: T.Integer(),
+  canRaise: T.Boolean(), minRaiseTo: T.Integer(), maxRaiseTo: T.Integer(),
+}, 'LegalActions');
+export const HandView = Obj({
+  handNo: T.Integer(),
+  street: T.Union([T.Literal('preflop'), T.Literal('flop'), T.Literal('turn'), T.Literal('river'), T.Literal('done')]),
+  board: T.Array(T.String()), pot: T.Integer(), currentBet: T.Integer(), minRaise: T.Integer(),
+  button: T.Integer(), toActPlayerId: Nullable(T.String()),
+  players: T.Array(HandPlayerView),
+  /** Solo viene si es tu turno, o el de un jugador que manejás. */
+  legal: Nullable(LegalActionsView),
+  /** De quién son las acciones de `legal`: vos o un jugador sin usuario que manejás como administrador. */
+  actingPlayerId: Nullable(T.String()),
+  /** Última jugada de la mano. amount: lo igualado (call) o el total al que subió (raise, allin). */
+  lastAction: Nullable(Obj({
+    playerId: T.String(),
+    type: T.Union([T.Literal('fold'), T.Literal('check'), T.Literal('call'), T.Literal('raise'), T.Literal('allin')]),
+    amount: T.Optional(T.Integer()),
+    /** true si la jugó el servidor por tiempo agotado. */
+    auto: T.Optional(T.Boolean()),
+  })),
+  payouts: T.Array(Obj({ playerId: T.String(), amount: T.Integer() })),
+  showdown: T.Array(Obj({ playerId: T.String(), hole: T.Array(T.String()), handName: T.String() })),
+}, 'HandView');
+export const TableView = Obj({
+  id: T.String(), status: TableStatus, sessionId: Nullable(T.String()),
+  smallBlind: T.Integer(), bigBlind: T.Integer(), buyIn: T.Integer(),
+  /** Cambia con cada acción: se envía de vuelta en POST /table/action. */
+  version: T.Integer(),
+  /** Segundos por turno (0 = sin límite) y vencimiento del turno en curso. */
+  turnSeconds: T.Integer(),
+  turnDeadline: Nullable(T.String()),
+  /** Hora del servidor, para calcular la cuenta regresiva sin depender del reloj del cliente. */
+  serverTime: T.String(),
+  seats: T.Array(TableSeat),
+  /** Tu jugador en este grupo; null si todavía no elegiste nick. */
+  myPlayerId: Nullable(T.String()),
+  hand: Nullable(HandView),
+}, 'TableView');
+export const StartTableBody = Obj({
+  smallBlind: T.Optional(Chips), bigBlind: T.Optional(Chips), buyIn: T.Optional(Chips),
+  /** 0 = sin límite; si no, entre 10 y 300 segundos. */
+  turnSeconds: T.Optional(T.Integer({ minimum: 0, maximum: 300 })),
+});
+export const TableActionBody = Obj({
+  version: T.Integer(),
+  /** Solo administradores: jugar por un jugador sin usuario. */
+  playerId: T.Optional(T.String()),
+  action: T.Union([
+    Obj({ type: T.Literal('fold') }), Obj({ type: T.Literal('check') }), Obj({ type: T.Literal('call') }),
+    Obj({ type: T.Literal('allin') }), Obj({ type: T.Literal('raise'), to: Chips }),
+  ]),
+});
+export const CloseTableResponse = Obj({ sessionId: T.String(), table: TableView }, 'CloseTableResponse');
 
 // ─── Tipos para clientes ─────────────────────────────────────────────────────
 export type ApiRole = Static<typeof Role>;
@@ -247,3 +321,6 @@ export type ApiReorganizeStatus = Static<typeof ReorganizeStatus>;
 export type ApiSessionDebtsView = Static<typeof SessionDebtsView>;
 export type ApiImportResult = Static<typeof ImportResult>;
 export type ApiCloseSessionResponse = Static<typeof CloseSessionResponse>;
+export type ApiTableView = Static<typeof TableView>;
+export type ApiHandView = Static<typeof HandView>;
+export type ApiTableAction = Static<typeof TableActionBody>['action'];

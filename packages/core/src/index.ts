@@ -7,3 +7,4 @@ export * from './playerReport';
 export * from './seasons';
 export * from './share';
 export * from './balances';
+export * from './holdem';

@@ -1,5 +1,5 @@
 {
-  "id": "bcf081e6-63d4-4273-975e-6cfd0a49bc86",
+  "id": "af6fb03f-d306-49ec-8179-6fa0ad21f29c",
   "prevId": "a5d6f290-f755-4c32-a352-2d39b5207ab7",
   "version": "7",
   "dialect": "postgresql",
@@ -48,182 +48,6 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.balance_entries": {
-      "name": "balance_entries",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "bigint",
-          "primaryKey": true,
-          "notNull": true,
-          "identity": {
-            "type": "always",
-            "name": "balance_entries_id_seq",
-            "schema": "public",
-            "increment": "1",
-            "startWith": "1",
-            "minValue": "1",
-            "maxValue": "9223372036854775807",
-            "cache": "1",
-            "cycle": false
-          }
-        },
-        "group_id": {
-          "name": "group_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "player_id": {
-          "name": "player_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "kind": {
-          "name": "kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "amount": {
-          "name": "amount",
-          "type": "numeric(12, 2)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "session_id": {
-          "name": "session_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "counterpart_player_id": {
-          "name": "counterpart_player_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "payment_id": {
-          "name": "payment_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "note": {
-          "name": "note",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "''"
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "idx_balance_entries_player": {
-          "name": "idx_balance_entries_player",
-          "columns": [
-            {
-              "expression": "group_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "player_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "idx_balance_entries_payment": {
-          "name": "idx_balance_entries_payment",
-          "columns": [
-            {
-              "expression": "payment_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "balance_entries_group_id_groups_id_fk": {
-          "name": "balance_entries_group_id_groups_id_fk",
-          "tableFrom": "balance_entries",
-          "tableTo": "groups",
-          "columnsFrom": [
-            "group_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "fk_balance_entries_player": {
-          "name": "fk_balance_entries_player",
-          "tableFrom": "balance_entries",
-          "tableTo": "players",
-          "columnsFrom": [
-            "group_id",
-            "player_id"
-          ],
-          "columnsTo": [
-            "group_id",
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        },
-        "fk_balance_entries_session": {
-          "name": "fk_balance_entries_session",
-          "tableFrom": "balance_entries",
-          "tableTo": "sessions",
-          "columnsFrom": [
-            "group_id",
-            "session_id"
-          ],
-          "columnsTo": [
-            "group_id",
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "ck_balance_entries_kind": {
-          "name": "ck_balance_entries_kind",
-          "value": "\"balance_entries\".\"kind\" in ('adjustment', 'session', 'payment')"
-        },
-        "ck_balance_entries_amount": {
-          "name": "ck_balance_entries_amount",
-          "value": "\"balance_entries\".\"amount\" <> 0"
-        }
-      },
       "isRLSEnabled": false
     },
     "public.buys": {
@@ -1126,6 +950,455 @@
       },
       "policies": {},
       "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.poker_actions": {
+      "name": "poker_actions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "poker_actions_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "9223372036854775807",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "hand_id": {
+          "name": "hand_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "seq": {
+          "name": "seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "player_id": {
+          "name": "player_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "action": {
+          "name": "action",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "poker_actions_hand_id_poker_hands_id_fk": {
+          "name": "poker_actions_hand_id_poker_hands_id_fk",
+          "tableFrom": "poker_actions",
+          "tableTo": "poker_hands",
+          "columnsFrom": [
+            "hand_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "uq_poker_actions_hand_seq": {
+          "name": "uq_poker_actions_hand_seq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "hand_id",
+            "seq"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.poker_hands": {
+      "name": "poker_hands",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "poker_hands_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "9223372036854775807",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "table_id": {
+          "name": "table_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "hand_no": {
+          "name": "hand_no",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'active'"
+        },
+        "state": {
+          "name": "state",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "finished_at": {
+          "name": "finished_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "poker_hands_table_id_poker_tables_id_fk": {
+          "name": "poker_hands_table_id_poker_tables_id_fk",
+          "tableFrom": "poker_hands",
+          "tableTo": "poker_tables",
+          "columnsFrom": [
+            "table_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "uq_poker_hands_table_no": {
+          "name": "uq_poker_hands_table_no",
+          "nullsNotDistinct": false,
+          "columns": [
+            "table_id",
+            "hand_no"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "ck_poker_hands_status": {
+          "name": "ck_poker_hands_status",
+          "value": "\"poker_hands\".\"status\" in ('active', 'done')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.poker_seats": {
+      "name": "poker_seats",
+      "schema": "",
+      "columns": {
+        "table_id": {
+          "name": "table_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "player_id": {
+          "name": "player_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "group_id": {
+          "name": "group_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "stack": {
+          "name": "stack",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'sitting'"
+        },
+        "joined_at": {
+          "name": "joined_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "last_seen_at": {
+          "name": "last_seen_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "poker_seats_table_id_poker_tables_id_fk": {
+          "name": "poker_seats_table_id_poker_tables_id_fk",
+          "tableFrom": "poker_seats",
+          "tableTo": "poker_tables",
+          "columnsFrom": [
+            "table_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "poker_seats_user_id_users_id_fk": {
+          "name": "poker_seats_user_id_users_id_fk",
+          "tableFrom": "poker_seats",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "fk_poker_seats_player": {
+          "name": "fk_poker_seats_player",
+          "tableFrom": "poker_seats",
+          "tableTo": "players",
+          "columnsFrom": [
+            "group_id",
+            "player_id"
+          ],
+          "columnsTo": [
+            "group_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "poker_seats_table_id_player_id_pk": {
+          "name": "poker_seats_table_id_player_id_pk",
+          "columns": [
+            "table_id",
+            "player_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "ck_poker_seats_stack": {
+          "name": "ck_poker_seats_stack",
+          "value": "\"poker_seats\".\"stack\" >= 0"
+        },
+        "ck_poker_seats_status": {
+          "name": "ck_poker_seats_status",
+          "value": "\"poker_seats\".\"status\" in ('sitting', 'out')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.poker_tables": {
+      "name": "poker_tables",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "group_id": {
+          "name": "group_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'waiting'"
+        },
+        "session_id": {
+          "name": "session_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "small_blind": {
+          "name": "small_blind",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 10
+        },
+        "big_blind": {
+          "name": "big_blind",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 20
+        },
+        "buy_in": {
+          "name": "buy_in",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1000
+        },
+        "hand_count": {
+          "name": "hand_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "button": {
+          "name": "button",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "poker_tables_group_id_groups_id_fk": {
+          "name": "poker_tables_group_id_groups_id_fk",
+          "tableFrom": "poker_tables",
+          "tableTo": "groups",
+          "columnsFrom": [
+            "group_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "fk_poker_tables_session": {
+          "name": "fk_poker_tables_session",
+          "tableFrom": "poker_tables",
+          "tableTo": "sessions",
+          "columnsFrom": [
+            "group_id",
+            "session_id"
+          ],
+          "columnsTo": [
+            "group_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "uq_poker_tables_group": {
+          "name": "uq_poker_tables_group",
+          "nullsNotDistinct": false,
+          "columns": [
+            "group_id"
+          ]
+        },
+        "uq_poker_tables_group_id": {
+          "name": "uq_poker_tables_group_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "group_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "ck_poker_tables_status": {
+          "name": "ck_poker_tables_status",
+          "value": "\"poker_tables\".\"status\" in ('waiting', 'playing')"
+        },
+        "ck_poker_tables_blinds": {
+          "name": "ck_poker_tables_blinds",
+          "value": "\"poker_tables\".\"small_blind\" > 0 and \"poker_tables\".\"big_blind\" >= \"poker_tables\".\"small_blind\" and \"poker_tables\".\"buy_in\" > 0"
+        },
+        "ck_poker_tables_session": {
+          "name": "ck_poker_tables_session",
+          "value": "(\"poker_tables\".\"status\" = 'playing') = (\"poker_tables\".\"session_id\" is not null)"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.seasons": {

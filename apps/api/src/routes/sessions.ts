@@ -24,7 +24,7 @@ function assertAmount(amount: number): void {
   if (round2(amount) !== amount) throw new ApiError(422, 'invalid_amount', 'El monto admite hasta 2 decimales.');
 }
 
-function defaultSessionName(date: Date, timeZone: string): string {
+export function defaultSessionName(date: Date, timeZone: string): string {
   const part = (options: Intl.DateTimeFormatOptions) => date.toLocaleDateString('es-AR', { timeZone, ...options });
   return `Party ${part({ day: '2-digit' })}${part({ month: '2-digit' })}${part({ year: '2-digit' })}`;
 }
@@ -57,6 +57,38 @@ async function findParticipant(tx: Tx, sessionId: string, playerId: string) {
     .where(and(eq(schema.sessionParticipants.sessionId, sessionId), eq(schema.sessionParticipants.playerId, playerId)));
   if (!row) throw notFound('Participante');
   return row;
+}
+
+/**
+ * Cierra una partida y genera sus deudas. Compartido con el cierre de la mesa online.
+ * Si el pozo no cuadra o faltan resultados exige `confirmedDiff` (409 pot_mismatch).
+ */
+export async function closeSessionTx(
+  tx: Tx, groupId: string, id: string, confirmedDiff?: number, typedBalances: { playerId: string; amount: number }[] = [],
+) {
+  await lockOpen(tx, groupId, id);
+  const session = await findSession(tx, groupId, id);
+  const { diff, status } = calcSession(session);
+  const missing = missingResults(session);
+
+  const needsConfirmation = Math.abs(diff) > POT_TOLERANCE || missing.length > 0;
+  const confirmed = confirmedDiff !== undefined && round2(confirmedDiff) === round2(diff);
+  if (needsConfirmation && !confirmed) {
+    throw new ApiError(409, 'pot_mismatch', 'El pozo no cuadra o faltan resultados.', {
+      diff, status, missingResults: missing,
+    });
+  }
+
+  await tx.update(schema.sessions).set({ status: 'closed', closedAt: new Date() }).where(eq(schema.sessions.id, id));
+  await lockGroup(tx, groupId);
+  // El resultado de cada participante con resultado se suma a su saldo; el resto queda igual.
+  await insertEntries(tx, groupId, session.participants
+    .filter(p => p.finalAmount !== null)
+    .map(p => ({ playerId: p.playerId, kind: 'session' as const, sessionId: id, amount: round2(calcParticipant(p).balance) })));
+  for (const b of typedBalances) assertAmount(b.amount);
+  if (typedBalances.some(b => !session.participants.some(p => p.playerId === b.playerId))) throw notFound('Jugador');
+  await setBalances(tx, groupId, id, 'cierre', typedBalances);
+  return { session: toApiSession(await findSession(tx, groupId, id)) };
 }
 
 export async function sessionRoutes(app: FastifyInstance) {
@@ -129,6 +161,9 @@ export async function sessionRoutes(app: FastifyInstance) {
     const { id: groupId } = req.group;
     const { id } = req.params;
     if (!(await lockSession(tx, groupId, id))) throw notFound('Partida');
+    const [table] = await tx.select({ id: schema.pokerTables.id }).from(schema.pokerTables)
+      .where(eq(schema.pokerTables.sessionId, id));
+    if (table) throw new ApiError(409, 'session_in_table', 'La partida está en juego en la mesa online. Cerrala desde la mesa.');
     await lockGroup(tx, groupId);
     // Sus movimientos de saldo se borran en cascada: el saldo de cada jugador se recalcula solo.
     await tx.delete(schema.sessions).where(eq(schema.sessions.id, id));
@@ -192,34 +227,7 @@ export async function sessionRoutes(app: FastifyInstance) {
 
   app.post<I & { Body: Static<typeof CloseSessionBody> }>('/sessions/:id/close', {
     schema: { tags, params: IdParams, body: CloseSessionBody, response: { 200: CloseSessionResponse, ...err } },
-  }, async req => idempotent(req, async tx => {
-    const { id: groupId } = req.group;
-    const { id } = req.params;
-    await lockOpen(tx, groupId, id);
-    const session = await findSession(tx, groupId, id);
-    const { diff, status } = calcSession(session);
-    const missing = missingResults(session);
-
-    const needsConfirmation = Math.abs(diff) > POT_TOLERANCE || missing.length > 0;
-    const confirmed = req.body.confirmedDiff !== undefined && round2(req.body.confirmedDiff) === round2(diff);
-    if (needsConfirmation && !confirmed) {
-      throw new ApiError(409, 'pot_mismatch', 'El pozo no cuadra o faltan resultados.', {
-        diff, status, missingResults: missing,
-      });
-    }
-
-    await tx.update(schema.sessions).set({ status: 'closed', closedAt: new Date() }).where(eq(schema.sessions.id, id));
-    await lockGroup(tx, groupId);
-    // El resultado de cada participante con resultado se suma a su saldo; el resto queda igual.
-    await insertEntries(tx, groupId, session.participants
-      .filter(p => p.finalAmount !== null)
-      .map(p => ({ playerId: p.playerId, kind: 'session' as const, sessionId: id, amount: round2(calcParticipant(p).balance) })));
-    const typed = req.body.balances ?? [];
-    for (const b of typed) assertAmount(b.amount);
-    if (typed.some(b => !session.participants.some(p => p.playerId === b.playerId))) throw notFound('Jugador');
-    await setBalances(tx, groupId, id, 'cierre', typed);
-    return { session: await fresh(tx, groupId, id) };
-  }));
+  }, async req => idempotent(req, tx => closeSessionTx(tx, req.group.id, req.params.id, req.body.confirmedDiff, req.body.balances)));
 
   app.get<I>('/sessions/:id/debts', {
     schema: { tags, params: IdParams, response: { 200: SessionDebtsView, ...err } },
