@@ -145,6 +145,13 @@ function TableView() {
             }
           })}
           onRebuy={() => run(() => post('rebuy', undefined, { idempotent: true }))} />}
+      {canEdit && !group.playerId && (
+        <details className="card" style={{ marginTop: 16 }}>
+          <summary className="strong" style={{ cursor: 'pointer', minHeight: 44, display: 'flex', alignItems: 'center' }}>Quiero jugar yo también</summary>
+          <p className="muted small" style={{ margin: '4px 0 12px' }}>Elegí tu jugador para sentarte a la mesa como cualquier otro miembro.</p>
+          <NickChooser />
+        </details>
+      )}
       {canEdit && <AdminSeats view={view} busy={busy} onAddOpen={() => setAddOpen(true)} {...admin} />}
       {canEdit && <AddPlayerModal view={view} open={addOpen} onClose={() => setAddOpen(false)} busy={busy} onAdd={admin.add} />}
       <StartModal view={view} open={startOpen} onClose={() => setStartOpen(false)}

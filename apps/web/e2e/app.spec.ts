@@ -455,6 +455,8 @@ test('mesa online: sala de espera, iniciar, jugar una mano y cerrar', async ({ p
   await login(page, 'Seba');
   const code = await createGroup(page);
   await nav(page, 'Mesa');
+  // Un administrador entra a la mesa sin jugador; si quiere jugar, elige su nick.
+  await page.getByText('Quiero jugar yo también').click();
   await page.getByLabel('Tu nick').fill('Seba');
   await page.getByRole('button', { name: 'Crear mi jugador' }).click();
   await expect(page.getByRole('heading', { name: 'Mesa', exact: true })).toBeVisible();
@@ -473,7 +475,7 @@ test('mesa online: sala de espera, iniciar, jugar una mano y cerrar', async ({ p
   await nav(page2, 'Mesa');
   await expect(page2.getByText('Nico (vos)')).toBeVisible();
 
-  await expect(page.getByText('Nico', { exact: true })).toBeVisible({ timeout: 10000 });
+  await expect(page.getByText('Nico', { exact: true }).first()).toBeVisible({ timeout: 10000 });
   await checkPage(page, 'mesa: sala de espera');
   const start = page.getByRole('button', { name: /Iniciar partida \(2 jugadores\)/ });
   await expect(start).toBeEnabled();
@@ -516,6 +518,7 @@ test('mesa online: al agotarse el tiempo el servidor juega por quien no responde
   await login(page, 'Seba');
   const code = await createGroup(page);
   await nav(page, 'Mesa');
+  await page.getByText('Quiero jugar yo también').click();
   await page.getByLabel('Tu nick').fill('Seba');
   await page.getByRole('button', { name: 'Crear mi jugador' }).click();
 
@@ -559,7 +562,7 @@ test('mesa online: un administrador agrega jugadores sin usuario y juega por ell
   // Sin jugador propio igual entra a la mesa: no se le pide elegir un nick.
   await nav(page, 'Mesa');
   await expect(page.getByRole('heading', { name: 'Administrar mesa' })).toBeVisible();
-  await expect(page.getByLabel('Tu nick')).toHaveCount(0);
+  await expect(page.getByLabel('Tu nick')).toBeHidden(); // la elección de nick queda plegada
   await expect(page.getByRole('button', { name: /Iniciar partida/ })).toBeDisabled();
 
   await page.getByRole('button', { name: '+ Agregar jugador' }).click();
