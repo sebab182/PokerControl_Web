@@ -29,6 +29,35 @@ export const videoSupported = () =>
 /** De qué lado de la conexión sale un candidato ICE; sirve para que el otro extremo lo asigne a la conexión correcta. */
 type IceData = { dir: 'out' | 'in'; candidate: RTCIceCandidateInit };
 
+const UNBLOCK_HINT = 'Habilitalo desde el candado de la barra de direcciones y volvé a intentar.';
+
+/** Estado del permiso en el navegador; null si no lo informa (Safari, Firefox para cámara y micrófono). */
+async function permissionState(name: 'camera' | 'microphone'): Promise<PermissionState | null> {
+  try { return (await navigator.permissions.query({ name: name as PermissionName })).state; } catch { return null; }
+}
+
+/** ¿Falló solo el micrófono? Es así si la cámara ya quedó habilitada y el micrófono no. */
+async function onlyMicBlocked(e: unknown): Promise<boolean> {
+  if (!(e instanceof DOMException) || e.name !== 'NotAllowedError') return false;
+  const [camera, mic] = await Promise.all([permissionState('camera'), permissionState('microphone')]);
+  return camera === 'granted' && mic === 'denied';
+}
+
+/** Mensaje para el usuario según por qué falló getUserMedia. */
+async function describeMediaError(e: unknown, withMic: boolean): Promise<string> {
+  const name = e instanceof DOMException ? e.name : '';
+  if (name === 'NotAllowedError') {
+    const [camera, mic] = await Promise.all([permissionState('camera'), withMic ? permissionState('microphone') : null]);
+    // "denied" sin diálogo previo: el sitio quedó bloqueado antes y el navegador ya no vuelve a preguntar.
+    if (camera === 'denied') return 'La cámara está bloqueada para este sitio. ' + UNBLOCK_HINT;
+    if (mic === 'denied') return 'El micrófono está bloqueado para este sitio. ' + UNBLOCK_HINT;
+    return 'No diste permiso para usar la cámara' + (withMic ? ' y el micrófono' : '') + '. Tocá "Transmitir video" para que el navegador pregunte de nuevo.';
+  }
+  if (name === 'NotFoundError') return withMic ? 'No se encontró una cámara o un micrófono.' : 'No se encontró una cámara.';
+  if (name === 'NotReadableError') return 'La cámara está en uso por otra aplicación o bloqueada por el sistema.';
+  return 'No se pudo iniciar la cámara.';
+}
+
 interface VideoState {
   supported: boolean;
   /** Mi transmisión: null si no estoy transmitiendo. */
@@ -209,19 +238,27 @@ export function useTableVideo(socket: TableSocket, myPlayerId: string | null) {
     setError(null);
     setStarting(true);
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: CAMERA, audio: withMic });
+      // Pide el permiso en este momento: cámara y, si se eligió, micrófono en el mismo diálogo del navegador.
+      let stream: MediaStream;
+      let micGranted = withMic;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: CAMERA, audio: withMic });
+      } catch (e) {
+        // Sin permiso de micrófono pero con cámara habilitada: se transmite solo el video y se avisa.
+        if (!withMic || !(await onlyMicBlocked(e))) throw e;
+        stream = await navigator.mediaDevices.getUserMedia({ video: CAMERA, audio: false });
+        micGranted = false;
+        setError('Sin permiso para el micrófono: se transmite solo el video. ' + UNBLOCK_HINT);
+      }
       if (localRef.current) stop(); // cambio de micrófono: se reinicia la transmisión
       localRef.current = stream;
       // Si el usuario corta desde el navegador (el indicador de cámara), se refleja acá.
       stream.getVideoTracks()[0]?.addEventListener('ended', () => { if (localRef.current === stream) stop(); });
       setLocal(stream);
-      setMicOn(withMic);
+      setMicOn(micGranted);
       sendRef.current({ kind: 'start' });
     } catch (e) {
-      const name = e instanceof DOMException ? e.name : '';
-      setError(name === 'NotAllowedError' ? 'No diste permiso para usar la cámara.'
-        : name === 'NotFoundError' ? 'No se encontró una cámara.'
-          : 'No se pudo iniciar la cámara.');
+      setError(await describeMediaError(e, withMic));
     } finally {
       setStarting(false);
     }
