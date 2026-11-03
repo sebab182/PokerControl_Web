@@ -274,7 +274,7 @@ input[type="text"], input[type="search"], select {
 /* Resultado de la mano: en el centro del paño, en el lugar del pozo, semitransparente sobre el paño. */
 .hand-result {
   position: relative; z-index: 4;
-  width: max-content; max-width: min(88cqw, 420px); box-sizing: border-box; padding: 8px 34px 8px 16px;
+  width: max-content; max-width: min(62cqw, 420px); box-sizing: border-box; padding: 8px 34px 8px 16px;
   border-radius: 14px; border: 1px solid rgba(255, 255, 255, .28); background: rgba(8, 12, 18, .62);
   color: #fff; text-align: center; text-shadow: 0 1px 2px rgba(0, 0, 0, .8);
 }
@@ -292,7 +292,7 @@ input[type="text"], input[type="search"], select {
 .pot { color: #fff; font-weight: 700; background: rgba(0, 0, 0, .35); padding: 4px 14px; border-radius: 999px; font-size: 14px; }
 /* El board va siempre en una fila: flop | turn | river. */
 .board { display: flex; align-items: center; gap: 10px; }
-.board-row { display: flex; gap: 6px; }
+.board-row { display: flex; gap: 8px; }
 /* Las cartas de la mesa se achican con el paño (cqw) para no tapar los asientos. */
 .felt > * { --card-w: min(84px, 10.5cqw); }
 /* Paño angosto (celular en vertical): las cartas ocupan más proporción del ancho. */
@@ -308,6 +308,16 @@ input[type="text"], input[type="search"], select {
 }
 .pseat .avatar { width: 44px; height: 44px; border: 2px solid #0B3B26; font-size: 16px; }
 .pseat-cards { display: flex; gap: 2px; min-height: 0; }
+/*
+ * Cartas mostradas: en abanico sobre el avatar, como en las apps de póker. No ocupan lugar aparte,
+ * así que no chocan con las de otros asientos ni con el centro de la mesa, sean 2 o 9 jugadores.
+ */
+.pseat-cards { position: absolute; top: -8px; left: 50%; transform: translateX(-50%); z-index: 2; }
+.pseat-cards .pcard + .pcard { margin-left: -10px; }
+.pseat-cards .pcard:first-child { transform: rotate(-6deg); }
+.pseat-cards .pcard:last-child:not(:first-child) { transform: rotate(6deg); }
+.pseat-cards .pcard-win:first-child { transform: rotate(-6deg) translateY(-4px); }
+.pseat-cards .pcard-win:last-child:not(:first-child) { transform: rotate(6deg) translateY(-4px); }
 /* Nombre y fichas en una sola etiqueta. */
 .pseat-tag { max-width: 100%; padding: 3px 8px; border-radius: 8px; background: rgba(15, 20, 27, .9); line-height: 1.35; }
 .pseat-name { display: block; font-weight: 600; }
@@ -450,14 +460,17 @@ input[type="text"], input[type="search"], select {
 .table-landscape .shell { padding-left: 0; }
 .table-landscape .main { max-width: none; padding: 0 8px; }
 .table-landscape .table-stage { display: flex; gap: 8px; height: calc(100dvh - 8px); padding-top: 4px; }
-.table-landscape .felt-wrap { flex: 1; min-width: 0; max-width: none; margin: 0; display: flex; padding: 46px 8px 36px; }
+.table-landscape .felt-wrap { flex: 1; min-width: 0; max-width: none; margin: 0; display: flex; padding: 54px 8px 36px; }
 .table-landscape .felt { flex: 1; aspect-ratio: auto; container-type: size; }
 /* Horizontal: el paño es bajo, así que las cartas también se limitan por el alto, el pozo va al costado del board
    y el centro baja un poco porque el asiento de arriba (nombre, apuesta, lo ganado) ocupa más que el de abajo. */
 .table-landscape .felt > * { --card-w: min(84px, 10.5cqw, 16cqh); }
 .table-landscape .felt-center { flex-direction: row; gap: 12px; padding-top: 16cqh; }
 /* Horizontal: el resultado va al costado del board; ancho y bajo para no tapar las cartas de abajo. */
-.table-landscape .hand-result { max-width: 44cqw; padding: 5px 30px 5px 12px; line-height: 1.25; }
+.table-landscape .hand-result { max-width: 32cqw; padding: 5px 30px 5px 12px; line-height: 1.25; }
+/* El paño horizontal es bajo: las cartas mostradas en los asientos, más chicas. */
+.table-landscape .pseat .pcard-sm { width: 30px; height: 43px; font-size: 13px; }
+.table-landscape .pseat-cards { top: 2px; }
 .table-landscape .hand-result strong { font-size: 15px; }
 .table-landscape .hand-result-reason { font-size: 13px; }
 .table-landscape .hand-dock { flex: 0 0 200px; margin: 0; padding: 8px; overflow-y: auto; }
@@ -485,7 +498,7 @@ input[type="text"], input[type="search"], select {
     display: flex; flex-direction: column; box-sizing: border-box;
     height: calc(100dvh - var(--nav-h) - 16px - env(safe-area-inset-bottom));
   }
-  .table-active .felt-wrap { flex: 1; min-height: 0; width: 100%; box-sizing: border-box; display: flex; flex-direction: column; padding: 64px 34px 44px; }
+  .table-active .felt-wrap { flex: 1; min-height: 0; width: 100%; box-sizing: border-box; display: flex; flex-direction: column; padding: 78px 34px 44px; }
   .table-active .felt { flex: 1; min-height: 0; aspect-ratio: auto; }
   .table-active .hand-dock { flex: none; margin: 0; padding: 10px; }
 }
