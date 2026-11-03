@@ -500,7 +500,7 @@ test('accesibilidad y responsive en cada vista, en ambos temas', async ({ page }
   }
 });
 
-test('mesa online: sala de espera, iniciar, jugar una mano y cerrar', async ({ page, browser }) => {
+test('mesa online: sala de espera, iniciar, jugar una mano y cerrar', async ({ page, browser, isMobile }) => {
   await login(page, 'Seba');
   const code = await createGroup(page);
   await nav(page, 'Mesa');
@@ -536,8 +536,16 @@ test('mesa online: sala de espera, iniciar, jugar una mano y cerrar', async ({ p
   await expect(page.getByTestId('pot')).toHaveText('Pozo $30');
   // Cuenta regresiva del turno y conexión en vivo.
   await expect(page.getByTestId('turn-timer')).toContainText(/\d:\d\d/);
-  await expect(page.getByText('En vivo')).toBeVisible({ timeout: 10000 });
-  await expect(page.getByTestId('my-hand').getByRole('img')).toHaveCount(2);
+  await expect(page.getByRole('img', { name: 'En vivo' })).toBeVisible({ timeout: 10000 });
+  // Mazo de 4 colores por defecto: tréboles verdes y diamantes azules, para no confundirlos con picas y corazones.
+  await expect(page.locator('.table-layout')).toHaveClass(/deck-four/);
+  // Tus cartas van en tu asiento, sobre el paño.
+  await expect(page.getByTestId('felt').getByTestId('my-hand').getByRole('img')).toHaveCount(2);
+  // En el celular la mesa reemplaza al menú de abajo; se vuelve con la flecha.
+  if (isMobile) {
+    await expect(page.getByRole('navigation', { name: 'Principal móvil' })).toBeHidden();
+    await expect(page.getByRole('link', { name: 'Volver al menú' })).toBeVisible();
+  }
   await expect(page2.getByTestId('my-hand').getByRole('img')).toHaveCount(2, { timeout: 10000 });
   await expect(page.getByRole('img', { name: 'Carta oculta' })).toHaveCount(0);
   await checkPage(page, 'mesa: partida');
@@ -642,6 +650,41 @@ test('mesa online: un administrador agrega jugadores sin usuario y juega por ell
   await expect(page.getByRole('link', { name: 'Ver resultados y saldos' })).toBeVisible();
 });
 
+test('mesa online: al terminar, los jugadores que manejás se muestran juntos y repartir queda a la vista', async ({ page }) => {
+  test.setTimeout(60000);
+  await login(page, 'Seba');
+  await createGroup(page);
+  await nav(page, 'Jugadores');
+  for (const n of ['Ana', 'Beto', 'Caro', 'Nico']) await addPlayer(page, n);
+  await nav(page, 'Mesa');
+  await page.getByRole('button', { name: '+ Agregar jugador' }).click();
+  for (const n of ['Ana', 'Beto', 'Caro', 'Nico']) await page.getByRole('button', { name: `Agregar a ${n}` }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Cerrar' }).click();
+  await page.getByRole('button', { name: /Iniciar partida \(4 jugadores\)/ }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Iniciar partida' }).click();
+  await expect(page.getByTestId('felt')).toBeVisible();
+
+  // Se retiran tres (jugando por ellos): el cuarto gana solo.
+  for (let i = 1; i <= 3; i++) {
+    await page.getByRole('button', { name: 'Retirarme' }).click();
+    await expect(page.locator('.felt .pseat-folded')).toHaveCount(i);
+  }
+  await expect(page.getByTestId('hand-result').locator('visible=true')).toBeVisible();
+
+  // Los tres retirados van en una sola fila; quien ganó solo, en la suya (puede mostrar una carta).
+  const group = page.getByTestId('show-group');
+  await expect(group).toContainText('los jugás vos');
+  await expect(page.getByRole('button', { name: /^Mostrar cartas de / })).toHaveCount(1);
+  await expect(page.getByRole('button', { name: 'Repartir próxima mano' })).toBeInViewport();
+  await checkPage(page, 'mesa: mostrar cartas de varios');
+
+  // Mostrar las de los tres: pasan a verse en sus asientos y la fila desaparece.
+  await page.getByRole('button', { name: 'Mostrar las cartas de los jugadores que manejás', exact: true }).click();
+  await expect(group).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^Mostrar cartas de / })).toHaveCount(1);
+  await expect(page.locator('.felt .pseat .pcard:not(.pcard-own)')).toHaveCount(6);
+});
+
 test.describe('mesa online: video', () => {
   // Cámara y micrófono falsos del navegador (ver launchOptions en playwright.config.ts).
   test.use({ permissions: ['camera', 'microphone'] });
@@ -672,13 +715,14 @@ test.describe('mesa online: video', () => {
     await page.getByRole('dialog').getByRole('button', { name: 'Iniciar partida' }).click();
     await expect(page.getByTestId('felt')).toBeVisible();
     await expect(page2.getByTestId('felt')).toBeVisible({ timeout: 10000 });
-    await expect(page.getByText('En vivo')).toBeVisible({ timeout: 10000 });
-    await expect(page2.getByText('En vivo')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('img', { name: 'En vivo' })).toBeVisible({ timeout: 10000 });
+    await expect(page2.getByRole('img', { name: 'En vivo' })).toBeVisible({ timeout: 10000 });
 
     // Sin transmitir, nadie tiene video: se ven las iniciales.
     await expect(page2.locator('.pseat-video')).toHaveCount(0);
 
-    // Seba transmite: se ve a sí mismo y Nico lo recibe por WebRTC (frames reales).
+    // Seba transmite desde el botón de cámara de la barra: se ve a sí mismo y Nico lo recibe por WebRTC (frames reales).
+    await page.getByRole('button', { name: 'Video', exact: true }).click();
     await page.getByRole('button', { name: 'Transmitir video' }).click();
     await expect(page.getByRole('button', { name: 'Detener transmisión' })).toBeVisible();
     const seba = page2.getByTestId('seat-Seba').locator('video.pseat-video');

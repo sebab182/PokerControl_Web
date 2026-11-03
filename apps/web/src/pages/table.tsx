@@ -1,5 +1,5 @@
 import type { ApiGroup, ApiPlayer, ApiRtcServerMessage, ApiTableAction, ApiTableView } from '@pokercontrol/contracts';
-import { evaluate, formatMoney, parseAmount } from '@pokercontrol/core';
+import { formatMoney, parseAmount } from '@pokercontrol/core';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
@@ -9,10 +9,10 @@ import {
   Avatar, Btn, Emoji, Loading, Modal, QueryError, TextField, useAction, useFeedback,
 } from '../components/ui';
 import { useGroup } from '../context';
-import { type TablePrefs, useTablePrefs, useTurnAlert, useWakeLock } from '../tablePrefs';
+import { DECKS, type Deck, type TablePrefs, useTablePrefs, useTurnAlert, useWakeLock } from '../tablePrefs';
 import { shareInvite } from '../share';
 import { useTableSocket } from '../useTableSocket';
-import { VideoControls, VideoProvider, useTableVideo } from '../video';
+import { VideoControls, VideoMenu, VideoProvider, useTableVideo } from '../video';
 import { NickChooser } from './auth';
 
 const HEARTBEAT_MS = 20_000;
@@ -67,7 +67,43 @@ function FullscreenButton() {
     if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
     else void root.requestFullscreen?.().catch(() => {});
   };
-  return <button type="button" className="fs-btn" aria-label="Pantalla completa" onClick={toggle}>⛶</button>;
+  return (
+    <button type="button" className="tool-btn fs-btn" aria-label="Pantalla completa" onClick={toggle}>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
+      </svg>
+    </button>
+  );
+}
+
+const PrefsIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0" /><circle cx="16" cy="6" r="2" /><circle cx="10" cy="12" r="2" /><circle cx="18" cy="18" r="2" />
+  </svg>
+);
+
+/**
+ * Barra de la mesa mientras se juega una mano (celular y compu): el estado de la mano y las herramientas
+ * (video, preferencias). En el celular reemplaza al menú de abajo, así que lleva una flecha para volver.
+ */
+function TableBar({ view, hand, updatedAt, live, onPrefs }: {
+  view: ApiTableView; hand: Hand; updatedAt: number; live: boolean; onPrefs: () => void;
+}) {
+  return (
+    <div className="table-bar">
+      <h1 className="sr-only">Mesa</h1>
+      <Link to="/ranking" className="tool-btn table-back" aria-label="Volver al menú">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6" /></svg>
+      </Link>
+      <Status view={view} hand={hand} updatedAt={updatedAt} />
+      <div className="table-tools">
+        {live && <span className="live-dot" role="img" aria-label="En vivo" title="En vivo: recibís los cambios al instante" />}
+        <VideoMenu />
+        <FullscreenButton />
+        <button type="button" className="tool-btn tool-btn-plain" aria-label="Preferencias de la mesa" onClick={onPrefs}><PrefsIcon /></button>
+      </div>
+    </div>
+  );
 }
 
 export function TablePage() {
@@ -206,18 +242,16 @@ function TableView() {
 
   return (
     <VideoProvider state={video.state}>
-      {view.status === 'playing' && view.hand && <FullscreenButton />}
-      <div className="page-head">
-        <h1 className="grow">Mesa</h1>
-        {live && <span className="badge badge-muted" title="Recibís los cambios al instante">En vivo</span>}
-        {view.status === 'playing' && <span className="badge badge-green">Partida en curso</span>}
-        <button type="button" className="icon-btn" aria-label="Preferencias de la mesa" onClick={() => setPrefsOpen(true)}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0" /><circle cx="16" cy="6" r="2" /><circle cx="10" cy="12" r="2" /><circle cx="18" cy="18" r="2" />
-          </svg>
-        </button>
-      </div>
-      <div className={`table-layout${prefs.animations ? ' table-anim' : ''}`}>
+      {/* Con una mano en juego, la barra de la mesa reemplaza al encabezado. */}
+      {!(view.status === 'playing' && view.hand) && (
+        <div className="page-head">
+          <h1 className="grow">Mesa</h1>
+          {live && <span className="badge badge-muted" title="Recibís los cambios al instante">En vivo</span>}
+          {view.status === 'playing' && <span className="badge badge-green">Partida en curso</span>}
+          <button type="button" className="icon-btn" aria-label="Preferencias de la mesa" onClick={() => setPrefsOpen(true)}><PrefsIcon /></button>
+        </div>
+      )}
+      <div className={`table-layout${prefs.animations ? ' table-anim' : ''} deck-${prefs.deck}`}>
         <div className="table-main">
           {view.status === 'playing' && !view.hand && <VideoControls />}
           {closedId && view.status === 'waiting' && (
@@ -228,9 +262,13 @@ function TableView() {
           {view.status === 'waiting'
             ? <Waiting view={view} canEdit={canEdit} standing={standing} busy={busy} onJoin={join} onLeave={leave} onStart={() => setStartOpen(true)} onAddOpen={() => setAddOpen(true)} />
             : <Playing view={view} updatedAt={query.dataUpdatedAt} busy={busy} onJoin={join} onLeave={leave} onDeal={deal} onClose={close}
-              onReveal={(playerId, cards) => run(() => post('reveal', {
-                ...(cards ? { cards } : {}), ...(playerId !== view.myPlayerId ? { playerId } : {}),
-              }))}
+              bar={view.hand && <TableBar view={view} hand={view.hand} updatedAt={query.dataUpdatedAt} live={live} onPrefs={() => setPrefsOpen(true)} />}
+              onReveal={(playerIds, cards) => run(async () => {
+                // Varios a la vez (los jugadores que manejás): uno por vez, cada uno con la mesa ya actualizada.
+                for (const playerId of playerIds) {
+                  await post('reveal', { ...(cards ? { cards } : {}), ...(playerId !== view.myPlayerId ? { playerId } : {}) });
+                }
+              })}
               onAction={action => run(async () => {
                 try {
                   // Si el turno es de un jugador sin usuario que manejás, se juega por él.
@@ -371,10 +409,10 @@ function StartModal({ view, open, onClose, onStart, busy }: {
 // ─── Partida en curso ────────────────────────────────────────────────────────
 type Seat = ApiTableView['seats'][number];
 
-function Playing({ view, updatedAt, busy, onJoin, onLeave, onDeal, onClose, onAction, onRebuy, onReveal }: {
-  view: ApiTableView; updatedAt: number; busy: boolean; onJoin: () => void; onLeave: () => void; onDeal: () => void;
+function Playing({ view, updatedAt, bar, busy, onJoin, onLeave, onDeal, onClose, onAction, onRebuy, onReveal }: {
+  view: ApiTableView; updatedAt: number; bar: ReactNode; busy: boolean; onJoin: () => void; onLeave: () => void; onDeal: () => void;
   onClose: () => void; onAction: (a: ApiTableAction) => void; onRebuy: (amount: number) => void;
-  onReveal: (playerId: string, cards?: number[]) => void;
+  onReveal: (playerIds: string[], cards?: number[]) => void;
 }) {
   const me = view.seats.find(s => s.isYou);
   const hand = view.hand;
@@ -393,31 +431,18 @@ function Playing({ view, updatedAt, busy, onJoin, onLeave, onDeal, onClose, onAc
 
   return (
     <>
-      {hand && <Status view={view} hand={hand} updatedAt={updatedAt} />}
       {hand && (
         <div className="table-stage">
+          {bar}
           <Felt view={view} hand={hand} />
-          {/* Tus cartas y tus acciones siempre en el mismo lugar: abajo en el celular, debajo de la mesa en la compu. */}
-          <section className="hand-dock" aria-label="Tu mano">
+          {/* Tus cartas van en tu asiento; acá solo lo que hay que decidir, siempre en el mismo lugar. */}
+          <section className="hand-dock" aria-label="Tus acciones">
             <HandResult view={view} hand={hand} where="dock" />
-            {mine.length > 0 && (
-              <div className="dock-hands">
-                {/* Con varios jugadores a cargo, solo el que tiene el turno va grande: así la zona entra en el celular. */}
-                {mine.map(s => {
-                  const acting = live && hand.actingPlayerId === s.playerId;
-                  return (
-                    <HoleCards key={s.playerId} hand={hand} playerId={s.playerId} name={s.isYou ? 'Vos' : s.name} you={s.isYou}
-                      acting={acting} size={mine.length === 1 ? 'lg' : acting ? 'md' : 'sm'} />
-                  );
-                })}
-              </div>
-            )}
             {live && hand.legal && <Controls view={view} hand={hand} updatedAt={updatedAt} busy={busy} onAction={onAction} />}
             {hand.street === 'done' && <ShowCards hand={hand} players={mine} busy={busy} onReveal={onReveal} />}
             {canDeal && <Btn block busy={busy} onClick={onDeal}>Repartir próxima mano</Btn>}
             {hand.street === 'done' && waitingDeal}
             {canRebuy && me && <NoChips view={view} sitting={me.status === 'sitting'} busy={busy} onLeave={onLeave} onRebuy={onRebuy} />}
-            <VideoControls compact />
           </section>
         </div>
       )}
@@ -476,11 +501,14 @@ function NoChips({ view, sitting, busy, onLeave, onRebuy }: {
  * Al terminar la mano, hasta que se reparta la próxima: un solo panel para decidir qué mostrar,
  * tuyas y de los jugadores que manejás. "No" lo oculta hasta la próxima mano (las cartas siguen ocultas para los demás).
  * Una sola carta solo si todos los demás se retiraron.
+ * Los jugadores que manejás van juntos en una fila (con "Elegir" para decidir uno por uno): así el panel
+ * mide lo mismo con 2 que con 8 y "Repartir próxima mano" queda a la vista.
  */
 function ShowCards({ hand, players, busy, onReveal }: {
-  hand: Hand; players: Seat[]; busy: boolean; onReveal: (playerId: string, cards?: number[]) => void;
+  hand: Hand; players: Seat[]; busy: boolean; onReveal: (playerIds: string[], cards?: number[]) => void;
 }) {
   const [mucked, setMucked] = useState<Record<string, number>>({});
+  const [picking, setPicking] = useState(0);
   const rows = players.flatMap(s => {
     const p = hand.players.find(x => x.playerId === s.playerId);
     if (!p || p.hole.length < 2 || p.hole.includes('??') || p.shown.length >= 2 || mucked[s.playerId] === hand.handNo) return [];
@@ -489,10 +517,16 @@ function ShowCards({ hand, players, busy, onReveal }: {
     return [{ s, p, alone }];
   });
   if (rows.length === 0) return null;
+  const muck = (ids: string[]) => setMucked(m => ({ ...m, ...Object.fromEntries(ids.map(id => [id, hand.handNo])) }));
+  // Vos y quien quedó solo (puede mostrar una carta) van siempre en su propia fila.
+  const group = rows.filter(r => !r.s.isYou && !r.alone);
+  const grouped = group.length >= 2 && picking !== hand.handNo;
+  const single = grouped ? rows.filter(r => !group.includes(r)) : rows;
+  const ids = group.map(r => r.s.playerId);
   return (
     <div className="dock-box show-cards" data-testid="show-cards">
       <h3 className="dock-title">¿Mostrar cartas?</h3>
-      {rows.map(({ s, p, alone }) => (
+      {single.map(({ s, p, alone }) => (
         <div className="show-row" key={s.playerId}>
           <span className="grow ellipsis">
             <strong>{s.isYou ? 'Vos' : s.name}</strong>
@@ -500,19 +534,39 @@ function ShowCards({ hand, players, busy, onReveal }: {
           </span>
           <div className="show-actions">
             <Btn variant="ghost" busy={busy} aria-label={s.isYou ? 'Mostrar mis cartas' : `Mostrar cartas de ${s.name}`}
-              onClick={() => onReveal(s.playerId)}>Mostrar</Btn>
+              onClick={() => onReveal([s.playerId])}>Mostrar</Btn>
             {alone && p.hole.map((c, i) => !p.shown.includes(i) && (
-              <Btn key={i} variant="ghost" busy={busy} aria-label={`Mostrar una carta: ${cardText(c)}`} onClick={() => onReveal(s.playerId, [i])}>
+              <Btn key={i} variant="ghost" busy={busy} aria-label={`Mostrar una carta: ${cardText(c)}`} onClick={() => onReveal([s.playerId], [i])}>
                 {cardText(c)}
               </Btn>
             ))}
             <Btn variant="ghost" busy={busy} aria-label={s.isYou ? 'No mostrar mis cartas' : `No mostrar las cartas de ${s.name}`}
-              onClick={() => setMucked(m => ({ ...m, [s.playerId]: hand.handNo }))}>No</Btn>
+              onClick={() => muck([s.playerId])}>No</Btn>
           </div>
         </div>
       ))}
+      {grouped && (
+        <div className="show-row" data-testid="show-group">
+          <span className="grow ellipsis">
+            <strong>{listNames(group.map(r => r.s.name))}</strong>
+            <span className="xs muted"> · los jugás vos</span>
+          </span>
+          <div className="show-actions">
+            <Btn variant="ghost" busy={busy} aria-label="Mostrar las cartas de los jugadores que manejás" onClick={() => onReveal(ids)}>Mostrar</Btn>
+            <Btn variant="ghost" busy={busy} aria-label="No mostrar las cartas de los jugadores que manejás" onClick={() => muck(ids)}>No</Btn>
+            <Btn variant="ghost" aria-label="Elegir uno por uno" onClick={() => setPicking(hand.handNo)}>Elegir</Btn>
+          </div>
+        </div>
+      )}
     </div>
   );
+}
+
+/** "Ana", "Ana y Beto", "Ana, Beto y Caro", "Ana, Beto y 3 más". */
+function listNames(names: string[]): string {
+  if (names.length <= 1) return names.join('');
+  if (names.length <= 3) return `${names.slice(0, -1).join(', ')} y ${names[names.length - 1]}`;
+  return `${names.slice(0, 2).join(', ')} y ${names.length - 2} más`;
 }
 
 /**
@@ -529,10 +583,10 @@ function HandResult({ view, hand, fallback = null, where = 'felt' }: {
     // Se dibuja en el paño y en la zona de la mano; el CSS muestra uno solo (en horizontal, el de la zona de la mano).
     <div className={`hand-result hand-result-${where}`} role="status" aria-live="polite" data-testid="hand-result">
       <button type="button" className="hand-result-close" aria-label="Ocultar resultado" onClick={() => setHidden(hand.handNo)}>×</button>
-      {hand.payouts.map(w => (
-        <p key={w.playerId}>
-          <strong>{nameOf(view, w.playerId)} {w.playerId === view.myPlayerId ? 'ganaste' : 'ganó'} <span className="num">{formatMoney(w.amount)}</span></strong>
-          {w.reason && <span className="hand-result-reason">{w.reason}</span>}
+      {groupPayouts(hand.payouts).map(g => (
+        <p key={g.ids.join()}>
+          <strong>{winnersText(view, g.ids)} <span className="num">{formatMoney(g.amount)}</span>{g.ids.length > 1 && ' cada uno'}</strong>
+          {g.reason && <span className="hand-result-reason">{g.reason}</span>}
         </p>
       ))}
       {alone && <span className="hand-result-reason">Los demás se retiraron.</span>}
@@ -540,17 +594,40 @@ function HandResult({ view, hand, fallback = null, where = 'felt' }: {
   );
 }
 
+/** Un pozo dividido: los que ganan lo mismo por la misma jugada van juntos, así el resultado no ocupa media mesa. */
+function groupPayouts(payouts: Hand['payouts']) {
+  const groups: { ids: string[]; amount: number; reason?: string }[] = [];
+  for (const w of payouts) {
+    const g = groups.find(x => x.amount === w.amount && x.reason === w.reason);
+    if (g) g.ids.push(w.playerId);
+    else groups.push({ ids: [w.playerId], amount: w.amount, reason: w.reason });
+  }
+  return groups;
+}
+
+/** "Nico ganó", "Ganaste", "Ana, Beto y vos ganan"… (vos siempre al final). */
+function winnersText(view: ApiTableView, ids: string[]): string {
+  const you = ids.includes(view.myPlayerId ?? '');
+  const others = ids.filter(id => id !== view.myPlayerId).map(id => nameOf(view, id));
+  if (ids.length === 1) return you ? 'Vos ganaste' : `${others[0]} ganó`;
+  const names = you ? [...others, 'vos'] : others;
+  return `${names.slice(0, -1).join(', ')} y ${names[names.length - 1]} ganan`;
+}
+
 function Felt({ view, hand }: { view: ApiTableView; hand: Hand }) {
   const players = hand.players;
   const myIdx = Math.max(0, players.findIndex(p => p.playerId === view.myPlayerId));
   // Al terminar con showdown se resaltan las cartas de la jugada ganadora.
   const win = winningCards(hand);
+  const heroSeat = view.seats.find(s => s.playerId === players[myIdx]?.playerId);
+  const hero = players[myIdx];
+  const heroCards = !!heroSeat && (heroSeat.isYou || heroSeat.managed) && !!hero && hero.hole.some(c => c !== '??');
   return (
     <div className="felt-wrap">
-      <div className="felt" data-testid="felt">
+      <div className={`felt${heroCards ? ' felt-hero' : ''}`} data-testid="felt">
         <div className="felt-center">
           <HandResult view={view} hand={hand} fallback={<div className="pot num" data-testid="pot">Pozo {formatMoney(hand.pot)}</div>} />
-          {/* En línea (compu y celular horizontal) separados 3 | 1 | 1; en un paño angosto, flop arriba y turn + river abajo. */}
+          {/* En línea (compu y celular horizontal) separados 3 | 1 | 1; en un paño angosto, flop arriba y turn + river abajo. El pozo va arriba. */}
           <div className="board" role="group" aria-label="Cartas comunitarias">
             <div className="board-row">
               {[0, 1, 2].map(i => hand.board[i] ? <PokerCard key={i} card={hand.board[i]} mark={markOf(win, hand.board[i])} /> : <EmptyCard key={i} />)}
@@ -635,29 +712,6 @@ function Status({ view, hand, updatedAt }: { view: ApiTableView; hand: Hand; upd
   );
 }
 
-/** Mis cartas (o las de un jugador que manejo) en la zona de abajo. Las que ya se mostraron pasan a la mesa. */
-function HoleCards({ hand, playerId, name, you, acting, size }: {
-  hand: Hand; playerId: string; name: string; you: boolean; acting: boolean; size: 'sm' | 'md' | 'lg';
-}) {
-  const p = hand.players.find(x => x.playerId === playerId);
-  if (!p || p.hole.length === 0 || p.hole.includes('??')) return null;
-  const hidden = p.hole.map((card, i) => ({ card, i })).filter(x => !p.shown.includes(x.i));
-  if (hidden.length === 0) return null;
-  const cards = [...p.hole, ...hand.board];
-  const handName = cards.length >= 5 ? evaluate(cards).name : null;
-  return (
-    <div className={`dock-hand${acting ? ' dock-hand-acting' : ''}${p.folded ? ' dock-hand-folded' : ''}`} data-testid="my-hand">
-      <div className="hole">{hidden.map(x => <PokerCard key={x.i} card={x.card} size={size} />)}</div>
-      <div className="dock-hand-info">
-        <strong className="ellipsis">{name}</strong>
-        <span className="xs muted num">{formatMoney(p.stack)}</span>
-        {(handName || p.folded) && (
-          <span className="small">{handName ? `${you ? 'Tenés' : 'Tiene'} ${handName.toLowerCase()}` : ''}{p.folded ? (handName ? ' · Retirado' : 'Retirado') : ''}</span>
-        )}
-      </div>
-    </div>
-  );
-}
 
 /** Tecla de atajo, solo visible con mouse. No forma parte del nombre del botón. */
 function Kbd({ children }: { children: string }) {
@@ -757,7 +811,7 @@ function RaiseSheet({ view, hand, open, onClose, busy, onAction }: {
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="Subir"
+    <Modal open={open} onClose={onClose} title="Subir" className="raise-modal"
       description={`Para igualar: ${formatMoney(legal.callAmount)} · Máximo: ${formatMoney(max)}`}>
       <div className="raise-amount">
         <button type="button" className="raise-step" aria-label={`Bajar ${formatMoney(view.bigBlind)}`}
@@ -826,10 +880,17 @@ function HandLog({ handNo, lines }: { handNo: number; lines: string[] }) {
   );
 }
 
+const DECK_LABEL: Record<Deck, string> = { classic: 'Clásico', four: '4 colores', color: 'Color' };
+const DECK_HINT: Record<Deck, string> = {
+  classic: 'Picas y tréboles negros; corazones y diamantes rojos.',
+  four: 'Diamantes azules y tréboles verdes, para no confundirlos con corazones y picas.',
+  color: 'Cada carta con el fondo del color de su palo y el número grande: se distinguen de un vistazo.',
+};
+
 function PrefsModal({ open, onClose, prefs, onChange }: {
   open: boolean; onClose: () => void; prefs: TablePrefs; onChange: (patch: Partial<TablePrefs>) => void;
 }) {
-  const items: { key: keyof TablePrefs; label: string; hint: string }[] = [
+  const items: { key: 'sound' | 'vibrate' | 'animations' | 'keepAwake'; label: string; hint: string }[] = [
     { key: 'sound', label: 'Sonidos', hint: 'Un tono cuando te toca jugar' },
     { key: 'vibrate', label: 'Vibrar en mi turno', hint: 'Solo en celulares que lo permiten' },
     { key: 'animations', label: 'Animaciones', hint: 'Reparto de cartas y fichas' },
@@ -837,6 +898,19 @@ function PrefsModal({ open, onClose, prefs, onChange }: {
   ];
   return (
     <Modal open={open} onClose={onClose} title="Preferencias de la mesa" description="Se guardan en este dispositivo.">
+      <fieldset className="pref-deck">
+        <legend className="strong">Mazo</legend>
+        <div className="segmented">
+          {DECKS.map(d => (
+            <button type="button" key={d} className="btn btn-ghost deck-option" aria-pressed={prefs.deck === d} onClick={() => onChange({ deck: d })}>
+              {/* Muestra: trébol y pica, los que más se confunden. */}
+              <span className={`deck-sample deck-${d}`} aria-hidden="true"><PokerCard card="Kc" size="sm" /><PokerCard card="As" size="sm" /></span>
+              {DECK_LABEL[d]}
+            </button>
+          ))}
+        </div>
+        <p className="xs muted">{DECK_HINT[prefs.deck]}</p>
+      </fieldset>
       {items.map(it => (
         <label className="check-row pref-row" key={it.key}>
           <span className="grow">
