@@ -573,3 +573,18 @@ input[type="text"], input[type="search"], select {
 .table-landscape .hand-dock { grid-area: dock; align-self: end; max-height: 100%; min-height: 0; max-width: none; margin: 0; padding: 8px; overflow-y: auto; box-sizing: border-box; }
 .table-landscape .controls-row { grid-auto-flow: row; }
 .table-landscape .controls-row .btn { min-height: 46px; }
+/* Horizontal: la hoja para subir no entra centrada en 390px de alto; va como panel a la derecha, a todo el alto y más compacta. */
+.table-landscape .modal.raise-modal {
+  inset: 0 0 0 auto; transform: none; width: min(380px, 100vw); max-height: none; height: 100dvh; box-sizing: border-box;
+  display: flex; flex-direction: column; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); border-radius: 16px 0 0 16px;
+}
+.table-landscape .raise-modal h2 { margin-bottom: 2px; font-size: 18px; }
+.table-landscape .raise-modal .modal-desc { margin-bottom: 6px; font-size: 13px; }
+.table-landscape .raise-modal .raise-amount { margin: 0 0 4px; }
+.table-landscape .raise-modal .raise-step { width: 44px; height: 44px; }
+.table-landscape .raise-modal .raise-input input { font-size: 28px; }
+.table-landscape .raise-modal .raise-range { height: 32px; }
+.table-landscape .raise-modal .raise-limits { margin-bottom: 8px; }
+.table-landscape .raise-modal .raise-chip { min-height: 44px; }
+.table-landscape .raise-modal .modal-actions { margin-top: auto; padding-top: 8px; }
+.table-landscape .raise-modal .modal-actions .btn { flex: 1 1 auto; }

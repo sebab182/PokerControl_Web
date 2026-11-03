@@ -51,14 +51,14 @@ export function Btn({ variant = 'primary', busy, block, children, disabled, clas
 }
 
 // ─── Modal ───────────────────────────────────────────────────────────────────
-export function Modal({ open, onClose, title, description, children }: {
-  open: boolean; onClose: () => void; title: string; description?: string; children: ReactNode;
+export function Modal({ open, onClose, title, description, className = '', children }: {
+  open: boolean; onClose: () => void; title: string; description?: string; className?: string; children: ReactNode;
 }) {
   return (
     <Dialog.Root open={open} onOpenChange={o => { if (!o) onClose(); }}>
       <Dialog.Portal>
         <Dialog.Overlay className="modal-overlay" />
-        <Dialog.Content className="modal" {...(description ? {} : { 'aria-describedby': undefined })}>
+        <Dialog.Content className={`modal ${className}`.trim()} {...(description ? {} : { 'aria-describedby': undefined })}>
           <Dialog.Title asChild><h2>{title}</h2></Dialog.Title>
           {description && <Dialog.Description className="modal-desc">{description}</Dialog.Description>}
           {children}

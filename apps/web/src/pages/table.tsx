@@ -779,7 +779,7 @@ function RaiseSheet({ view, hand, open, onClose, busy, onAction }: {
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="Subir"
+    <Modal open={open} onClose={onClose} title="Subir" className="raise-modal"
       description={`Para igualar: ${formatMoney(legal.callAmount)} · Máximo: ${formatMoney(max)}`}>
       <div className="raise-amount">
         <button type="button" className="raise-step" aria-label={`Bajar ${formatMoney(view.bigBlind)}`}
