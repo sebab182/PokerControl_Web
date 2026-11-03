@@ -272,11 +272,11 @@ input[type="text"], input[type="search"], select {
 .board { display: flex; align-items: center; gap: 10px; }
 .board-row { display: flex; gap: 6px; }
 /* Las cartas de la mesa se achican con el paño (cqw) para no tapar los asientos. */
-.felt > * { --card-w: min(72px, 9cqw); }
+.felt > * { --card-w: min(84px, 10.5cqw); }
 /* Paño angosto (celular en vertical): las cartas ocupan más proporción del ancho. */
 /* Paño angosto (celular en vertical o ventana chica): flop arriba y turn + river abajo, así los asientos de los costados no tapan el board. */
 @container (max-width: 520px) {
-  .felt > * { --card-w: min(56px, 14cqw); }
+  .felt > * { --card-w: min(68px, 18cqw); }
   .board { flex-direction: column; gap: 6px; }
 }
 .felt .pcard-md { width: var(--card-w); height: calc(var(--card-w) * 1.409); font-size: calc(var(--card-w) * .4); border-radius: 6px; }
@@ -429,7 +429,11 @@ input[type="text"], input[type="search"], select {
 .table-landscape .main { max-width: none; padding: 0 8px; }
 .table-landscape .table-stage { display: flex; gap: 8px; height: calc(100dvh - 8px); padding-top: 4px; }
 .table-landscape .felt-wrap { flex: 1; min-width: 0; max-width: none; margin: 0; display: flex; padding: 46px 8px 36px; }
-.table-landscape .felt { flex: 1; aspect-ratio: auto; }
+.table-landscape .felt { flex: 1; aspect-ratio: auto; container-type: size; }
+/* Horizontal: el paño es bajo, así que las cartas también se limitan por el alto, el pozo va al costado del board
+   y el centro baja un poco porque el asiento de arriba (nombre, apuesta, lo ganado) ocupa más que el de abajo. */
+.table-landscape .felt > * { --card-w: min(84px, 10.5cqw, 16cqh); }
+.table-landscape .felt-center { flex-direction: row; gap: 12px; padding-top: 16cqh; }
 .table-landscape .hand-dock { flex: 0 0 200px; margin: 0; padding: 8px; overflow-y: auto; }
 .table-landscape .controls-row { grid-auto-flow: row; }
 .table-landscape .controls-row .btn { min-height: 44px; }
