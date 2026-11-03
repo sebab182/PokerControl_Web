@@ -537,6 +537,8 @@ test('mesa online: sala de espera, iniciar, jugar una mano y cerrar', async ({ p
   // Cuenta regresiva del turno y conexión en vivo.
   await expect(page.getByTestId('turn-timer')).toContainText(/\d:\d\d/);
   await expect(page.getByRole('img', { name: 'En vivo' })).toBeVisible({ timeout: 10000 });
+  // Mazo de 4 colores por defecto: tréboles verdes y diamantes azules, para no confundirlos con picas y corazones.
+  await expect(page.locator('.table-layout')).toHaveClass(/deck-four/);
   // Tus cartas van en tu asiento, sobre el paño.
   await expect(page.getByTestId('felt').getByTestId('my-hand').getByRole('img')).toHaveCount(2);
   // En el celular la mesa reemplaza al menú de abajo; se vuelve con la flecha.

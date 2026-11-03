@@ -9,7 +9,7 @@ import {
   Avatar, Btn, Emoji, Loading, Modal, QueryError, TextField, useAction, useFeedback,
 } from '../components/ui';
 import { useGroup } from '../context';
-import { type TablePrefs, useTablePrefs, useTurnAlert, useWakeLock } from '../tablePrefs';
+import { DECKS, type Deck, type TablePrefs, useTablePrefs, useTurnAlert, useWakeLock } from '../tablePrefs';
 import { shareInvite } from '../share';
 import { useTableSocket } from '../useTableSocket';
 import { VideoControls, VideoMenu, VideoProvider, useTableVideo } from '../video';
@@ -251,7 +251,7 @@ function TableView() {
           <button type="button" className="icon-btn" aria-label="Preferencias de la mesa" onClick={() => setPrefsOpen(true)}><PrefsIcon /></button>
         </div>
       )}
-      <div className={`table-layout${prefs.animations ? ' table-anim' : ''}`}>
+      <div className={`table-layout${prefs.animations ? ' table-anim' : ''} deck-${prefs.deck}`}>
         <div className="table-main">
           {view.status === 'playing' && !view.hand && <VideoControls />}
           {closedId && view.status === 'waiting' && (
@@ -880,10 +880,17 @@ function HandLog({ handNo, lines }: { handNo: number; lines: string[] }) {
   );
 }
 
+const DECK_LABEL: Record<Deck, string> = { classic: 'Clásico', four: '4 colores', color: 'Color' };
+const DECK_HINT: Record<Deck, string> = {
+  classic: 'Picas y tréboles negros; corazones y diamantes rojos.',
+  four: 'Diamantes azules y tréboles verdes, para no confundirlos con corazones y picas.',
+  color: 'Cada carta con el fondo del color de su palo y el número grande: se distinguen de un vistazo.',
+};
+
 function PrefsModal({ open, onClose, prefs, onChange }: {
   open: boolean; onClose: () => void; prefs: TablePrefs; onChange: (patch: Partial<TablePrefs>) => void;
 }) {
-  const items: { key: keyof TablePrefs; label: string; hint: string }[] = [
+  const items: { key: 'sound' | 'vibrate' | 'animations' | 'keepAwake'; label: string; hint: string }[] = [
     { key: 'sound', label: 'Sonidos', hint: 'Un tono cuando te toca jugar' },
     { key: 'vibrate', label: 'Vibrar en mi turno', hint: 'Solo en celulares que lo permiten' },
     { key: 'animations', label: 'Animaciones', hint: 'Reparto de cartas y fichas' },
@@ -891,6 +898,19 @@ function PrefsModal({ open, onClose, prefs, onChange }: {
   ];
   return (
     <Modal open={open} onClose={onClose} title="Preferencias de la mesa" description="Se guardan en este dispositivo.">
+      <fieldset className="pref-deck">
+        <legend className="strong">Mazo</legend>
+        <div className="segmented">
+          {DECKS.map(d => (
+            <button type="button" key={d} className="btn btn-ghost deck-option" aria-pressed={prefs.deck === d} onClick={() => onChange({ deck: d })}>
+              {/* Muestra: trébol y pica, los que más se confunden. */}
+              <span className={`deck-sample deck-${d}`} aria-hidden="true"><PokerCard card="Kc" size="sm" /><PokerCard card="As" size="sm" /></span>
+              {DECK_LABEL[d]}
+            </button>
+          ))}
+        </div>
+        <p className="xs muted">{DECK_HINT[prefs.deck]}</p>
+      </fieldset>
       {items.map(it => (
         <label className="check-row pref-row" key={it.key}>
           <span className="grow">

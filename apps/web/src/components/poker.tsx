@@ -38,7 +38,7 @@ export function PokerCard({ card, size = 'md', mark, own = false }: {
   const rank = card[0] === 'T' ? '10' : card[0];
   return (
     <span role="img" aria-label={`${RANK_NAME[card[0]] ?? card[0]} de ${suit.name}${mark === 'win' ? ', de la jugada ganadora' : ''}`}
-      className={`pcard pcard-${size} ${suit.red ? 'pcard-red' : ''}${mark ? ` pcard-${mark}` : ''}${own ? ' pcard-own' : ''}`}>
+      className={`pcard pcard-${size} pcard-suit-${card[1]} ${suit.red ? 'pcard-red' : ''}${mark ? ` pcard-${mark}` : ''}${own ? ' pcard-own' : ''}`}>
       {/* Diseño de naipe clásico: índice arriba a la izquierda (y al revés abajo) y el palo grande al centro. */}
       <span className="pcard-corner" aria-hidden="true"><span>{rank}</span><span>{suit.sym}</span></span>
       <span className="pcard-pip" aria-hidden="true">{suit.sym}</span>

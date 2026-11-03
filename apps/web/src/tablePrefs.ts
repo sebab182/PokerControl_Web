@@ -6,14 +6,24 @@ export interface TablePrefs {
   vibrate: boolean;
   animations: boolean;
   keepAwake: boolean;
+  /**
+   * Tipo de mazo. Con el clásico, tréboles y picas (los dos negros) se confunden: "four" pinta diamantes de azul y tréboles
+   * de verde; "color" además pinta el fondo de cada carta con el color de su palo y agranda el número.
+   */
+  deck: Deck;
 }
 
+export const DECKS = ['classic', 'four', 'color'] as const;
+export type Deck = typeof DECKS[number];
+
 const KEY = 'pc_table_prefs';
-const DEFAULTS: TablePrefs = { sound: true, vibrate: true, animations: true, keepAwake: true };
+const DEFAULTS: TablePrefs = { sound: true, vibrate: true, animations: true, keepAwake: true, deck: 'four' };
 
 function load(): TablePrefs {
   try {
-    return { ...DEFAULTS, ...(JSON.parse(localStorage.getItem(KEY) ?? '{}') as Partial<TablePrefs>) };
+    const saved = { ...DEFAULTS, ...(JSON.parse(localStorage.getItem(KEY) ?? '{}') as Partial<TablePrefs>) };
+    // Un valor que ya no existe (o guardado a mano) vuelve al mazo por defecto.
+    return DECKS.includes(saved.deck) ? saved : { ...saved, deck: DEFAULTS.deck };
   } catch {
     return DEFAULTS;
   }

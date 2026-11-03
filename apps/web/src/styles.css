@@ -183,6 +183,11 @@ input[type="text"], input[type="search"], select {
 .segmented { display: flex; gap: 8px; margin-bottom: 14px; }
 .segmented .btn { flex: 1; }
 .segmented .btn[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.pref-deck { margin: 0 0 8px; padding: 0; border: 0; }
+.pref-deck legend { margin-bottom: 8px; padding: 0; font-weight: 600; }
+.pref-deck .segmented { margin-bottom: 6px; }
+.deck-option { flex-direction: column; gap: 6px; min-height: 92px; padding: 8px 4px; }
+.deck-sample { display: flex; gap: 4px; }
 
 /* Modal */
 .modal-overlay { position: fixed; inset: 0; z-index: 30; background: var(--overlay); }
@@ -241,6 +246,22 @@ input[type="text"], input[type="search"], select {
   font-weight: 700; font-variant-numeric: tabular-nums; font-variant-emoji: text; box-shadow: 0 1px 3px rgba(0, 0, 0, .35);
 }
 .pcard-red { color: #C8102E; }
+/* Tipo de mazo (preferencia de la mesa). 4 colores: picas negras, corazones rojos, diamantes azules y tréboles verdes. */
+.deck-four .pcard-suit-d { color: #1D4ED8; }
+.deck-four .pcard-suit-c { color: #15803D; }
+/* Color: el fondo de la carta es el color del palo, con el número grande en blanco arriba (con el palo chico debajo) y el palo grande abajo a la derecha. */
+/* Borde blanco marcado: el trébol verde se separa del verde del paño. */
+.deck-color .pcard:not(.pcard-back):not(.pcard-empty) { color: #fff; border: 2px solid #fff; }
+.deck-color .pcard-suit-s { background: #2B2F36; }
+.deck-color .pcard-suit-h { background: #C8102E; }
+.deck-color .pcard-suit-d { background: #1D4ED8; }
+.deck-color .pcard-suit-c { background: #15803D; }
+.deck-color .pcard-corner { top: .08em; left: .14em; font-size: .9em; letter-spacing: -.06em; }
+/* El palo también chico bajo el número: en las cartas superpuestas la esquina de abajo queda tapada. */
+.deck-color .pcard-corner span + span { font-size: .62em; }
+.deck-color .pcard-corner-br { display: none; }
+.deck-color .pcard .pcard-pip { position: absolute; right: .1em; bottom: .04em; margin: 0; font-size: 1.15em; }
+.deck-color .pcard-win { border-color: #FBBF24; }
 /* Fin de la mano: las cartas de la jugada ganadora se levantan con un borde dorado; el resto se oscurece. */
 .pcard-win { border-color: #FBBF24; box-shadow: 0 0 0 3px #FBBF24, 0 6px 14px rgba(0, 0, 0, .45); transform: translateY(-4px); z-index: 1; }
 .pcard-dim { filter: brightness(.55) saturate(.6); }
