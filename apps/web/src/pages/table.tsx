@@ -399,6 +399,7 @@ function Playing({ view, updatedAt, busy, onJoin, onLeave, onDeal, onClose, onAc
           <Felt view={view} hand={hand} />
           {/* Tus cartas y tus acciones siempre en el mismo lugar: abajo en el celular, debajo de la mesa en la compu. */}
           <section className="hand-dock" aria-label="Tu mano">
+            <HandResult view={view} hand={hand} where="dock" />
             {mine.length > 0 && (
               <div className="dock-hands">
                 {/* Con varios jugadores a cargo, solo el que tiene el turno va grande: así la zona entra en el celular. */}
@@ -518,12 +519,15 @@ function ShowCards({ hand, players, busy, onReveal }: {
  * Resultado de la mano en el centro del paño, en el lugar del pozo y sin tapar las cartas. Queda hasta
  * que se reparte la próxima mano; si se oculta, vuelve el pozo.
  */
-function HandResult({ view, hand, fallback }: { view: ApiTableView; hand: Hand; fallback: ReactNode }) {
+function HandResult({ view, hand, fallback = null, where = 'felt' }: {
+  view: ApiTableView; hand: Hand; fallback?: ReactNode; where?: 'felt' | 'dock';
+}) {
   const [hidden, setHidden] = useState(0);
   if (hand.street !== 'done' || hand.payouts.length === 0 || hidden === hand.handNo) return fallback;
   const alone = hand.showdown.length === 0;
   return (
-    <div className="hand-result" role="status" aria-live="polite" data-testid="hand-result">
+    // Se dibuja en el paño y en la zona de la mano; el CSS muestra uno solo (en horizontal, el de la zona de la mano).
+    <div className={`hand-result hand-result-${where}`} role="status" aria-live="polite" data-testid="hand-result">
       <button type="button" className="hand-result-close" aria-label="Ocultar resultado" onClick={() => setHidden(hand.handNo)}>×</button>
       {hand.payouts.map(w => (
         <p key={w.playerId}>
@@ -546,12 +550,12 @@ function Felt({ view, hand }: { view: ApiTableView; hand: Hand }) {
       <div className="felt" data-testid="felt">
         <div className="felt-center">
           <HandResult view={view} hand={hand} fallback={<div className="pot num" data-testid="pot">Pozo {formatMoney(hand.pot)}</div>} />
-          {/* Vertical: flop arriba y turn + river abajo. Horizontal: en línea, separados 3 | 1 | 1. */}
+          {/* En línea (compu y celular horizontal) separados 3 | 1 | 1; en un paño angosto, flop arriba y turn + river abajo. */}
           <div className="board" role="group" aria-label="Cartas comunitarias">
             <div className="board-row">
               {[0, 1, 2].map(i => hand.board[i] ? <PokerCard key={i} card={hand.board[i]} mark={markOf(win, hand.board[i])} /> : <EmptyCard key={i} />)}
             </div>
-            <div className="board-row">
+            <div className="board-row board-late">
               {[3, 4].map(i => hand.board[i] ? <PokerCard key={i} card={hand.board[i]} mark={markOf(win, hand.board[i])} /> : <EmptyCard key={i} />)}
             </div>
           </div>

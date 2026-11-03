@@ -297,8 +297,10 @@ input[type="text"], input[type="search"], select {
 @keyframes result-in { from { transform: scale(.92); } }
 .pot { color: #fff; font-weight: 700; background: rgba(0, 0, 0, .35); padding: 4px 14px; border-radius: 999px; font-size: 14px; }
 /* El board va siempre en una fila: flop | turn | river. */
-.board { display: flex; align-items: center; gap: 10px; }
+.board { display: flex; align-items: center; gap: 16px; }
 .board-row { display: flex; gap: 8px; }
+/* En línea: flop | turn | river, con el mismo espacio entre los tres grupos. */
+.board-late { gap: 16px; }
 /* Las cartas de la mesa se achican con el paño (cqw) para no tapar los asientos. */
 .felt > * { --card-w: min(84px, 10.5cqw); }
 /* Paño angosto (celular en vertical): las cartas ocupan más proporción del ancho. */
@@ -306,6 +308,7 @@ input[type="text"], input[type="search"], select {
 @container (max-width: 520px) {
   .felt > * { --card-w: min(68px, 18cqw); }
   .board { flex-direction: column; gap: 6px; }
+  .board-late { gap: 8px; }
 }
 .felt .pcard-md { width: var(--card-w); height: calc(var(--card-w) * 1.409); font-size: calc(var(--card-w) * .4); border-radius: 6px; }
 .pseat {
@@ -415,11 +418,12 @@ input[type="text"], input[type="search"], select {
 /* Las acciones quedan a mano sobre la barra de navegación. */
 .lobby-actions {
   position: sticky; bottom: calc(var(--nav-h) + 8px + env(safe-area-inset-bottom)); z-index: 5;
-  display: grid; grid-template-columns: 1fr 2fr; gap: 8px; padding: 12px;
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 8px; padding: 12px;
   background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
 }
 .lobby-actions:has(> :only-child) { grid-template-columns: 1fr; }
-.lobby-actions .btn { min-height: 52px; }
+/* Con una fuente más ancha (o un celular angosto) el texto pasa a dos líneas en vez de desbordar la pantalla. */
+.lobby-actions .btn { min-height: 52px; min-width: 0; white-space: normal; text-align: center; line-height: 1.2; }
 @media (min-width: 768px) { .lobby-actions { bottom: 16px; } }
 
 /* Preferencias e historial */
@@ -473,8 +477,13 @@ input[type="text"], input[type="search"], select {
    y el centro baja un poco porque el asiento de arriba (nombre, apuesta, lo ganado) ocupa más que el de abajo. */
 .table-landscape .felt > * { --card-w: min(84px, 10.5cqw, 16cqh); }
 .table-landscape .felt-center { flex-direction: row; gap: 12px; padding-top: 16cqh; }
-/* Horizontal: el resultado va al costado del board; ancho y bajo para no tapar las cartas de abajo. */
-.table-landscape .hand-result { max-width: 32cqw; padding: 5px 30px 5px 12px; line-height: 1.25; }
+/* Horizontal: sobra ancho y falta alto, así que el board va siempre en una línea (3 | 1 | 1). */
+.table-landscape .board { flex-direction: row; gap: 12px; }
+.table-landscape .board-late { gap: 12px; }
+/* El resultado va en el paño; en horizontal, en la columna de la mano (ahí sobra lugar y el board va en una línea). */
+.hand-result-dock { display: none; }
+.table-landscape .hand-result-felt { display: none; }
+.table-landscape .hand-result-dock { display: block; width: auto; max-width: none; padding: 8px 30px 8px 10px; line-height: 1.25; }
 /* El paño horizontal es bajo: las cartas mostradas en los asientos, más chicas. */
 .table-landscape .pseat .pcard-sm { width: 30px; height: 43px; font-size: 13px; }
 .table-landscape .pseat-cards { top: 2px; }
