@@ -497,11 +497,24 @@ input[type="text"], input[type="search"], select {
     /* Una sola línea: si crece tapa las cartas del asiento de arriba. */
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
+  /*
+   * La mesa tiene siempre el mismo tamaño: ocupa la pantalla menos un lugar fijo abajo para la zona de la mano.
+   * Esa zona va anclada abajo y, si necesita más lugar (cartas + acciones), se superpone al paño en vez de achicarlo.
+   */
+  .table-active { --dock-reserve: 150px; }
   .table-active .table-stage {
-    display: flex; flex-direction: column; box-sizing: border-box;
+    position: relative; box-sizing: border-box;
     height: calc(100dvh - var(--nav-h) - 16px - env(safe-area-inset-bottom));
   }
-  .table-active .felt-wrap { flex: 1; min-height: 0; width: 100%; box-sizing: border-box; display: flex; flex-direction: column; padding: 78px 34px 44px; }
+  .table-active .felt-wrap {
+    height: calc(100% - var(--dock-reserve)); width: 100%; box-sizing: border-box;
+    display: flex; flex-direction: column; padding: 78px 34px 44px;
+  }
   .table-active .felt { flex: 1; min-height: 0; aspect-ratio: auto; }
-  .table-active .hand-dock { flex: none; margin: 0; padding: 10px; }
+  .table-active .hand-dock {
+    /* Tope: con varias manos (un administrador que juega por otros) se desplaza adentro y no tapa más de la mitad de la mesa. */
+    position: absolute; left: 0; right: 0; bottom: 0; z-index: 5; max-height: 55%; overflow-y: auto; box-sizing: border-box;
+    margin: 0; padding: 10px; box-shadow: 0 -6px 20px rgba(0, 0, 0, .25);
+  }
+  .table-active .hand-dock:empty { display: none; }
 }
