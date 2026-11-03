@@ -80,7 +80,8 @@ export function PlayerSeat({ view, hand, playerId, offset, total }: {
         ? <StreamVideo stream={stream} className="pseat-video" muted={seat.isYou || video?.muteOthers} mirrored={seat.isYou} />
         : <Avatar name={seat.name} />}
       <div className="pseat-tag">
-        <span className="pseat-name ellipsis">{seat.isYou ? 'Vos' : seat.name}{dealer && <span className="dealer" title="Botón">D</span>}</span>
+        {/* El botón (D) va aparte del nombre: si el nombre no entra se corta con "…", pero la D siempre se ve. */}
+        <span className="pseat-name"><span className="ellipsis">{seat.isYou ? 'Vos' : seat.name}</span>{dealer && <span className="dealer" title="Botón">D</span>}</span>
         <span className="pseat-stack num">{formatMoney(p.stack)}</span>
       </div>
       {p.bet > 0 && <div className="pseat-bet num">Apuesta {formatMoney(p.bet)}</div>}

@@ -614,7 +614,7 @@ function Status({ view, hand, updatedAt }: { view: ApiTableView; hand: Hand; upd
   let text: string;
   if (hand.street === 'done') {
     // Quién ganó y por qué va en el centro del paño (HandResult).
-    text = 'Mano terminada.';
+    text = 'Terminada.';
   } else if (hand.legal) {
     text = hand.actingPlayerId === view.myPlayerId ? 'Es tu turno.' : `Te toca jugar por ${nameOf(view, hand.actingPlayerId as string)}.`;
   } else if (hand.toActPlayerId) {
