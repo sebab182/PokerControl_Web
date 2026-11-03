@@ -168,7 +168,7 @@ function TableView() {
   }, [isHost]);
 
   // Esperando que otro reparta: el permiso puede llegar sin que cambie la mesa (quien inició se fue), así que se consulta cada tanto.
-  const waitingDeal = !!view && view.status === 'playing' && !view.canDeal && (!view.hand || view.hand.street === 'done');
+  const waitingDeal = !!view && view.status === 'playing' && !view.canHost && (!view.hand || view.hand.street === 'done');
   useEffect(() => {
     if (!waitingDeal) return;
     const id = setInterval(() => { if (document.visibilityState === 'visible') void query.refetch(); }, HEARTBEAT_MS / 2);
@@ -227,7 +227,7 @@ function TableView() {
           )}
           {view.status === 'waiting'
             ? <Waiting view={view} canEdit={canEdit} standing={standing} busy={busy} onJoin={join} onLeave={leave} onStart={() => setStartOpen(true)} onAddOpen={() => setAddOpen(true)} />
-            : <Playing view={view} canEdit={canEdit} updatedAt={query.dataUpdatedAt} busy={busy} onJoin={join} onLeave={leave} onDeal={deal} onClose={close}
+            : <Playing view={view} updatedAt={query.dataUpdatedAt} busy={busy} onJoin={join} onLeave={leave} onDeal={deal} onClose={close}
               onReveal={(playerId, cards) => run(() => post('reveal', {
                 ...(cards ? { cards } : {}), ...(playerId !== view.myPlayerId ? { playerId } : {}),
               }))}
@@ -371,8 +371,8 @@ function StartModal({ view, open, onClose, onStart, busy }: {
 // ─── Partida en curso ────────────────────────────────────────────────────────
 type Seat = ApiTableView['seats'][number];
 
-function Playing({ view, canEdit, updatedAt, busy, onJoin, onLeave, onDeal, onClose, onAction, onRebuy, onReveal }: {
-  view: ApiTableView; canEdit: boolean; updatedAt: number; busy: boolean; onJoin: () => void; onLeave: () => void; onDeal: () => void;
+function Playing({ view, updatedAt, busy, onJoin, onLeave, onDeal, onClose, onAction, onRebuy, onReveal }: {
+  view: ApiTableView; updatedAt: number; busy: boolean; onJoin: () => void; onLeave: () => void; onDeal: () => void;
   onClose: () => void; onAction: (a: ApiTableAction) => void; onRebuy: (amount: number) => void;
   onReveal: (playerId: string, cards?: number[]) => void;
 }) {
@@ -386,9 +386,9 @@ function Playing({ view, canEdit, updatedAt, busy, onJoin, onLeave, onDeal, onCl
   const mine = (hand?.players ?? [])
     .map(p => view.seats.find(s => s.playerId === p.playerId))
     .filter((s): s is Seat => !!s && (s.isYou || s.managed));
-  // Reparte quien inició la partida o un administrador; el resto ve a quién esperan.
-  const canDeal = !live && view.canDeal;
-  const waitingDeal = !live && !view.canDeal && !!view.host && <p className="muted small center" data-testid="waiting-deal">Esperando que {view.host} reparta la próxima mano.</p>;
+  // Reparte (y cierra) quien inició la partida o un administrador; el resto ve a quién esperan.
+  const canDeal = !live && view.canHost;
+  const waitingDeal = !live && !view.canHost && !!view.host && <p className="muted small center" data-testid="waiting-deal">Esperando que {view.host} reparta la próxima mano.</p>;
   const waitingSeats = view.seats.filter(s => !hand?.players.some(p => p.playerId === s.playerId));
 
   return (
@@ -432,7 +432,7 @@ function Playing({ view, canEdit, updatedAt, busy, onJoin, onLeave, onDeal, onCl
         {!hand && waitingDeal}
         {!me && view.myPlayerId && <Btn variant="ghost" block busy={busy} onClick={onJoin}>Sumarme a la mesa por {formatMoney(view.buyIn)}</Btn>}
         {me?.status === 'out' && <Btn variant="ghost" block busy={busy} onClick={onJoin}>Volver a sentarme</Btn>}
-        {(me || canEdit) && !live && <Btn variant="danger" block busy={busy} onClick={onClose}>Cerrar partida</Btn>}
+        {view.canHost && !live && <Btn variant="danger" block busy={busy} onClick={onClose}>Cerrar partida</Btn>}
       </div>
     </>
   );

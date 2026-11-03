@@ -90,11 +90,11 @@ function maxRebuy(seats: SeatRow[], live: HandState | undefined): number {
 }
 
 /**
- * Reparte la próxima mano un administrador o quien inició la partida. Si esa persona se levantó o
- * no tuvo la mesa abierta en los últimos ONLINE_MS (esté sentada o no), cualquiera que esté sentado,
- * para que la partida no quede trabada.
+ * Reparte la próxima mano y cierra la partida un administrador o quien la inició. Si esa persona se
+ * levantó o no tuvo la mesa abierta en los últimos ONLINE_MS (esté sentada o no), cualquiera que esté
+ * sentado, para que la partida no quede trabada.
  */
-function mayDeal(table: TableRow, seats: SeatRow[], viewer: Viewer, myId: string | null, now = Date.now()): boolean {
+function mayHost(table: TableRow, seats: SeatRow[], viewer: Viewer, myId: string | null, now = Date.now()): boolean {
   if (table.status !== 'playing') return false;
   if (viewer.canManage || table.startedBy === viewer.userId) return true;
   const mine = seats.find(s => s.playerId === myId);
@@ -188,7 +188,7 @@ async function buildView(db: Conn, table: TableRow, viewer: Viewer): Promise<Api
     maxRebuy: maxRebuy(seats.map(x => x.seat), live),
     myPlayerId: myId,
     host: await hostName(db, table, seats),
-    canDeal: mayDeal(table, seats.map(x => x.seat), viewer, myId, now),
+    canHost: mayHost(table, seats.map(x => x.seat), viewer, myId, now),
     isHost: table.status === 'playing' && table.startedBy === viewer.userId,
     hand,
     seats: seats.map(({ seat, name }) => ({
@@ -634,7 +634,7 @@ export async function tableRoutes(app: FastifyInstance) {
     if (table.status !== 'playing') throw new ApiError(409, 'not_playing', 'No hay una partida en juego.');
     const viewer = viewerOf(req);
     const me = viewer.canManage ? null : await requirePlayer(tx, req.group.id, req.user.sub);
-    if (!mayDeal(table, (await loadSeats(tx, table.id)).map(s => s.seat), viewer, me)) {
+    if (!mayHost(table, (await loadSeats(tx, table.id)).map(s => s.seat), viewer, me)) {
       throw new ApiError(403, 'not_host', 'Reparte quien inició la partida o un administrador.');
     }
     if (await activeHand(tx, table.id)) throw new ApiError(409, 'hand_in_progress', 'Hay una mano en juego.');
@@ -688,10 +688,11 @@ export async function tableRoutes(app: FastifyInstance) {
       const table = await ensureTable(tx, groupId, true);
       if (table.status !== 'playing') throw new ApiError(409, 'not_playing', 'No hay una partida en juego.');
       const seats = (await loadSeats(tx, table.id)).map(s => s.seat);
-      // Cierra quien juega en la mesa, o un administrador aunque no esté sentado.
-      if (!isEditor(req.role)) {
-        const playerId = await requirePlayer(tx, groupId, req.user.sub);
-        if (!seats.some(s => s.playerId === playerId)) throw new ApiError(409, 'not_seated', 'Solo quienes están en la mesa pueden cerrarla.');
+      // Cierra quien inició la partida o un administrador (aunque no esté sentado).
+      const viewer = viewerOf(req);
+      const me = viewer.canManage ? null : await requirePlayer(tx, groupId, req.user.sub);
+      if (!mayHost(table, seats, viewer, me)) {
+        throw new ApiError(403, 'not_host', 'Cierra la partida quien la inició o un administrador.');
       }
       if (await activeHand(tx, table.id)) throw new ApiError(409, 'hand_in_progress', 'Esperá a que termine la mano.');
       const sessionId = table.sessionId as string;

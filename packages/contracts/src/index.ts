@@ -288,10 +288,10 @@ export const TableView = Obj({
   maxRebuy: T.Integer(),
   /** Tu jugador en este grupo; null si todavía no elegiste nick. */
   myPlayerId: Nullable(T.String()),
-  /** Nombre de quien inició la partida, que es quien reparte; null sin partida. */
+  /** Nombre de quien inició la partida, que es quien reparte y la cierra; null sin partida. */
   host: Nullable(T.String()),
-  /** Si podés repartir la próxima mano: sos administrador o quien inició la partida (o esa persona ya no está en la mesa). */
-  canDeal: T.Boolean(),
+  /** Si podés repartir la próxima mano y cerrar la partida: sos administrador o quien la inició (o esa persona ya no está en la mesa). */
+  canHost: T.Boolean(),
   /** Vos iniciaste la partida: tu pantalla avisa que seguís (POST /table/ping) aunque no estés sentado. */
   isHost: T.Boolean(),
   hand: Nullable(HandView),

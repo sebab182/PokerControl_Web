@@ -1306,7 +1306,7 @@ paths:
                   - maxRebuy
                   - myPlayerId
                   - host
-                  - canDeal
+                  - canHost
                   - isHost
                   - hand
                 properties:
@@ -1381,7 +1381,7 @@ paths:
                   host:
                     type: string
                     nullable: true
-                  canDeal:
+                  canHost:
                     type: boolean
                   isHost:
                     type: boolean
@@ -1624,7 +1624,7 @@ paths:
                   - maxRebuy
                   - myPlayerId
                   - host
-                  - canDeal
+                  - canHost
                   - isHost
                   - hand
                 properties:
@@ -1699,7 +1699,7 @@ paths:
                   host:
                     type: string
                     nullable: true
-                  canDeal:
+                  canHost:
                     type: boolean
                   isHost:
                     type: boolean
@@ -1942,7 +1942,7 @@ paths:
                   - maxRebuy
                   - myPlayerId
                   - host
-                  - canDeal
+                  - canHost
                   - isHost
                   - hand
                 properties:
@@ -2017,7 +2017,7 @@ paths:
                   host:
                     type: string
                     nullable: true
-                  canDeal:
+                  canHost:
                     type: boolean
                   isHost:
                     type: boolean
@@ -2260,7 +2260,7 @@ paths:
                   - maxRebuy
                   - myPlayerId
                   - host
-                  - canDeal
+                  - canHost
                   - isHost
                   - hand
                 properties:
@@ -2335,7 +2335,7 @@ paths:
                   host:
                     type: string
                     nullable: true
-                  canDeal:
+                  canHost:
                     type: boolean
                   isHost:
                     type: boolean
@@ -2583,7 +2583,7 @@ paths:
                   - maxRebuy
                   - myPlayerId
                   - host
-                  - canDeal
+                  - canHost
                   - isHost
                   - hand
                 properties:
@@ -2658,7 +2658,7 @@ paths:
                   host:
                     type: string
                     nullable: true
-                  canDeal:
+                  canHost:
                     type: boolean
                   isHost:
                     type: boolean
@@ -2905,7 +2905,7 @@ paths:
                   - maxRebuy
                   - myPlayerId
                   - host
-                  - canDeal
+                  - canHost
                   - isHost
                   - hand
                 properties:
@@ -2980,7 +2980,7 @@ paths:
                   host:
                     type: string
                     nullable: true
-                  canDeal:
+                  canHost:
                     type: boolean
                   isHost:
                     type: boolean
@@ -3240,7 +3240,7 @@ paths:
                   - maxRebuy
                   - myPlayerId
                   - host
-                  - canDeal
+                  - canHost
                   - isHost
                   - hand
                 properties:
@@ -3315,7 +3315,7 @@ paths:
                   host:
                     type: string
                     nullable: true
-                  canDeal:
+                  canHost:
                     type: boolean
                   isHost:
                     type: boolean
@@ -3582,7 +3582,7 @@ paths:
                   - maxRebuy
                   - myPlayerId
                   - host
-                  - canDeal
+                  - canHost
                   - isHost
                   - hand
                 properties:
@@ -3657,7 +3657,7 @@ paths:
                   host:
                     type: string
                     nullable: true
-                  canDeal:
+                  canHost:
                     type: boolean
                   isHost:
                     type: boolean
@@ -3900,7 +3900,7 @@ paths:
                   - maxRebuy
                   - myPlayerId
                   - host
-                  - canDeal
+                  - canHost
                   - isHost
                   - hand
                 properties:
@@ -3975,7 +3975,7 @@ paths:
                   host:
                     type: string
                     nullable: true
-                  canDeal:
+                  canHost:
                     type: boolean
                   isHost:
                     type: boolean
@@ -4285,7 +4285,7 @@ paths:
                   - maxRebuy
                   - myPlayerId
                   - host
-                  - canDeal
+                  - canHost
                   - isHost
                   - hand
                 properties:
@@ -4360,7 +4360,7 @@ paths:
                   host:
                     type: string
                     nullable: true
-                  canDeal:
+                  canHost:
                     type: boolean
                   isHost:
                     type: boolean
@@ -4622,7 +4622,7 @@ paths:
                   - maxRebuy
                   - myPlayerId
                   - host
-                  - canDeal
+                  - canHost
                   - isHost
                   - hand
                 properties:
@@ -4697,7 +4697,7 @@ paths:
                   host:
                     type: string
                     nullable: true
-                  canDeal:
+                  canHost:
                     type: boolean
                   isHost:
                     type: boolean
@@ -4952,7 +4952,7 @@ paths:
                   - maxRebuy
                   - myPlayerId
                   - host
-                  - canDeal
+                  - canHost
                   - isHost
                   - hand
                 properties:
@@ -5027,7 +5027,7 @@ paths:
                   host:
                     type: string
                     nullable: true
-                  canDeal:
+                  canHost:
                     type: boolean
                   isHost:
                     type: boolean
@@ -5280,7 +5280,7 @@ paths:
                       - maxRebuy
                       - myPlayerId
                       - host
-                      - canDeal
+                      - canHost
                       - isHost
                       - hand
                     properties:
@@ -5355,7 +5355,7 @@ paths:
                       host:
                         type: string
                         nullable: true
-                      canDeal:
+                      canHost:
                         type: boolean
                       isHost:
                         type: boolean

@@ -1102,8 +1102,10 @@ describe('mesa online', () => {
     await finish();
     // Todos ven quién reparte; solo él y el administrador pueden.
     const [hostView, otherView, adminView] = await Promise.all([host, other, admin].map(view));
-    expect([hostView.host, hostView.canDeal, otherView.canDeal, adminView.canDeal]).toEqual(['J1', true, false, true]);
+    expect([hostView.host, hostView.canHost, otherView.canHost, adminView.canHost]).toEqual(['J1', true, false, true]);
     expect((await other.call('POST', '/g/table/deal')).body.error).toBe('not_host');
+    // Cerrar la partida, igual: otro sentado no puede.
+    expect((await other.call('POST', '/g/table/close', {}, 'close-not-host-1')).body.error).toBe('not_host');
     v = await host.ok('POST', '/g/table/deal');
     await finish();
     v = await admin.ok('POST', '/g/table/deal');
@@ -1111,17 +1113,18 @@ describe('mesa online', () => {
     // Quien inició se desconecta: para no trabar la partida, reparte cualquiera que esté sentado.
     expect([hostView.isHost, otherView.isHost]).toEqual([true, false]);
     await conn.pool.query(`update poker_tables set host_seen_at = now() - interval '5 minutes'`);
-    expect((await view(other)).canDeal).toBe(true);
+    expect((await view(other)).canHost).toBe(true);
     // Vuelve (su pantalla manda el latido): reparte él de nuevo.
     await host.ok('POST', '/g/table/ping');
-    expect((await view(other)).canDeal).toBe(false);
+    expect((await view(other)).canHost).toBe(false);
     await conn.pool.query(`update poker_tables set host_seen_at = now() - interval '5 minutes'`);
     v = await other.ok('POST', '/g/table/deal');
     await finish();
-    // Si se levanta, también.
+    // Si se levanta, también; y entonces puede cerrar cualquiera que esté sentado.
     await host.ok('POST', '/g/table/ping');
     await host.ok('POST', '/g/table/leave');
-    expect((await view(other)).canDeal).toBe(true);
+    expect((await view(other)).canHost).toBe(true);
+    expect((await other.idem('/g/table/close')).table.status).toBe('waiting');
   });
 
   it('si la inició un administrador sin sentarse y se va, reparte cualquiera que esté sentado', async () => {
@@ -1132,12 +1135,12 @@ describe('mesa online', () => {
     expect((await b.call('POST', '/g/table/deal')).body.error).toBe('not_host');
     // El latido del administrador lo mantiene; sin latido, se habilita a los sentados.
     await admin.ok('POST', '/g/table/ping');
-    expect((await view(b)).canDeal).toBe(false);
+    expect((await view(b)).canHost).toBe(false);
     await conn.pool.query(`update poker_tables set host_seen_at = now() - interval '5 minutes'`);
-    expect((await view(b)).canDeal).toBe(true);
+    expect((await view(b)).canHost).toBe(true);
     // Un latido de otro no cuenta.
     await b.ok('POST', '/g/table/ping');
-    expect((await view(c)).canDeal).toBe(true);
+    expect((await view(c)).canHost).toBe(true);
   });
 
   it('flujo completo: sentarse, iniciar (lector), jugar, cerrar y sumar a los saldos', async () => {
@@ -1220,7 +1223,9 @@ describe('mesa online', () => {
       expect(v.hand.showdown).toHaveLength(2);
       expect(v.seats.reduce((x: number, s: { stack: number }) => x + s.stack, 0)).toBe(2000);
     }
-    const closed = await b.idem('/g/table/close');
+    // Cierra quien la inició, no el otro jugador.
+    expect((await b.call('POST', '/g/table/close', {}, 'close-showdown-1')).body.error).toBe('not_host');
+    const closed = await a.idem('/g/table/close');
     const sess = await a.ok('GET', `/g/sessions/${closed.sessionId}`);
     expect(sess.status).toBe('closed');
   });
