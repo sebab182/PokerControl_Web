@@ -286,6 +286,8 @@ export const TableView = Obj({
   host: Nullable(T.String()),
   /** Si podés repartir la próxima mano: sos administrador o quien inició la partida (o esa persona ya no está en la mesa). */
   canDeal: T.Boolean(),
+  /** Vos iniciaste la partida: tu pantalla avisa que seguís (POST /table/ping) aunque no estés sentado. */
+  isHost: T.Boolean(),
   hand: Nullable(HandView),
 }, 'TableView');
 // ─── Video de la mesa (señalización WebRTC por el WebSocket) ─────────────────

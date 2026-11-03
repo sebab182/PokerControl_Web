@@ -88,8 +88,9 @@ function maxRebuy(seats: SeatRow[], live: HandState | undefined): number {
 }
 
 /**
- * Reparte la próxima mano un administrador o quien inició la partida. Si esa persona se levantó o se
- * desconectó, cualquiera que esté sentado, para que la partida no quede trabada.
+ * Reparte la próxima mano un administrador o quien inició la partida. Si esa persona se levantó o
+ * no tuvo la mesa abierta en los últimos ONLINE_MS (esté sentada o no), cualquiera que esté sentado,
+ * para que la partida no quede trabada.
  */
 function mayDeal(table: TableRow, seats: SeatRow[], viewer: Viewer, myId: string | null, now = Date.now()): boolean {
   if (table.status !== 'playing') return false;
@@ -97,8 +98,15 @@ function mayDeal(table: TableRow, seats: SeatRow[], viewer: Viewer, myId: string
   const mine = seats.find(s => s.playerId === myId);
   if (!mine || mine.status !== 'sitting') return false;
   if (!table.startedBy) return true;
-  const host = seats.find(s => s.userId === table.startedBy);
-  return !!host && (host.status !== 'sitting' || !isPresent(host, now));
+  if (seats.find(s => s.userId === table.startedBy)?.status === 'out') return true;
+  return !table.hostSeenAt || now - table.hostSeenAt.getTime() >= ONLINE_MS;
+}
+
+/** Latido de quien inició la partida. No cambia nada visible para los demás, así que no avisa. */
+async function hostBeat(tx: Tx, table: TableRow, userId: string): Promise<void> {
+  if (table.status === 'playing' && table.startedBy === userId) {
+    await tx.update(schema.pokerTables).set({ hostSeenAt: new Date() }).where(eq(schema.pokerTables.id, table.id));
+  }
 }
 
 /** Nombre de quien inició la partida: su jugador en la mesa o, si no se sentó (administrador), su usuario. */
@@ -178,6 +186,7 @@ async function buildView(db: Conn, table: TableRow, viewer: Viewer): Promise<Api
     myPlayerId: myId,
     host: await hostName(db, table, seats),
     canDeal: mayDeal(table, seats.map(x => x.seat), viewer, myId, now),
+    isHost: table.status === 'playing' && table.startedBy === viewer.userId,
     hand,
     seats: seats.map(({ seat, name }) => ({
       playerId: seat.playerId,
@@ -506,7 +515,16 @@ export async function tableRoutes(app: FastifyInstance) {
     schema: { ...base, response: { 200: TableView, ...err } },
   }, async req => mutate(req, async (tx, table) => {
     const playerId = await requirePlayer(tx, req.group.id, req.user.sub);
+    await hostBeat(tx, table, req.user.sub);
     return sitPlayer(tx, table, { id: playerId, userId: req.user.sub }, null);
+  }));
+
+  // Latido de quien inició la partida aunque no esté sentado (p. ej. un administrador que solo reparte).
+  app.post<G>('/table/ping', {
+    schema: { ...base, response: { 200: TableView, ...err } },
+  }, async req => mutate(req, async (tx, table) => {
+    await hostBeat(tx, table, req.user.sub);
+    return 'quiet';
   }));
 
   app.post<G>('/table/leave', {
@@ -598,7 +616,7 @@ export async function tableRoutes(app: FastifyInstance) {
           .where(and(eq(schema.pokerSeats.tableId, table.id), eq(schema.pokerSeats.playerId, seat.playerId)));
       }
       await tx.update(schema.pokerSeats).set({ stack: cfg.buyIn, status: 'sitting' }).where(eq(schema.pokerSeats.tableId, table.id));
-      await tx.update(schema.pokerTables).set({ ...cfg, status: 'playing', sessionId, startedBy: req.user.sub, version: bump })
+      await tx.update(schema.pokerTables).set({ ...cfg, status: 'playing', sessionId, startedBy: req.user.sub, hostSeenAt: now, version: bump })
         .where(eq(schema.pokerTables.id, table.id));
       const [fresh] = await tx.select().from(schema.pokerTables).where(eq(schema.pokerTables.id, table.id));
       await dealHand(tx, fresh);
@@ -680,7 +698,7 @@ export async function tableRoutes(app: FastifyInstance) {
       }
       await closeSessionTx(tx, groupId, sessionId);
       await tx.delete(schema.pokerSeats).where(eq(schema.pokerSeats.tableId, table.id));
-      await tx.update(schema.pokerTables).set({ status: 'waiting', sessionId: null, startedBy: null, version: bump })
+      await tx.update(schema.pokerTables).set({ status: 'waiting', sessionId: null, startedBy: null, hostSeenAt: null, version: bump })
         .where(eq(schema.pokerTables.id, table.id));
       const [fresh] = await tx.select().from(schema.pokerTables).where(eq(schema.pokerTables.id, table.id));
       return { sessionId, table: await buildView(tx, fresh, viewerOf(req)) };

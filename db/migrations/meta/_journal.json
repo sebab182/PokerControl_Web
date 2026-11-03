@@ -50,6 +50,13 @@
       "when": 1793716228921,
       "tag": "0006_poker_table_host",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793717205092,
+      "tag": "0007_poker_table_host_seen",
+      "breakpoints": true
     }
   ]
 }

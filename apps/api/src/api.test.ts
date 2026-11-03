@@ -936,7 +936,7 @@ describe('roles', () => {
       // Pagos: se autorizan por dueño del pagador, no por rol (ver test de pagos a nombre propio).
       'POST /api/v1/groups/{groupId}/payments', 'DELETE /api/v1/groups/{groupId}/payments/{paymentId}',
       // La mesa online la juega cualquier miembro.
-      ...['join', 'leave', 'start', 'deal', 'action', 'rebuy', 'reveal', 'close'].map(a => `POST /api/v1/groups/{groupId}/table/${a}`),
+      ...['join', 'leave', 'ping', 'start', 'deal', 'action', 'rebuy', 'reveal', 'close'].map(a => `POST /api/v1/groups/{groupId}/table/${a}`),
     ]);
     for (const route of open.filter(r => !allowed.has(r))) {
       const [method, path] = route.split(' ');
@@ -1090,7 +1090,7 @@ describe('mesa online', () => {
   const act = (c: Client, v: { version: number }, action: object) => c.ok('POST', '/g/table/action', { version: v.version, action });
 
   it('reparte quien inició la partida o un administrador; si esa persona se va, cualquiera sentado', async () => {
-    const { a: admin, clients: [, host, other], pid, byPlayer } = await setup(1);
+    const { a: admin, clients: [, host, other], byPlayer } = await setup(1);
     for (const c of [admin, host, other]) await c.ok('POST', '/g/table/join');
     let v = await host.idem('/g/table/start', {});
     const finish = async () => {
@@ -1109,9 +1109,35 @@ describe('mesa online', () => {
     v = await admin.ok('POST', '/g/table/deal');
     await finish();
     // Quien inició se desconecta: para no trabar la partida, reparte cualquiera que esté sentado.
-    await conn.pool.query(`update poker_seats set last_seen_at = now() - interval '5 minutes' where player_id = $1`, [pid[1]]);
+    expect([hostView.isHost, otherView.isHost]).toEqual([true, false]);
+    await conn.pool.query(`update poker_tables set host_seen_at = now() - interval '5 minutes'`);
     expect((await view(other)).canDeal).toBe(true);
-    await other.ok('POST', '/g/table/deal');
+    // Vuelve (su pantalla manda el latido): reparte él de nuevo.
+    await host.ok('POST', '/g/table/ping');
+    expect((await view(other)).canDeal).toBe(false);
+    await conn.pool.query(`update poker_tables set host_seen_at = now() - interval '5 minutes'`);
+    v = await other.ok('POST', '/g/table/deal');
+    await finish();
+    // Si se levanta, también.
+    await host.ok('POST', '/g/table/ping');
+    await host.ok('POST', '/g/table/leave');
+    expect((await view(other)).canDeal).toBe(true);
+  });
+
+  it('si la inició un administrador sin sentarse y se va, reparte cualquiera que esté sentado', async () => {
+    const { a: admin, clients: [, b, c] } = await setup(1);
+    for (const x of [b, c]) await x.ok('POST', '/g/table/join');
+    await admin.idem('/g/table/start', {});
+    expect((await view(b)).host).toBe((await admin.ok('GET', '/me')).user.name);
+    expect((await b.call('POST', '/g/table/deal')).body.error).toBe('not_host');
+    // El latido del administrador lo mantiene; sin latido, se habilita a los sentados.
+    await admin.ok('POST', '/g/table/ping');
+    expect((await view(b)).canDeal).toBe(false);
+    await conn.pool.query(`update poker_tables set host_seen_at = now() - interval '5 minutes'`);
+    expect((await view(b)).canDeal).toBe(true);
+    // Un latido de otro no cuenta.
+    await b.ok('POST', '/g/table/ping');
+    expect((await view(c)).canDeal).toBe(true);
   });
 
   it('flujo completo: sentarse, iniciar (lector), jugar, cerrar y sumar a los saldos', async () => {

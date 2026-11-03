@@ -156,6 +156,25 @@ function TableView() {
     return () => clearInterval(id);
   }, [canBeat]);
 
+  // Quien inició la partida reparte: su pantalla avisa que sigue ahí aunque no esté sentado.
+  // Si deja de avisar, el servidor habilita a los sentados para que la partida no se trabe.
+  const isHost = !!view?.isHost;
+  useEffect(() => {
+    if (!isHost) return;
+    const ping = () => { if (document.visibilityState === 'visible') api<ApiTableView>(path('/table/ping'), { method: 'POST' }).catch(() => {}); };
+    ping();
+    const id = setInterval(ping, HEARTBEAT_MS);
+    return () => clearInterval(id);
+  }, [isHost]);
+
+  // Esperando que otro reparta: el permiso puede llegar sin que cambie la mesa (quien inició se fue), así que se consulta cada tanto.
+  const waitingDeal = !!view && view.status === 'playing' && !view.canDeal && (!view.hand || view.hand.street === 'done');
+  useEffect(() => {
+    if (!waitingDeal) return;
+    const id = setInterval(() => { if (document.visibilityState === 'visible') void query.refetch(); }, HEARTBEAT_MS / 2);
+    return () => clearInterval(id);
+  }, [waitingDeal]);
+
   if (query.isLoading) return <Loading />;
   if (query.error || !view) return <QueryError error={query.error} onRetry={() => { void query.refetch(); }} />;
 
