@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  type Action, applyAction, computePots, evaluate, HoldemError, type HandState, legalActions, newDeck,
-  publicView, revealCards, shownCards, shuffle, startHand,
+  type Action, applyAction, computePots, describeHand, evaluate, explainWin, HoldemError, type HandState, legalActions, newDeck,
+  publicView, revealCards, shownCards, shuffle, startHand, winReasons,
 } from './index';
 
 const cards = (s: string) => s.split(' ');
@@ -48,6 +48,45 @@ describe('evaluate', () => {
     const r = score('Ah Ad 2s 2c 9h Kd Kc');
     expect(r.name).toBe('Doble par');
     expect(r.best).toHaveLength(5);
+  });
+});
+
+describe('explicar la jugada', () => {
+  it('nombra la jugada con sus rangos', () => {
+    expect(describeHand(score('Jh Jd 8s 8c 2h 6d 3c'))).toBe('Doble par de jotas y ochos');
+    expect(describeHand(score('9h 8d 7s 6c 5h Ad Kc'))).toBe('Escalera al 9');
+    expect(describeHand(score('Ah Kd Qs Jc Th 2d 3c'))).toBe('Escalera al as');
+    expect(describeHand(score('Ah 2d 3s 4c 5h 9d Kc'))).toBe('Escalera al 5');
+    expect(describeHand(score('9h 9d 9s 5c 5h Ad Kc'))).toBe('Full house de nueves y cincos');
+    expect(describeHand(score('2h 9h Kh 5h 7h Ad Qc'))).toBe('Color al rey');
+    expect(describeHand(score('Ah 8d 4s 6c 2h Td Kc'))).toBe('Carta alta: as');
+    expect(describeHand(score('As Ks Qs Js Ts 2d 3c'))).toBe('Escalera real');
+  });
+
+  it('con la misma jugada aclara la carta que desempata', () => {
+    // Doble par en la mesa: gana el as en mano.
+    const board = 'Jh Jd 8s 8c 2h';
+    const ace = score(`${board} Ad 3c`);
+    const king = score(`${board} Kc 4d`);
+    expect(explainWin(ace, king)).toBe('Doble par de jotas y ochos, con as de kicker');
+    // Si la jugada ya es distinta, no hace falta.
+    expect(explainWin(score('Kh Kd 8s 8c 2h 6d 3c'), score('Jh Jd 8s 8c 2h 6d 3c'))).toBe('Doble par de reyes y ochos');
+    expect(explainWin(score('Kh Kd 8s 8c 2h 6d 3c'), score('Ah 2d 4s 9c 7h'))).toBe('Doble par de reyes y ochos');
+    expect(explainWin(score('Ah Qd 9s 6c 3h'), score('Ad Jd 9c 6h 3s'))).toBe('Carta alta: as, desempata con reina');
+  });
+
+  it('winReasons explica cada ganador del showdown, o el empate', () => {
+    const base = { street: 'done', board: cards('Jh Jd 8s 8c 2h'), showdown: [{ playerId: 'a', hole: [], handName: '' }] };
+    const players = (b: string) => [
+      { id: 'a', hole: cards('Ad 3c'), folded: false },
+      { id: 'b', hole: cards(b), folded: false },
+      { id: 'c', hole: cards('Ac Kd'), folded: true },
+    ];
+    expect(winReasons({ ...base, players: players('Kc 4d'), payouts: [{ playerId: 'a', amount: 100 }] } as unknown as HandState))
+      .toEqual({ a: 'Doble par de jotas y ochos, con as de kicker' });
+    expect(winReasons({ ...base, players: players('As 4d'), payouts: [{ playerId: 'a', amount: 50 }, { playerId: 'b', amount: 50 }] } as unknown as HandState))
+      .toEqual({ a: 'Doble par de jotas y ochos (empate)', b: 'Doble par de jotas y ochos (empate)' });
+    expect(winReasons({ ...base, showdown: [], players: players('Kc 4d'), payouts: [{ playerId: 'a', amount: 100 }] } as unknown as HandState)).toEqual({});
   });
 });
 

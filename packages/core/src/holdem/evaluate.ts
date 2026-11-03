@@ -12,11 +12,13 @@ export interface HandScore {
   name: string;
   /** Las 5 cartas que forman la mejor mano. */
   best: Card[];
+  /** Rangos en orden de desempate: primero los que forman la jugada, después los kickers. */
+  tiebreak: number[];
 }
 
 const BASE = 15;
 
-function score5(cards: Card[]): { score: number; category: number } {
+function score5(cards: Card[]): { score: number; category: number; tiebreak: number[] } {
   const ranks = cards.map(rankValue).sort((a, b) => b - a);
   const flush = cards.every((c) => suitOf(c) === suitOf(cards[0]));
   const counts = new Map<number, number>();
@@ -45,7 +47,7 @@ function score5(cards: Card[]): { score: number; category: number } {
 
   let score = category;
   for (let i = 0; i < 5; i++) score = score * BASE + (tiebreak[i] ?? 0);
-  return { score, category };
+  return { score, category, tiebreak };
 }
 
 function* combinations(cards: Card[], k: number, start = 0, acc: Card[] = []): Generator<Card[]> {
@@ -62,8 +64,8 @@ export function evaluate(cards: Card[]): HandScore {
   if (cards.length < 5 || cards.length > 7) throw new Error('Se necesitan entre 5 y 7 cartas');
   let best: HandScore | null = null;
   for (const combo of combinations(cards, 5)) {
-    const { score, category } = score5(combo);
-    if (!best || score > best.score) best = { score, category, name: HAND_NAMES[category], best: combo };
+    const { score, category, tiebreak } = score5(combo);
+    if (!best || score > best.score) best = { score, category, name: HAND_NAMES[category], best: combo, tiebreak };
   }
   const b = best!;
   // Escalera real: escalera de color con as alto.
@@ -73,4 +75,44 @@ export function evaluate(cards: Card[]): HandScore {
 
 export function compareHands(a: Card[], b: Card[]): number {
   return evaluate(a).score - evaluate(b).score;
+}
+
+const ONE: Record<number, string> = { 14: 'as', 13: 'rey', 12: 'reina', 11: 'jota' };
+const MANY: Record<number, string> = {
+  14: 'ases', 13: 'reyes', 12: 'reinas', 11: 'jotas', 10: 'dieces', 9: 'nueves', 8: 'ochos',
+  7: 'sietes', 6: 'seises', 5: 'cincos', 4: 'cuatros', 3: 'treses', 2: 'doses',
+};
+const one = (r: number) => ONE[r] ?? String(r);
+
+/** Cuántos rangos de `tiebreak` forman la jugada (y entran en su nombre); el resto son kickers. */
+const MAIN = [1, 1, 2, 1, 1, 1, 2, 1, 1];
+
+/** La jugada con sus rangos: "Doble par de jotas y ochos", "Escalera al 9", "Color al rey". */
+export function describeHand(h: HandScore): string {
+  const [a, b] = h.tiebreak;
+  switch (h.category) {
+    case 0: return `Carta alta: ${one(a)}`;
+    case 1: return `Par de ${MANY[a]}`;
+    case 2: return `Doble par de ${MANY[a]} y ${MANY[b]}`;
+    case 3: return `Trío de ${MANY[a]}`;
+    case 4: return `Escalera al ${one(a)}`;
+    case 5: return `Color al ${one(a)}`;
+    case 6: return `Full house de ${MANY[a]} y ${MANY[b]}`;
+    case 7: return `Póker de ${MANY[a]}`;
+    default: return h.name === 'Escalera real' ? h.name : `Escalera de color al ${one(a)}`;
+  }
+}
+
+/**
+ * Por qué una mano le gana a otra. Si tienen la misma jugada (p. ej. el doble par está en la mesa),
+ * se aclara la carta que desempata: "Doble par de jotas y ochos, con as de kicker".
+ */
+export function explainWin(winner: HandScore, beaten: HandScore | null): string {
+  const text = describeHand(winner);
+  if (!beaten || beaten.category !== winner.category) return text;
+  const i = winner.tiebreak.findIndex((r, k) => r !== beaten.tiebreak[k]);
+  if (i < MAIN[winner.category]) return text;
+  const r = winner.tiebreak[i];
+  // Carta alta y color comparan carta por carta: no hay "kicker" sino la siguiente más alta.
+  return winner.category === 0 || winner.category === 5 ? `${text}, desempata con ${one(r)}` : `${text}, con ${one(r)} de kicker`;
 }

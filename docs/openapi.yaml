@@ -1550,6 +1550,8 @@ paths:
                               type: string
                             amount:
                               type: integer
+                            reason:
+                              type: string
                       showdown:
                         type: array
                         items:
@@ -1862,6 +1864,8 @@ paths:
                               type: string
                             amount:
                               type: integer
+                            reason:
+                              type: string
                       showdown:
                         type: array
                         items:
@@ -2174,6 +2178,8 @@ paths:
                               type: string
                             amount:
                               type: integer
+                            reason:
+                              type: string
                       showdown:
                         type: array
                         items:
@@ -2486,6 +2492,8 @@ paths:
                               type: string
                             amount:
                               type: integer
+                            reason:
+                              type: string
                       showdown:
                         type: array
                         items:
@@ -2803,6 +2811,8 @@ paths:
                               type: string
                             amount:
                               type: integer
+                            reason:
+                              type: string
                       showdown:
                         type: array
                         items:
@@ -3119,6 +3129,8 @@ paths:
                               type: string
                             amount:
                               type: integer
+                            reason:
+                              type: string
                       showdown:
                         type: array
                         items:
@@ -3448,6 +3460,8 @@ paths:
                               type: string
                             amount:
                               type: integer
+                            reason:
+                              type: string
                       showdown:
                         type: array
                         items:
@@ -3784,6 +3798,8 @@ paths:
                               type: string
                             amount:
                               type: integer
+                            reason:
+                              type: string
                       showdown:
                         type: array
                         items:
@@ -4096,6 +4112,8 @@ paths:
                               type: string
                             amount:
                               type: integer
+                            reason:
+                              type: string
                       showdown:
                         type: array
                         items:
@@ -4475,6 +4493,8 @@ paths:
                               type: string
                             amount:
                               type: integer
+                            reason:
+                              type: string
                       showdown:
                         type: array
                         items:
@@ -4806,6 +4826,8 @@ paths:
                               type: string
                             amount:
                               type: integer
+                            reason:
+                              type: string
                       showdown:
                         type: array
                         items:
@@ -5130,6 +5152,8 @@ paths:
                               type: string
                             amount:
                               type: integer
+                            reason:
+                              type: string
                       showdown:
                         type: array
                         items:
@@ -5452,6 +5476,8 @@ paths:
                                   type: string
                                 amount:
                                   type: integer
+                                reason:
+                                  type: string
                           showdown:
                             type: array
                             items:

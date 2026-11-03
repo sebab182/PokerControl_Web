@@ -1428,6 +1428,8 @@ describe('mesa online', () => {
         });
       }
       expect(v.hand.showdown).toHaveLength(2);
+      // Cada ganador viene con el porqué (la jugada y, si hizo falta, la carta que desempata).
+      for (const w of v.hand.payouts) expect(w.reason).toMatch(/^(Carta alta|Par|Doble par|Trío|Escalera|Color|Full house|Póker)/);
       // El administrador reparte y cierra sin estar sentado.
       v = await admin.ok('POST', '/g/table/deal');
       expect(v.hand.handNo).toBe(2);

@@ -267,6 +267,24 @@ input[type="text"], input[type="search"], select {
 .felt-center {
   position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
 }
+/* Resultado de la mano: en el centro del paño, en el lugar del pozo, semitransparente sobre el paño. */
+.hand-result {
+  position: relative; z-index: 4;
+  width: max-content; max-width: min(88cqw, 420px); box-sizing: border-box; padding: 8px 34px 8px 16px;
+  border-radius: 14px; border: 1px solid rgba(255, 255, 255, .28); background: rgba(8, 12, 18, .62);
+  color: #fff; text-align: center; text-shadow: 0 1px 2px rgba(0, 0, 0, .8);
+}
+.hand-result p { margin: 0; }
+.hand-result p + p { margin-top: 6px; }
+.hand-result strong { display: block; font-size: 17px; }
+.hand-result-reason { display: block; font-size: 14px; color: #FDE68A; }
+.hand-result-close {
+  position: absolute; top: 2px; right: 2px; width: 32px; height: 32px; border: 0; border-radius: 8px;
+  background: transparent; color: #fff; font-size: 20px; line-height: 1; cursor: pointer;
+}
+.hand-result-close:hover { background: rgba(255, 255, 255, .12); }
+.table-anim .hand-result { animation: result-in .25s ease-out both; }
+@keyframes result-in { from { transform: scale(.92); } }
 .pot { color: #fff; font-weight: 700; background: rgba(0, 0, 0, .35); padding: 4px 14px; border-radius: 999px; font-size: 14px; }
 /* El board va siempre en una fila: flop | turn | river. */
 .board { display: flex; align-items: center; gap: 10px; }
@@ -434,6 +452,10 @@ input[type="text"], input[type="search"], select {
    y el centro baja un poco porque el asiento de arriba (nombre, apuesta, lo ganado) ocupa más que el de abajo. */
 .table-landscape .felt > * { --card-w: min(84px, 10.5cqw, 16cqh); }
 .table-landscape .felt-center { flex-direction: row; gap: 12px; padding-top: 16cqh; }
+/* Horizontal: el resultado va al costado del board; ancho y bajo para no tapar las cartas de abajo. */
+.table-landscape .hand-result { max-width: 44cqw; padding: 5px 30px 5px 12px; line-height: 1.25; }
+.table-landscape .hand-result strong { font-size: 15px; }
+.table-landscape .hand-result-reason { font-size: 13px; }
 .table-landscape .hand-dock { flex: 0 0 200px; margin: 0; padding: 8px; overflow-y: auto; }
 .table-landscape .controls-row { grid-auto-flow: row; }
 .table-landscape .controls-row .btn { min-height: 44px; }

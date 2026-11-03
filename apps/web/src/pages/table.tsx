@@ -1,7 +1,7 @@
 import type { ApiGroup, ApiPlayer, ApiRtcServerMessage, ApiTableAction, ApiTableView } from '@pokercontrol/contracts';
 import { evaluate, formatMoney, parseAmount } from '@pokercontrol/core';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { ApiRequestError, api } from '../api';
 import { EmptyCard, PlayerSeat, PokerCard, cardText } from '../components/poker';
@@ -514,6 +514,28 @@ function ShowCards({ hand, players, busy, onReveal }: {
   );
 }
 
+/**
+ * Resultado de la mano en el centro del paño, en el lugar del pozo y sin tapar las cartas. Queda hasta
+ * que se reparte la próxima mano; si se oculta, vuelve el pozo.
+ */
+function HandResult({ view, hand, fallback }: { view: ApiTableView; hand: Hand; fallback: ReactNode }) {
+  const [hidden, setHidden] = useState(0);
+  if (hand.street !== 'done' || hand.payouts.length === 0 || hidden === hand.handNo) return fallback;
+  const alone = hand.showdown.length === 0;
+  return (
+    <div className="hand-result" role="status" aria-live="polite" data-testid="hand-result">
+      <button type="button" className="hand-result-close" aria-label="Ocultar resultado" onClick={() => setHidden(hand.handNo)}>×</button>
+      {hand.payouts.map(w => (
+        <p key={w.playerId}>
+          <strong>{nameOf(view, w.playerId)} {w.playerId === view.myPlayerId ? 'ganaste' : 'ganó'} <span className="num">{formatMoney(w.amount)}</span></strong>
+          {w.reason && <span className="hand-result-reason">{w.reason}</span>}
+        </p>
+      ))}
+      {alone && <span className="hand-result-reason">Los demás se retiraron.</span>}
+    </div>
+  );
+}
+
 function Felt({ view, hand }: { view: ApiTableView; hand: Hand }) {
   const players = hand.players;
   const myIdx = Math.max(0, players.findIndex(p => p.playerId === view.myPlayerId));
@@ -521,7 +543,7 @@ function Felt({ view, hand }: { view: ApiTableView; hand: Hand }) {
     <div className="felt-wrap">
       <div className="felt" data-testid="felt">
         <div className="felt-center">
-          <div className="pot num" data-testid="pot">Pozo {formatMoney(hand.pot)}</div>
+          <HandResult view={view} hand={hand} fallback={<div className="pot num" data-testid="pot">Pozo {formatMoney(hand.pot)}</div>} />
           {/* Vertical: flop arriba y turn + river abajo. Horizontal: en línea, separados 3 | 1 | 1. */}
           <div className="board" role="group" aria-label="Cartas comunitarias">
             <div className="board-row">
@@ -589,11 +611,8 @@ function describeLast(view: ApiTableView, la: NonNullable<Hand['lastAction']>): 
 function Status({ view, hand, updatedAt }: { view: ApiTableView; hand: Hand; updatedAt: number }) {
   let text: string;
   if (hand.street === 'done') {
-    const parts = hand.payouts.map(w => {
-      const hn = hand.showdown.find(s => s.playerId === w.playerId)?.handName;
-      return `${nameOf(view, w.playerId)} ${w.playerId === view.myPlayerId ? 'ganaste' : 'ganó'} ${formatMoney(w.amount)}${hn ? ` con ${hn}` : ''}`;
-    });
-    text = parts.join(' · ') || 'Mano terminada.';
+    // Quién ganó y por qué va en el centro del paño (HandResult).
+    text = 'Mano terminada.';
   } else if (hand.legal) {
     text = hand.actingPlayerId === view.myPlayerId ? 'Es tu turno.' : `Te toca jugar por ${nameOf(view, hand.actingPlayerId as string)}.`;
   } else if (hand.toActPlayerId) {
