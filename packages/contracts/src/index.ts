@@ -282,6 +282,10 @@ export const TableView = Obj({
   maxRebuy: T.Integer(),
   /** Tu jugador en este grupo; null si todavía no elegiste nick. */
   myPlayerId: Nullable(T.String()),
+  /** Nombre de quien inició la partida, que es quien reparte; null sin partida. */
+  host: Nullable(T.String()),
+  /** Si podés repartir la próxima mano: sos administrador o quien inició la partida (o esa persona ya no está en la mesa). */
+  canDeal: T.Boolean(),
   hand: Nullable(HandView),
 }, 'TableView');
 // ─── Video de la mesa (señalización WebRTC por el WebSocket) ─────────────────

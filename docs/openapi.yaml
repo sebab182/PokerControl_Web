@@ -1305,6 +1305,8 @@ paths:
                   - seats
                   - maxRebuy
                   - myPlayerId
+                  - host
+                  - canDeal
                   - hand
                 properties:
                   id:
@@ -1375,6 +1377,11 @@ paths:
                   myPlayerId:
                     type: string
                     nullable: true
+                  host:
+                    type: string
+                    nullable: true
+                  canDeal:
+                    type: boolean
                   hand:
                     additionalProperties: false
                     title: HandView
@@ -1607,6 +1614,8 @@ paths:
                   - seats
                   - maxRebuy
                   - myPlayerId
+                  - host
+                  - canDeal
                   - hand
                 properties:
                   id:
@@ -1677,6 +1686,11 @@ paths:
                   myPlayerId:
                     type: string
                     nullable: true
+                  host:
+                    type: string
+                    nullable: true
+                  canDeal:
+                    type: boolean
                   hand:
                     additionalProperties: false
                     title: HandView
@@ -1909,6 +1923,8 @@ paths:
                   - seats
                   - maxRebuy
                   - myPlayerId
+                  - host
+                  - canDeal
                   - hand
                 properties:
                   id:
@@ -1979,6 +1995,11 @@ paths:
                   myPlayerId:
                     type: string
                     nullable: true
+                  host:
+                    type: string
+                    nullable: true
+                  canDeal:
+                    type: boolean
                   hand:
                     additionalProperties: false
                     title: HandView
@@ -2216,6 +2237,8 @@ paths:
                   - seats
                   - maxRebuy
                   - myPlayerId
+                  - host
+                  - canDeal
                   - hand
                 properties:
                   id:
@@ -2286,6 +2309,11 @@ paths:
                   myPlayerId:
                     type: string
                     nullable: true
+                  host:
+                    type: string
+                    nullable: true
+                  canDeal:
+                    type: boolean
                   hand:
                     additionalProperties: false
                     title: HandView
@@ -2522,6 +2550,8 @@ paths:
                   - seats
                   - maxRebuy
                   - myPlayerId
+                  - host
+                  - canDeal
                   - hand
                 properties:
                   id:
@@ -2592,6 +2622,11 @@ paths:
                   myPlayerId:
                     type: string
                     nullable: true
+                  host:
+                    type: string
+                    nullable: true
+                  canDeal:
+                    type: boolean
                   hand:
                     additionalProperties: false
                     title: HandView
@@ -2841,6 +2876,8 @@ paths:
                   - seats
                   - maxRebuy
                   - myPlayerId
+                  - host
+                  - canDeal
                   - hand
                 properties:
                   id:
@@ -2911,6 +2948,11 @@ paths:
                   myPlayerId:
                     type: string
                     nullable: true
+                  host:
+                    type: string
+                    nullable: true
+                  canDeal:
+                    type: boolean
                   hand:
                     additionalProperties: false
                     title: HandView
@@ -3167,6 +3209,8 @@ paths:
                   - seats
                   - maxRebuy
                   - myPlayerId
+                  - host
+                  - canDeal
                   - hand
                 properties:
                   id:
@@ -3237,6 +3281,11 @@ paths:
                   myPlayerId:
                     type: string
                     nullable: true
+                  host:
+                    type: string
+                    nullable: true
+                  canDeal:
+                    type: boolean
                   hand:
                     additionalProperties: false
                     title: HandView
@@ -3469,6 +3518,8 @@ paths:
                   - seats
                   - maxRebuy
                   - myPlayerId
+                  - host
+                  - canDeal
                   - hand
                 properties:
                   id:
@@ -3539,6 +3590,11 @@ paths:
                   myPlayerId:
                     type: string
                     nullable: true
+                  host:
+                    type: string
+                    nullable: true
+                  canDeal:
+                    type: boolean
                   hand:
                     additionalProperties: false
                     title: HandView
@@ -3838,6 +3894,8 @@ paths:
                   - seats
                   - maxRebuy
                   - myPlayerId
+                  - host
+                  - canDeal
                   - hand
                 properties:
                   id:
@@ -3908,6 +3966,11 @@ paths:
                   myPlayerId:
                     type: string
                     nullable: true
+                  host:
+                    type: string
+                    nullable: true
+                  canDeal:
+                    type: boolean
                   hand:
                     additionalProperties: false
                     title: HandView
@@ -4159,6 +4222,8 @@ paths:
                   - seats
                   - maxRebuy
                   - myPlayerId
+                  - host
+                  - canDeal
                   - hand
                 properties:
                   id:
@@ -4229,6 +4294,11 @@ paths:
                   myPlayerId:
                     type: string
                     nullable: true
+                  host:
+                    type: string
+                    nullable: true
+                  canDeal:
+                    type: boolean
                   hand:
                     additionalProperties: false
                     title: HandView
@@ -4473,6 +4543,8 @@ paths:
                   - seats
                   - maxRebuy
                   - myPlayerId
+                  - host
+                  - canDeal
                   - hand
                 properties:
                   id:
@@ -4543,6 +4615,11 @@ paths:
                   myPlayerId:
                     type: string
                     nullable: true
+                  host:
+                    type: string
+                    nullable: true
+                  canDeal:
+                    type: boolean
                   hand:
                     additionalProperties: false
                     title: HandView
@@ -4785,6 +4862,8 @@ paths:
                       - seats
                       - maxRebuy
                       - myPlayerId
+                      - host
+                      - canDeal
                       - hand
                     properties:
                       id:
@@ -4855,6 +4934,11 @@ paths:
                       myPlayerId:
                         type: string
                         nullable: true
+                      host:
+                        type: string
+                        nullable: true
+                      canDeal:
+                        type: boolean
                       hand:
                         additionalProperties: false
                         title: HandView

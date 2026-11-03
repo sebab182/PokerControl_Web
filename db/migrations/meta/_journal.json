@@ -43,6 +43,13 @@
       "when": 1793620306330,
       "tag": "0005_tranquil_sugar_man",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793716228921,
+      "tag": "0006_poker_table_host",
+      "breakpoints": true
     }
   ]
 }

@@ -367,7 +367,9 @@ function Playing({ view, canEdit, updatedAt, busy, onJoin, onLeave, onDeal, onCl
   const mine = (hand?.players ?? [])
     .map(p => view.seats.find(s => s.playerId === p.playerId))
     .filter((s): s is Seat => !!s && (s.isYou || s.managed));
-  const canDeal = !live && (me?.status === 'sitting' || canEdit);
+  // Reparte quien inició la partida o un administrador; el resto ve a quién esperan.
+  const canDeal = !live && view.canDeal;
+  const waitingDeal = !live && !view.canDeal && !!view.host && <p className="muted small center" data-testid="waiting-deal">Esperando que {view.host} reparta la próxima mano.</p>;
   const waitingSeats = view.seats.filter(s => !hand?.players.some(p => p.playerId === s.playerId));
 
   return (
@@ -393,6 +395,7 @@ function Playing({ view, canEdit, updatedAt, busy, onJoin, onLeave, onDeal, onCl
             {live && hand.legal && <Controls view={view} hand={hand} updatedAt={updatedAt} busy={busy} onAction={onAction} />}
             {hand.street === 'done' && <ShowCards hand={hand} players={mine} busy={busy} onReveal={onReveal} />}
             {canDeal && <Btn block busy={busy} onClick={onDeal}>Repartir próxima mano</Btn>}
+            {hand.street === 'done' && waitingDeal}
             {canRebuy && me && <NoChips view={view} sitting={me.status === 'sitting'} busy={busy} onLeave={onLeave} onRebuy={onRebuy} />}
             <VideoControls compact />
           </section>
@@ -407,6 +410,7 @@ function Playing({ view, canEdit, updatedAt, busy, onJoin, onLeave, onDeal, onCl
 
       <div className="stack table-extra">
         {!hand && canDeal && <Btn block busy={busy} onClick={onDeal}>Repartir</Btn>}
+        {!hand && waitingDeal}
         {!me && view.myPlayerId && <Btn variant="ghost" block busy={busy} onClick={onJoin}>Sumarme a la mesa por {formatMoney(view.buyIn)}</Btn>}
         {me?.status === 'out' && <Btn variant="ghost" block busy={busy} onClick={onJoin}>Volver a sentarme</Btn>}
         {(me || canEdit) && !live && <Btn variant="danger" block busy={busy} onClick={onClose}>Cerrar partida</Btn>}

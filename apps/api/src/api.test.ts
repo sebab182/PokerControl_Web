@@ -1089,6 +1089,31 @@ describe('mesa online', () => {
   const view = (c: Client) => c.ok('GET', '/g/table');
   const act = (c: Client, v: { version: number }, action: object) => c.ok('POST', '/g/table/action', { version: v.version, action });
 
+  it('reparte quien inició la partida o un administrador; si esa persona se va, cualquiera sentado', async () => {
+    const { a: admin, clients: [, host, other], pid, byPlayer } = await setup(1);
+    for (const c of [admin, host, other]) await c.ok('POST', '/g/table/join');
+    let v = await host.idem('/g/table/start', {});
+    const finish = async () => {
+      for (let i = 0; v.hand.street !== 'done'; i++) {
+        if (i > 10) throw new Error('mano infinita');
+        v = await act(byPlayer(v.hand.toActPlayerId), v, { type: 'fold' });
+      }
+    };
+    await finish();
+    // Todos ven quién reparte; solo él y el administrador pueden.
+    const [hostView, otherView, adminView] = await Promise.all([host, other, admin].map(view));
+    expect([hostView.host, hostView.canDeal, otherView.canDeal, adminView.canDeal]).toEqual(['J1', true, false, true]);
+    expect((await other.call('POST', '/g/table/deal')).body.error).toBe('not_host');
+    v = await host.ok('POST', '/g/table/deal');
+    await finish();
+    v = await admin.ok('POST', '/g/table/deal');
+    await finish();
+    // Quien inició se desconecta: para no trabar la partida, reparte cualquiera que esté sentado.
+    await conn.pool.query(`update poker_seats set last_seen_at = now() - interval '5 minutes' where player_id = $1`, [pid[1]]);
+    expect((await view(other)).canDeal).toBe(true);
+    await other.ok('POST', '/g/table/deal');
+  });
+
   it('flujo completo: sentarse, iniciar (lector), jugar, cerrar y sumar a los saldos', async () => {
     const { a, b, pid, byPlayer } = await setup();
     const empty = await view(a);
