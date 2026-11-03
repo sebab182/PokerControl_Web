@@ -1,5 +1,5 @@
 import type { ApiGroup, ApiPlayer, ApiRtcServerMessage, ApiTableAction, ApiTableView } from '@pokercontrol/contracts';
-import { evaluate, formatMoney, parseAmount } from '@pokercontrol/core';
+import { formatMoney, parseAmount } from '@pokercontrol/core';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
@@ -12,7 +12,7 @@ import { useGroup } from '../context';
 import { type TablePrefs, useTablePrefs, useTurnAlert, useWakeLock } from '../tablePrefs';
 import { shareInvite } from '../share';
 import { useTableSocket } from '../useTableSocket';
-import { VideoControls, VideoProvider, useTableVideo } from '../video';
+import { VideoControls, VideoMenu, VideoProvider, useTableVideo } from '../video';
 import { NickChooser } from './auth';
 
 const HEARTBEAT_MS = 20_000;
@@ -67,7 +67,43 @@ function FullscreenButton() {
     if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
     else void root.requestFullscreen?.().catch(() => {});
   };
-  return <button type="button" className="fs-btn" aria-label="Pantalla completa" onClick={toggle}>⛶</button>;
+  return (
+    <button type="button" className="tool-btn fs-btn" aria-label="Pantalla completa" onClick={toggle}>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
+      </svg>
+    </button>
+  );
+}
+
+const PrefsIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0" /><circle cx="16" cy="6" r="2" /><circle cx="10" cy="12" r="2" /><circle cx="18" cy="18" r="2" />
+  </svg>
+);
+
+/**
+ * Barra de la mesa mientras se juega una mano (celular y compu): el estado de la mano y las herramientas
+ * (video, preferencias). En el celular reemplaza al menú de abajo, así que lleva una flecha para volver.
+ */
+function TableBar({ view, hand, updatedAt, live, onPrefs }: {
+  view: ApiTableView; hand: Hand; updatedAt: number; live: boolean; onPrefs: () => void;
+}) {
+  return (
+    <div className="table-bar">
+      <h1 className="sr-only">Mesa</h1>
+      <Link to="/ranking" className="tool-btn table-back" aria-label="Volver al menú">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6" /></svg>
+      </Link>
+      <Status view={view} hand={hand} updatedAt={updatedAt} />
+      <div className="table-tools">
+        {live && <span className="live-dot" role="img" aria-label="En vivo" title="En vivo: recibís los cambios al instante" />}
+        <VideoMenu />
+        <FullscreenButton />
+        <button type="button" className="tool-btn tool-btn-plain" aria-label="Preferencias de la mesa" onClick={onPrefs}><PrefsIcon /></button>
+      </div>
+    </div>
+  );
 }
 
 export function TablePage() {
@@ -206,17 +242,15 @@ function TableView() {
 
   return (
     <VideoProvider state={video.state}>
-      {view.status === 'playing' && view.hand && <FullscreenButton />}
-      <div className="page-head">
-        <h1 className="grow">Mesa</h1>
-        {live && <span className="badge badge-muted" title="Recibís los cambios al instante">En vivo</span>}
-        {view.status === 'playing' && <span className="badge badge-green">Partida en curso</span>}
-        <button type="button" className="icon-btn" aria-label="Preferencias de la mesa" onClick={() => setPrefsOpen(true)}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0" /><circle cx="16" cy="6" r="2" /><circle cx="10" cy="12" r="2" /><circle cx="18" cy="18" r="2" />
-          </svg>
-        </button>
-      </div>
+      {/* Con una mano en juego, la barra de la mesa reemplaza al encabezado. */}
+      {!(view.status === 'playing' && view.hand) && (
+        <div className="page-head">
+          <h1 className="grow">Mesa</h1>
+          {live && <span className="badge badge-muted" title="Recibís los cambios al instante">En vivo</span>}
+          {view.status === 'playing' && <span className="badge badge-green">Partida en curso</span>}
+          <button type="button" className="icon-btn" aria-label="Preferencias de la mesa" onClick={() => setPrefsOpen(true)}><PrefsIcon /></button>
+        </div>
+      )}
       <div className={`table-layout${prefs.animations ? ' table-anim' : ''}`}>
         <div className="table-main">
           {view.status === 'playing' && !view.hand && <VideoControls />}
@@ -228,6 +262,7 @@ function TableView() {
           {view.status === 'waiting'
             ? <Waiting view={view} canEdit={canEdit} standing={standing} busy={busy} onJoin={join} onLeave={leave} onStart={() => setStartOpen(true)} onAddOpen={() => setAddOpen(true)} />
             : <Playing view={view} updatedAt={query.dataUpdatedAt} busy={busy} onJoin={join} onLeave={leave} onDeal={deal} onClose={close}
+              bar={view.hand && <TableBar view={view} hand={view.hand} updatedAt={query.dataUpdatedAt} live={live} onPrefs={() => setPrefsOpen(true)} />}
               onReveal={(playerId, cards) => run(() => post('reveal', {
                 ...(cards ? { cards } : {}), ...(playerId !== view.myPlayerId ? { playerId } : {}),
               }))}
@@ -371,8 +406,8 @@ function StartModal({ view, open, onClose, onStart, busy }: {
 // ─── Partida en curso ────────────────────────────────────────────────────────
 type Seat = ApiTableView['seats'][number];
 
-function Playing({ view, updatedAt, busy, onJoin, onLeave, onDeal, onClose, onAction, onRebuy, onReveal }: {
-  view: ApiTableView; updatedAt: number; busy: boolean; onJoin: () => void; onLeave: () => void; onDeal: () => void;
+function Playing({ view, updatedAt, bar, busy, onJoin, onLeave, onDeal, onClose, onAction, onRebuy, onReveal }: {
+  view: ApiTableView; updatedAt: number; bar: ReactNode; busy: boolean; onJoin: () => void; onLeave: () => void; onDeal: () => void;
   onClose: () => void; onAction: (a: ApiTableAction) => void; onRebuy: (amount: number) => void;
   onReveal: (playerId: string, cards?: number[]) => void;
 }) {
@@ -393,31 +428,18 @@ function Playing({ view, updatedAt, busy, onJoin, onLeave, onDeal, onClose, onAc
 
   return (
     <>
-      {hand && <Status view={view} hand={hand} updatedAt={updatedAt} />}
       {hand && (
         <div className="table-stage">
+          {bar}
           <Felt view={view} hand={hand} />
-          {/* Tus cartas y tus acciones siempre en el mismo lugar: abajo en el celular, debajo de la mesa en la compu. */}
-          <section className="hand-dock" aria-label="Tu mano">
+          {/* Tus cartas van en tu asiento; acá solo lo que hay que decidir, siempre en el mismo lugar. */}
+          <section className="hand-dock" aria-label="Tus acciones">
             <HandResult view={view} hand={hand} where="dock" />
-            {mine.length > 0 && (
-              <div className="dock-hands">
-                {/* Con varios jugadores a cargo, solo el que tiene el turno va grande: así la zona entra en el celular. */}
-                {mine.map(s => {
-                  const acting = live && hand.actingPlayerId === s.playerId;
-                  return (
-                    <HoleCards key={s.playerId} hand={hand} playerId={s.playerId} name={s.isYou ? 'Vos' : s.name} you={s.isYou}
-                      acting={acting} size={mine.length === 1 ? 'lg' : acting ? 'md' : 'sm'} />
-                  );
-                })}
-              </div>
-            )}
             {live && hand.legal && <Controls view={view} hand={hand} updatedAt={updatedAt} busy={busy} onAction={onAction} />}
             {hand.street === 'done' && <ShowCards hand={hand} players={mine} busy={busy} onReveal={onReveal} />}
             {canDeal && <Btn block busy={busy} onClick={onDeal}>Repartir próxima mano</Btn>}
             {hand.street === 'done' && waitingDeal}
             {canRebuy && me && <NoChips view={view} sitting={me.status === 'sitting'} busy={busy} onLeave={onLeave} onRebuy={onRebuy} />}
-            <VideoControls compact />
           </section>
         </div>
       )}
@@ -529,10 +551,10 @@ function HandResult({ view, hand, fallback = null, where = 'felt' }: {
     // Se dibuja en el paño y en la zona de la mano; el CSS muestra uno solo (en horizontal, el de la zona de la mano).
     <div className={`hand-result hand-result-${where}`} role="status" aria-live="polite" data-testid="hand-result">
       <button type="button" className="hand-result-close" aria-label="Ocultar resultado" onClick={() => setHidden(hand.handNo)}>×</button>
-      {hand.payouts.map(w => (
-        <p key={w.playerId}>
-          <strong>{nameOf(view, w.playerId)} {w.playerId === view.myPlayerId ? 'ganaste' : 'ganó'} <span className="num">{formatMoney(w.amount)}</span></strong>
-          {w.reason && <span className="hand-result-reason">{w.reason}</span>}
+      {groupPayouts(hand.payouts).map(g => (
+        <p key={g.ids.join()}>
+          <strong>{winnersText(view, g.ids)} <span className="num">{formatMoney(g.amount)}</span>{g.ids.length > 1 && ' cada uno'}</strong>
+          {g.reason && <span className="hand-result-reason">{g.reason}</span>}
         </p>
       ))}
       {alone && <span className="hand-result-reason">Los demás se retiraron.</span>}
@@ -540,17 +562,40 @@ function HandResult({ view, hand, fallback = null, where = 'felt' }: {
   );
 }
 
+/** Un pozo dividido: los que ganan lo mismo por la misma jugada van juntos, así el resultado no ocupa media mesa. */
+function groupPayouts(payouts: Hand['payouts']) {
+  const groups: { ids: string[]; amount: number; reason?: string }[] = [];
+  for (const w of payouts) {
+    const g = groups.find(x => x.amount === w.amount && x.reason === w.reason);
+    if (g) g.ids.push(w.playerId);
+    else groups.push({ ids: [w.playerId], amount: w.amount, reason: w.reason });
+  }
+  return groups;
+}
+
+/** "Nico ganó", "Ganaste", "Ana, Beto y vos ganan"… (vos siempre al final). */
+function winnersText(view: ApiTableView, ids: string[]): string {
+  const you = ids.includes(view.myPlayerId ?? '');
+  const others = ids.filter(id => id !== view.myPlayerId).map(id => nameOf(view, id));
+  if (ids.length === 1) return you ? 'Vos ganaste' : `${others[0]} ganó`;
+  const names = you ? [...others, 'vos'] : others;
+  return `${names.slice(0, -1).join(', ')} y ${names[names.length - 1]} ganan`;
+}
+
 function Felt({ view, hand }: { view: ApiTableView; hand: Hand }) {
   const players = hand.players;
   const myIdx = Math.max(0, players.findIndex(p => p.playerId === view.myPlayerId));
   // Al terminar con showdown se resaltan las cartas de la jugada ganadora.
   const win = winningCards(hand);
+  const heroSeat = view.seats.find(s => s.playerId === players[myIdx]?.playerId);
+  const hero = players[myIdx];
+  const heroCards = !!heroSeat && (heroSeat.isYou || heroSeat.managed) && !!hero && hero.hole.some(c => c !== '??');
   return (
     <div className="felt-wrap">
-      <div className="felt" data-testid="felt">
+      <div className={`felt${heroCards ? ' felt-hero' : ''}`} data-testid="felt">
         <div className="felt-center">
           <HandResult view={view} hand={hand} fallback={<div className="pot num" data-testid="pot">Pozo {formatMoney(hand.pot)}</div>} />
-          {/* En línea (compu y celular horizontal) separados 3 | 1 | 1; en un paño angosto, flop arriba y turn + river abajo. */}
+          {/* En línea (compu y celular horizontal) separados 3 | 1 | 1; en un paño angosto, flop arriba y turn + river abajo. El pozo va arriba. */}
           <div className="board" role="group" aria-label="Cartas comunitarias">
             <div className="board-row">
               {[0, 1, 2].map(i => hand.board[i] ? <PokerCard key={i} card={hand.board[i]} mark={markOf(win, hand.board[i])} /> : <EmptyCard key={i} />)}
@@ -635,29 +680,6 @@ function Status({ view, hand, updatedAt }: { view: ApiTableView; hand: Hand; upd
   );
 }
 
-/** Mis cartas (o las de un jugador que manejo) en la zona de abajo. Las que ya se mostraron pasan a la mesa. */
-function HoleCards({ hand, playerId, name, you, acting, size }: {
-  hand: Hand; playerId: string; name: string; you: boolean; acting: boolean; size: 'sm' | 'md' | 'lg';
-}) {
-  const p = hand.players.find(x => x.playerId === playerId);
-  if (!p || p.hole.length === 0 || p.hole.includes('??')) return null;
-  const hidden = p.hole.map((card, i) => ({ card, i })).filter(x => !p.shown.includes(x.i));
-  if (hidden.length === 0) return null;
-  const cards = [...p.hole, ...hand.board];
-  const handName = cards.length >= 5 ? evaluate(cards).name : null;
-  return (
-    <div className={`dock-hand${acting ? ' dock-hand-acting' : ''}${p.folded ? ' dock-hand-folded' : ''}`} data-testid="my-hand">
-      <div className="hole">{hidden.map(x => <PokerCard key={x.i} card={x.card} size={size} />)}</div>
-      <div className="dock-hand-info">
-        <strong className="ellipsis">{name}</strong>
-        <span className="xs muted num">{formatMoney(p.stack)}</span>
-        {(handName || p.folded) && (
-          <span className="small">{handName ? `${you ? 'Tenés' : 'Tiene'} ${handName.toLowerCase()}` : ''}{p.folded ? (handName ? ' · Retirado' : 'Retirado') : ''}</span>
-        )}
-      </div>
-    </div>
-  );
-}
 
 /** Tecla de atajo, solo visible con mouse. No forma parte del nombre del botón. */
 function Kbd({ children }: { children: string }) {

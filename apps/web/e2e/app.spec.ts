@@ -500,7 +500,7 @@ test('accesibilidad y responsive en cada vista, en ambos temas', async ({ page }
   }
 });
 
-test('mesa online: sala de espera, iniciar, jugar una mano y cerrar', async ({ page, browser }) => {
+test('mesa online: sala de espera, iniciar, jugar una mano y cerrar', async ({ page, browser, isMobile }) => {
   await login(page, 'Seba');
   const code = await createGroup(page);
   await nav(page, 'Mesa');
@@ -536,8 +536,14 @@ test('mesa online: sala de espera, iniciar, jugar una mano y cerrar', async ({ p
   await expect(page.getByTestId('pot')).toHaveText('Pozo $30');
   // Cuenta regresiva del turno y conexión en vivo.
   await expect(page.getByTestId('turn-timer')).toContainText(/\d:\d\d/);
-  await expect(page.getByText('En vivo')).toBeVisible({ timeout: 10000 });
-  await expect(page.getByTestId('my-hand').getByRole('img')).toHaveCount(2);
+  await expect(page.getByRole('img', { name: 'En vivo' })).toBeVisible({ timeout: 10000 });
+  // Tus cartas van en tu asiento, sobre el paño.
+  await expect(page.getByTestId('felt').getByTestId('my-hand').getByRole('img')).toHaveCount(2);
+  // En el celular la mesa reemplaza al menú de abajo; se vuelve con la flecha.
+  if (isMobile) {
+    await expect(page.getByRole('navigation', { name: 'Principal móvil' })).toBeHidden();
+    await expect(page.getByRole('link', { name: 'Volver al menú' })).toBeVisible();
+  }
   await expect(page2.getByTestId('my-hand').getByRole('img')).toHaveCount(2, { timeout: 10000 });
   await expect(page.getByRole('img', { name: 'Carta oculta' })).toHaveCount(0);
   await checkPage(page, 'mesa: partida');
@@ -672,13 +678,14 @@ test.describe('mesa online: video', () => {
     await page.getByRole('dialog').getByRole('button', { name: 'Iniciar partida' }).click();
     await expect(page.getByTestId('felt')).toBeVisible();
     await expect(page2.getByTestId('felt')).toBeVisible({ timeout: 10000 });
-    await expect(page.getByText('En vivo')).toBeVisible({ timeout: 10000 });
-    await expect(page2.getByText('En vivo')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('img', { name: 'En vivo' })).toBeVisible({ timeout: 10000 });
+    await expect(page2.getByRole('img', { name: 'En vivo' })).toBeVisible({ timeout: 10000 });
 
     // Sin transmitir, nadie tiene video: se ven las iniciales.
     await expect(page2.locator('.pseat-video')).toHaveCount(0);
 
-    // Seba transmite: se ve a sí mismo y Nico lo recibe por WebRTC (frames reales).
+    // Seba transmite desde el botón de cámara de la barra: se ve a sí mismo y Nico lo recibe por WebRTC (frames reales).
+    await page.getByRole('button', { name: 'Video', exact: true }).click();
     await page.getByRole('button', { name: 'Transmitir video' }).click();
     await expect(page.getByRole('button', { name: 'Detener transmisión' })).toBeVisible();
     const seba = page2.getByTestId('seat-Seba').locator('video.pseat-video');

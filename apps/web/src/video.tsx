@@ -311,18 +311,16 @@ export function StreamVideo({ stream, muted, mirrored, className = '' }: {
 }
 
 /** Controles de mi transmisión. */
-export function VideoControls({ compact = false }: { compact?: boolean }) {
+export function VideoControls() {
   const v = useVideo();
   const [wantMic, setWantMic] = useState(false);
   if (!v || !v.canBroadcast) return null;
   if (!v.supported) {
-    // En la zona de la mano no hay lugar para el aviso: se muestra solo en la versión completa.
-    if (compact) return null;
     return <p className="muted small">Este navegador no permite transmitir video. Hace falta una conexión segura (https) y una cámara.</p>;
   }
   const live = !!v.local;
   return (
-    <div className={`video-controls${compact ? ' video-controls-dock' : ''}`} role="group" aria-label="Transmisión de video">
+    <div className="video-controls" role="group" aria-label="Transmisión de video">
       {live
         ? <Btn variant="danger" onClick={v.stop}>Detener transmisión</Btn>
         : <Btn busy={v.starting} onClick={() => { void v.start(wantMic); }}>Transmitir video</Btn>}
@@ -330,13 +328,46 @@ export function VideoControls({ compact = false }: { compact?: boolean }) {
       <label className="video-mic">
         <input type="checkbox" aria-label="Micrófono" checked={live ? v.micOn : wantMic} disabled={v.starting}
           onChange={e => { if (live) void v.start(e.target.checked); else setWantMic(e.target.checked); }} />
-        {compact ? 'Mic' : 'Micrófono'}
+        Micrófono
       </label>
       <label className="video-mic">
         <input type="checkbox" aria-label="Silenciar a los demás" checked={v.muteOthers} onChange={e => v.setMuteOthers(e.target.checked)} />
-        {compact ? 'Mudo' : 'Silenciar a los demás'}
+        Silenciar a los demás
       </label>
       {v.error && <div className="notice notice-err" role="alert">{v.error}</div>}
+    </div>
+  );
+}
+
+/**
+ * En la mesa, el video va en un botón de cámara (con un punto rojo mientras transmitís) que abre un panel con los controles:
+ * así no ocupa lugar en la zona de las acciones.
+ */
+export function VideoMenu() {
+  const v = useVideo();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('pointerdown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('pointerdown', onDown); document.removeEventListener('keydown', onKey); };
+  }, [open]);
+  // Un error al arrancar la cámara se muestra en el panel: se abre solo para que se vea.
+  useEffect(() => { if (v?.error) setOpen(true); }, [v?.error]);
+  if (!v || !v.canBroadcast) return null;
+  const live = !!v.local;
+  return (
+    <div className="video-menu" ref={ref}>
+      <button type="button" className={`tool-btn${live ? ' tool-btn-live' : ''}`} aria-label={live ? 'Video (transmitiendo)' : 'Video'}
+        aria-expanded={open} aria-controls="video-panel" onClick={() => setOpen(o => !o)}>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <rect x="2" y="6" width="14" height="12" rx="2" /><path d="M16 10l6-3v10l-6-3z" />
+        </svg>
+      </button>
+      {open && <div id="video-panel" className="video-panel"><VideoControls /></div>}
     </div>
   );
 }
