@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { ApiRequestError, api } from '../api';
-import { EmptyCard, PlayerSeat, PokerCard, cardText } from '../components/poker';
+import { EmptyCard, PlayerSeat, PokerCard, cardText, markOf, winningCards } from '../components/poker';
 import {
   Avatar, Btn, Emoji, Loading, Modal, QueryError, TextField, useAction, useFeedback,
 } from '../components/ui';
@@ -539,6 +539,8 @@ function HandResult({ view, hand, fallback }: { view: ApiTableView; hand: Hand; 
 function Felt({ view, hand }: { view: ApiTableView; hand: Hand }) {
   const players = hand.players;
   const myIdx = Math.max(0, players.findIndex(p => p.playerId === view.myPlayerId));
+  // Al terminar con showdown se resaltan las cartas de la jugada ganadora.
+  const win = winningCards(hand);
   return (
     <div className="felt-wrap">
       <div className="felt" data-testid="felt">
@@ -547,10 +549,10 @@ function Felt({ view, hand }: { view: ApiTableView; hand: Hand }) {
           {/* Vertical: flop arriba y turn + river abajo. Horizontal: en línea, separados 3 | 1 | 1. */}
           <div className="board" role="group" aria-label="Cartas comunitarias">
             <div className="board-row">
-              {[0, 1, 2].map(i => hand.board[i] ? <PokerCard key={i} card={hand.board[i]} /> : <EmptyCard key={i} />)}
+              {[0, 1, 2].map(i => hand.board[i] ? <PokerCard key={i} card={hand.board[i]} mark={markOf(win, hand.board[i])} /> : <EmptyCard key={i} />)}
             </div>
             <div className="board-row">
-              {[3, 4].map(i => hand.board[i] ? <PokerCard key={i} card={hand.board[i]} /> : <EmptyCard key={i} />)}
+              {[3, 4].map(i => hand.board[i] ? <PokerCard key={i} card={hand.board[i]} mark={markOf(win, hand.board[i])} /> : <EmptyCard key={i} />)}
             </div>
           </div>
         </div>

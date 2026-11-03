@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   type Action, applyAction, computePots, describeHand, evaluate, explainWin, HoldemError, type HandState, legalActions, newDeck,
-  publicView, revealCards, shownCards, shuffle, startHand, winReasons,
+  publicView, revealCards, shownCards, shuffle, startHand, winDetails,
 } from './index';
 
 const cards = (s: string) => s.split(' ');
@@ -75,18 +75,19 @@ describe('explicar la jugada', () => {
     expect(explainWin(score('Ah Qd 9s 6c 3h'), score('Ad Jd 9c 6h 3s'))).toBe('Carta alta: as, desempata con reina');
   });
 
-  it('winReasons explica cada ganador del showdown, o el empate', () => {
+  it('winDetails explica cada ganador del showdown, o el empate, con las 5 cartas de su jugada', () => {
     const base = { street: 'done', board: cards('Jh Jd 8s 8c 2h'), showdown: [{ playerId: 'a', hole: [], handName: '' }] };
     const players = (b: string) => [
       { id: 'a', hole: cards('Ad 3c'), folded: false },
       { id: 'b', hole: cards(b), folded: false },
       { id: 'c', hole: cards('Ac Kd'), folded: true },
     ];
-    expect(winReasons({ ...base, players: players('Kc 4d'), payouts: [{ playerId: 'a', amount: 100 }] } as unknown as HandState))
-      .toEqual({ a: 'Doble par de jotas y ochos, con as de kicker' });
-    expect(winReasons({ ...base, players: players('As 4d'), payouts: [{ playerId: 'a', amount: 50 }, { playerId: 'b', amount: 50 }] } as unknown as HandState))
-      .toEqual({ a: 'Doble par de jotas y ochos (empate)', b: 'Doble par de jotas y ochos (empate)' });
-    expect(winReasons({ ...base, showdown: [], players: players('Kc 4d'), payouts: [{ playerId: 'a', amount: 100 }] } as unknown as HandState)).toEqual({});
+    const won = winDetails({ ...base, players: players('Kc 4d'), payouts: [{ playerId: 'a', amount: 100 }] } as unknown as HandState);
+    expect(won.a.reason).toBe('Doble par de jotas y ochos, con as de kicker');
+    expect([...won.a.cards].sort()).toEqual(cards('8c 8s Ad Jd Jh').sort());
+    const split = winDetails({ ...base, players: players('As 4d'), payouts: [{ playerId: 'a', amount: 50 }, { playerId: 'b', amount: 50 }] } as unknown as HandState);
+    expect([split.a.reason, split.b.reason]).toEqual(['Doble par de jotas y ochos (empate)', 'Doble par de jotas y ochos (empate)']);
+    expect(winDetails({ ...base, showdown: [], players: players('Kc 4d'), payouts: [{ playerId: 'a', amount: 100 }] } as unknown as HandState)).toEqual({});
   });
 });
 

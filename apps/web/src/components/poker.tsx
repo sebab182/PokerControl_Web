@@ -13,15 +13,28 @@ export function cardText(card: string): string {
 }
 
 /** Carta con su nombre accesible. "??" es una carta oculta (dorso). */
-export function PokerCard({ card, size = 'md' }: { card: string; size?: 'sm' | 'md' | 'lg' }) {
+/**
+ * Al terminar una mano con showdown, las cartas que forman alguna jugada ganadora; null si no hay que marcar nada.
+ * Las demás de la mesa (y las mostradas) se atenúan.
+ */
+export function winningCards(hand: ApiHandView): Set<string> | null {
+  if (hand.street !== 'done') return null;
+  const cards = hand.payouts.flatMap(w => w.cards ?? []);
+  return cards.length > 0 ? new Set(cards) : null;
+}
+
+/** Marca de una carta al final de la mano: forma la jugada ganadora o queda atenuada. */
+export const markOf = (win: Set<string> | null, card: string) => (win ? (win.has(card) ? 'win' : 'dim') : undefined);
+
+export function PokerCard({ card, size = 'md', mark }: { card: string; size?: 'sm' | 'md' | 'lg'; mark?: 'win' | 'dim' }) {
   if (card === '??') {
     return <span role="img" aria-label="Carta oculta" className={`pcard pcard-back pcard-${size}`} />;
   }
   const suit = SUIT[card[1] as keyof typeof SUIT];
   const rank = card[0] === 'T' ? '10' : card[0];
   return (
-    <span role="img" aria-label={`${RANK_NAME[card[0]] ?? card[0]} de ${suit.name}`}
-      className={`pcard pcard-${size} ${suit.red ? 'pcard-red' : ''}`}>
+    <span role="img" aria-label={`${RANK_NAME[card[0]] ?? card[0]} de ${suit.name}${mark === 'win' ? ', de la jugada ganadora' : ''}`}
+      className={`pcard pcard-${size} ${suit.red ? 'pcard-red' : ''}${mark ? ` pcard-${mark}` : ''}`}>
       {/* Diseño de naipe clásico: índice arriba a la izquierda (y al revés abajo) y el palo grande al centro. */}
       <span className="pcard-corner" aria-hidden="true"><span>{rank}</span><span>{suit.sym}</span></span>
       <span className="pcard-pip" aria-hidden="true">{suit.sym}</span>
@@ -52,6 +65,7 @@ export function PlayerSeat({ view, hand, playerId, offset, total }: {
   const turn = hand.toActPlayerId === playerId;
   const dealer = hand.players[hand.button]?.playerId === playerId;
   const won = hand.payouts.find(x => x.playerId === playerId);
+  const win = winningCards(hand);
   const status = p.folded ? 'Retirado' : p.allIn ? 'All-in' : null;
   return (
     <div className={`pseat ${turn ? 'pseat-turn' : ''} ${p.folded ? 'pseat-folded' : ''} ${won ? 'pseat-won' : ''}`}
@@ -59,7 +73,7 @@ export function PlayerSeat({ view, hand, playerId, offset, total }: {
       <div className="pseat-cards">
         {/* Solo lo que se mostró (showdown o a voluntad); mis cartas sin mostrar quedan al costado del asiento. */}
         {p.hole.map((c, i) => c !== '??' && p.shown.includes(i)
-          ? <PokerCard key={i} card={c} size="sm" />
+          ? <PokerCard key={i} card={c} size="sm" mark={markOf(win, c)} />
           : null)}
       </div>
       {stream

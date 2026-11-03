@@ -12,7 +12,7 @@ import {
   type ApiTableView,
 } from '@pokercontrol/contracts';
 import {
-  HoldemError, applyAction, legalActions, publicView, revealCards, shownCards, startHand, winReasons, type Action, type HandState,
+  HoldemError, applyAction, legalActions, publicView, revealCards, shownCards, startHand, winDetails, type Action, type HandState,
 } from '@pokercontrol/core';
 import { type Static } from '@sinclair/typebox';
 import { and, asc, desc, eq, gt, isNotNull, lte, sql } from 'drizzle-orm';
@@ -141,7 +141,7 @@ async function buildView(db: Conn, table: TableRow, viewer: Viewer): Promise<Api
     const actor = live && state.toAct >= 0 ? state.players[state.toAct].id : null;
     const actingFor = actor && (actor === myId || managedIds.has(actor)) ? actor : null;
     const legal = actingFor ? legalActions(state) : null;
-    const reasons = winReasons(state);
+    const wins = winDetails(state);
     hand = {
       handNo: row.handNo,
       street: v.street,
@@ -169,7 +169,7 @@ async function buildView(db: Conn, table: TableRow, viewer: Viewer): Promise<Api
           ...(last.action.auto ? { auto: true } : {}),
         }
         : null,
-      payouts: v.payouts.map(w => (reasons[w.playerId] ? { ...w, reason: reasons[w.playerId] } : w)),
+      payouts: v.payouts.map(w => ({ ...w, ...wins[w.playerId] })),
       showdown: v.showdown,
     };
   }

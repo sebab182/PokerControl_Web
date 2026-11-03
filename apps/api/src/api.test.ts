@@ -1429,7 +1429,13 @@ describe('mesa online', () => {
       }
       expect(v.hand.showdown).toHaveLength(2);
       // Cada ganador viene con el porqué (la jugada y, si hizo falta, la carta que desempata).
-      for (const w of v.hand.payouts) expect(w.reason).toMatch(/^(Carta alta|Par|Doble par|Trío|Escalera|Color|Full house|Póker)/);
+      for (const w of v.hand.payouts) {
+        expect(w.reason).toMatch(/^(Carta alta|Par|Doble par|Trío|Escalera|Color|Full house|Póker)/);
+        // Y las 5 cartas de su jugada, todas visibles: de la mesa o de su mano (que gana y se muestra).
+        const winner = v.hand.players.find((p: { playerId: string }) => p.playerId === w.playerId);
+        expect(w.cards).toHaveLength(5);
+        for (const c of w.cards) expect([...v.hand.board, ...winner.hole]).toContain(c);
+      }
       // El administrador reparte y cierra sin estar sentado.
       v = await admin.ok('POST', '/g/table/deal');
       expect(v.hand.handNo).toBe(2);

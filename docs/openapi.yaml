@@ -1552,6 +1552,10 @@ paths:
                               type: integer
                             reason:
                               type: string
+                            cards:
+                              type: array
+                              items:
+                                type: string
                       showdown:
                         type: array
                         items:
@@ -1866,6 +1870,10 @@ paths:
                               type: integer
                             reason:
                               type: string
+                            cards:
+                              type: array
+                              items:
+                                type: string
                       showdown:
                         type: array
                         items:
@@ -2180,6 +2188,10 @@ paths:
                               type: integer
                             reason:
                               type: string
+                            cards:
+                              type: array
+                              items:
+                                type: string
                       showdown:
                         type: array
                         items:
@@ -2494,6 +2506,10 @@ paths:
                               type: integer
                             reason:
                               type: string
+                            cards:
+                              type: array
+                              items:
+                                type: string
                       showdown:
                         type: array
                         items:
@@ -2813,6 +2829,10 @@ paths:
                               type: integer
                             reason:
                               type: string
+                            cards:
+                              type: array
+                              items:
+                                type: string
                       showdown:
                         type: array
                         items:
@@ -3131,6 +3151,10 @@ paths:
                               type: integer
                             reason:
                               type: string
+                            cards:
+                              type: array
+                              items:
+                                type: string
                       showdown:
                         type: array
                         items:
@@ -3462,6 +3486,10 @@ paths:
                               type: integer
                             reason:
                               type: string
+                            cards:
+                              type: array
+                              items:
+                                type: string
                       showdown:
                         type: array
                         items:
@@ -3800,6 +3828,10 @@ paths:
                               type: integer
                             reason:
                               type: string
+                            cards:
+                              type: array
+                              items:
+                                type: string
                       showdown:
                         type: array
                         items:
@@ -4114,6 +4146,10 @@ paths:
                               type: integer
                             reason:
                               type: string
+                            cards:
+                              type: array
+                              items:
+                                type: string
                       showdown:
                         type: array
                         items:
@@ -4495,6 +4531,10 @@ paths:
                               type: integer
                             reason:
                               type: string
+                            cards:
+                              type: array
+                              items:
+                                type: string
                       showdown:
                         type: array
                         items:
@@ -4828,6 +4868,10 @@ paths:
                               type: integer
                             reason:
                               type: string
+                            cards:
+                              type: array
+                              items:
+                                type: string
                       showdown:
                         type: array
                         items:
@@ -5154,6 +5198,10 @@ paths:
                               type: integer
                             reason:
                               type: string
+                            cards:
+                              type: array
+                              items:
+                                type: string
                       showdown:
                         type: array
                         items:
@@ -5478,6 +5526,10 @@ paths:
                                   type: integer
                                 reason:
                                   type: string
+                                cards:
+                                  type: array
+                                  items:
+                                    type: string
                           showdown:
                             type: array
                             items:

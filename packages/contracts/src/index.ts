@@ -264,8 +264,13 @@ export const HandView = Obj({
     /** true si la jugó el servidor por tiempo agotado. */
     auto: T.Optional(T.Boolean()),
   })),
-  /** `reason`: por qué ganó en el showdown, con la carta que desempata si hizo falta ("Doble par de jotas y ochos, con as de kicker"). */
-  payouts: T.Array(Obj({ playerId: T.String(), amount: T.Integer(), reason: T.Optional(T.String()) })),
+  /**
+   * Solo si hubo showdown: `reason`, por qué ganó, con la carta que desempata si hizo falta ("Doble par de jotas y
+   * ochos, con as de kicker"); `cards`, las 5 cartas que forman su jugada (de la mesa y de su mano, que se muestra).
+   */
+  payouts: T.Array(Obj({
+    playerId: T.String(), amount: T.Integer(), reason: T.Optional(T.String()), cards: T.Optional(T.Array(T.String())),
+  })),
   showdown: T.Array(Obj({ playerId: T.String(), hole: T.Array(T.String()), handName: T.String() })),
 }, 'HandView');
 export const TableView = Obj({

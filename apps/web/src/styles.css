@@ -240,6 +240,10 @@ input[type="text"], input[type="search"], select {
   font-weight: 700; font-variant-numeric: tabular-nums; font-variant-emoji: text; box-shadow: 0 1px 3px rgba(0, 0, 0, .35);
 }
 .pcard-red { color: #C8102E; }
+/* Fin de la mano: las cartas de la jugada ganadora se levantan con un borde dorado; el resto se oscurece. */
+.pcard-win { border-color: #FBBF24; box-shadow: 0 0 0 3px #FBBF24, 0 6px 14px rgba(0, 0, 0, .45); transform: translateY(-4px); z-index: 1; }
+.pcard-dim { filter: brightness(.55) saturate(.6); }
+.pcard-win, .pcard-dim { transition: transform .2s ease-out, filter .2s ease-out, box-shadow .2s ease-out; }
 /* Índice de esquina, como en un mazo real: número grande y el palo debajo. */
 .pcard-corner {
   position: absolute; top: .14em; left: .18em; display: flex; flex-direction: column; align-items: center;
