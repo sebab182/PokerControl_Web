@@ -11,6 +11,7 @@ import type { FastifyInstance } from 'fastify';
 import * as schema from '../db/schema';
 import { ApiError, notFound } from '../errors';
 import { loadDebts, loadPlayers, loadSessions, lockGroup, toApiDebt, type Conn } from '../repo';
+import { relinkPlayers } from './table';
 
 type G = { Params: Static<typeof GroupParams> };
 type I = { Params: Static<typeof IdParams> };
@@ -73,7 +74,7 @@ async function hasHistory(db: Conn, groupId: string, playerId: string): Promise<
 export async function claimPlayerRoutes(app: FastifyInstance) {
   app.post<G & { Body: Static<typeof ClaimPlayerBody> }>('/me/player', {
     schema: { tags: ['players'], params: GroupParams, body: ClaimPlayerBody, response: { 200: Player, '4xx': ErrorResponse } },
-  }, async req => app.db.transaction(async tx => {
+  }, async req => relinkPlayers(app, req.group.id, async tx => {
     const groupId = req.group.id;
     const { playerId, name } = req.body;
     if ((playerId === undefined) === (name === undefined)) {
@@ -117,7 +118,7 @@ export async function playerRoutes(app: FastifyInstance) {
 
   app.post<I & { Body: Static<typeof LinkPlayerBody> }>('/players/:id/user', {
     schema: { tags, params: IdParams, body: LinkPlayerBody, response: { 200: Player, ...err } },
-  }, async req => app.db.transaction(async tx => {
+  }, async req => relinkPlayers(app, req.group.id, async tx => {
     const groupId = req.group.id;
     const { userId } = req.body;
     await lockGroup(tx, groupId);

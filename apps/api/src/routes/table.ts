@@ -216,6 +216,37 @@ async function finishHand(tx: Tx, handId: number, state: HandState): Promise<voi
 
 const bump = sql`${schema.pokerTables.version} + 1`;
 
+/**
+ * El asiento guarda el usuario del jugador al sentarse. Si después se vincula o desvincula un usuario
+ * (elige su nick, lo asocia un administrador o abandona el grupo), se copia al asiento: así deja de
+ * manejarlo un administrador, o pasa a manejarlo. Devuelve la versión nueva de la mesa si cambió algo.
+ */
+async function syncSeatUsers(tx: Tx, groupId: string): Promise<number | null> {
+  const changed = await tx.update(schema.pokerSeats).set({ userId: sql`${schema.players.userId}` })
+    .from(schema.players)
+    .where(and(
+      eq(schema.pokerSeats.groupId, groupId),
+      eq(schema.players.groupId, schema.pokerSeats.groupId),
+      eq(schema.players.id, schema.pokerSeats.playerId),
+      sql`${schema.pokerSeats.userId} is distinct from ${schema.players.userId}`,
+    ))
+    .returning({ tableId: schema.pokerSeats.tableId });
+  if (changed.length === 0) return null;
+  const [table] = await tx.update(schema.pokerTables).set({ version: bump })
+    .where(eq(schema.pokerTables.id, changed[0].tableId)).returning({ version: schema.pokerTables.version });
+  return table.version;
+}
+
+/** Transacción que cambia a qué usuario pertenece un jugador; al confirmarse actualiza la mesa y avisa. */
+export async function relinkPlayers<T>(app: FastifyInstance, groupId: string, fn: (tx: Tx) => Promise<T>): Promise<T> {
+  const { result, version } = await app.db.transaction(async tx => {
+    const result = await fn(tx);
+    return { result, version: await syncSeatUsers(tx, groupId) };
+  });
+  if (version !== null) app.tableHub.notify(groupId, version);
+  return result;
+}
+
 /** Vencimiento del turno que sigue, o null si no hay turno o la mesa no tiene límite. */
 function deadlineFor(table: Pick<TableRow, 'turnSeconds'>, state: HandState): Date | null {
   if (state.street === 'done' || state.toAct < 0 || table.turnSeconds <= 0) return null;

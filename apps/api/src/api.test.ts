@@ -1409,6 +1409,30 @@ describe('mesa online', () => {
       expect(v.hand.actingPlayerId).toBe(ghost);
     });
 
+    it('si un jugador sentado se vincula a un usuario, juega él; si se desvincula, vuelve a manejarlo el administrador', async () => {
+      const { admin, reader, players } = await adminTable();
+      const [ghost, other] = players;
+      await admin.ok('POST', `/g/table/seats/${ghost.id}`);
+      await admin.ok('POST', `/g/table/seats/${other.id}`);
+      let v = await admin.idem('/g/table/start', {});
+      const before = v.version;
+      // Con la mano en juego, el lector elige al jugador sentado como su nick.
+      await reader.ok('POST', '/g/me/player', { playerId: ghost.id });
+      v = await view(admin);
+      expect(v.version).toBeGreaterThan(before);
+      expect(v.seats.find((s: { playerId: string }) => s.playerId === ghost.id).managed).toBe(false);
+      expect(v.hand.players.find((p: { playerId: string }) => p.playerId === ghost.id).hole).toEqual(['??', '??']);
+      expect((await admin.call('POST', '/g/table/action', { version: v.version, playerId: ghost.id, action: { type: 'fold' } })).body.error).toBe('not_managed');
+      const readerView = await view(reader);
+      expect(readerView.myPlayerId).toBe(ghost.id);
+      expect(readerView.hand.players.find((p: { playerId: string }) => p.playerId === ghost.id).hole[0]).not.toBe('??');
+      // El administrador lo desvincula: vuelve a manejarlo.
+      await admin.ok('POST', `/g/players/${ghost.id}/user`, { userId: null });
+      v = await view(admin);
+      expect(v.seats.find((s: { playerId: string }) => s.playerId === ghost.id).managed).toBe(true);
+      expect(v.hand.players.find((p: { playerId: string }) => p.playerId === ghost.id).hole[0]).not.toBe('??');
+    });
+
     it('suma, recompra y levanta con la partida en curso', async () => {
       const { admin, players } = await adminTable(3);
       await admin.ok('POST', `/g/table/seats/${players[0].id}`);

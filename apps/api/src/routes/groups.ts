@@ -10,6 +10,7 @@ import * as schema from '../db/schema';
 import { ApiError } from '../errors';
 import { ctx, type Conn } from '../repo';
 import { userGroups, userRole, type Role } from './auth';
+import { relinkPlayers } from './table';
 
 type Params = { Params: Static<typeof GroupParams> };
 
@@ -172,7 +173,7 @@ export async function groupRoutes(app: FastifyInstance) {
   app.delete<Params>('/groups/:groupId/members/me', {
     ...scoped,
     schema: { tags: ['groups'], params: GroupParams, response: { 200: Ok, ...err } },
-  }, async req => app.db.transaction(async tx => {
+  }, async req => relinkPlayers(app, req.group.id, async tx => {
     await tx.select({ id: schema.groups.id }).from(schema.groups).where(eq(schema.groups.id, req.group.id)).for('no key update');
     const membership = and(
       eq(schema.groupMembers.groupId, req.group.id),
