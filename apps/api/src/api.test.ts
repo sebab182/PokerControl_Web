@@ -1523,6 +1523,11 @@ describe('mesa online', () => {
       return { ...ctx, v };
     }
 
+    it('por defecto, 45 segundos por turno', async () => {
+      const { v } = await started();
+      expect(v.turnSeconds).toBe(45);
+    });
+
     it('arma el vencimiento del turno y informa la hora del servidor', async () => {
       const { v } = await started(30);
       expect(v.turnSeconds).toBe(30);

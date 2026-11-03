@@ -236,7 +236,7 @@ export const pokerTables = pgTable('poker_tables', {
   /** Se incrementa en cada cambio visible: evita acciones sobre estados viejos. */
   version: integer('version').notNull().default(0),
   /** Segundos por turno; 0 = sin límite. */
-  turnSeconds: integer('turn_seconds').notNull().default(30),
+  turnSeconds: integer('turn_seconds').notNull().default(45),
   /** Vencimiento del turno en curso; al pasarlo el servidor juega por el jugador. */
   turnDeadline: ts('turn_deadline'),
   /** Quien inició la partida en curso: reparte las manos (además de los administradores). */
