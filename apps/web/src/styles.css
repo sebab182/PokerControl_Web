@@ -274,7 +274,11 @@ input[type="text"], input[type="search"], select {
 /* Las cartas de la mesa se achican con el paño (cqw) para no tapar los asientos. */
 .felt > * { --card-w: min(72px, 9cqw); }
 /* Paño angosto (celular en vertical): las cartas ocupan más proporción del ancho. */
-@container (max-width: 520px) { .felt > * { --card-w: min(56px, 14cqw); } }
+/* Paño angosto (celular en vertical o ventana chica): flop arriba y turn + river abajo, así los asientos de los costados no tapan el board. */
+@container (max-width: 520px) {
+  .felt > * { --card-w: min(56px, 14cqw); }
+  .board { flex-direction: column; gap: 6px; }
+}
 .felt .pcard-md { width: var(--card-w); height: calc(var(--card-w) * 1.409); font-size: calc(var(--card-w) * .4); border-radius: 6px; }
 .pseat {
   position: absolute; transform: translate(-50%, -50%); width: 96px; text-align: center; color: #fff;
@@ -301,6 +305,8 @@ input[type="text"], input[type="search"], select {
 .dealer { margin-left: 4px; background: #fff; color: #1A1D21; border-radius: 999px; padding: 0 5px; font-weight: 800; }
 .table-status { margin-bottom: 12px; }
 .felt-wrap { position: relative; }
+/* Pantalla angosta: el paño se hace más alto para que entren las dos filas del board entre los asientos de arriba y abajo. */
+@media (max-width: 640px) { .felt { aspect-ratio: 5 / 6; } }
 
 /* Zona de la mano: tus cartas y tus acciones (y las de los jugadores que manejás), siempre en el mismo lugar. */
 .hand-dock {
