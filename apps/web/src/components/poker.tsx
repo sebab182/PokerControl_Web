@@ -22,7 +22,10 @@ export function PokerCard({ card, size = 'md' }: { card: string; size?: 'sm' | '
   return (
     <span role="img" aria-label={`${RANK_NAME[card[0]] ?? card[0]} de ${suit.name}`}
       className={`pcard pcard-${size} ${suit.red ? 'pcard-red' : ''}`}>
-      <span aria-hidden="true">{rank}{suit.sym}</span>
+      {/* Diseño de naipe clásico: índice arriba a la izquierda (y al revés abajo) y el palo grande al centro. */}
+      <span className="pcard-corner" aria-hidden="true"><span>{rank}</span><span>{suit.sym}</span></span>
+      <span className="pcard-pip" aria-hidden="true">{suit.sym}</span>
+      <span className="pcard-corner pcard-corner-br" aria-hidden="true"><span>{rank}</span><span>{suit.sym}</span></span>
     </span>
   );
 }
@@ -62,8 +65,10 @@ export function PlayerSeat({ view, hand, playerId, offset, total }: {
       {stream
         ? <StreamVideo stream={stream} className="pseat-video" muted={seat.isYou || video?.muteOthers} mirrored={seat.isYou} />
         : <Avatar name={seat.name} />}
-      <div className="pseat-name ellipsis">{seat.isYou ? 'Vos' : seat.name}{dealer && <span className="dealer" title="Botón"> D</span>}</div>
-      <div className="pseat-stack num">{formatMoney(p.stack)}</div>
+      <div className="pseat-tag">
+        <span className="pseat-name ellipsis">{seat.isYou ? 'Vos' : seat.name}{dealer && <span className="dealer" title="Botón">D</span>}</span>
+        <span className="pseat-stack num">{formatMoney(p.stack)}</span>
+      </div>
       {p.bet > 0 && <div className="pseat-bet num">Apuesta {formatMoney(p.bet)}</div>}
       {status && <div className="pseat-status">{status}</div>}
       {turn && <div className="pseat-status">{seat.isYou ? 'Tu turno' : 'Piensa…'}</div>}

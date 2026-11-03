@@ -1,4 +1,4 @@
-import type { ApiPlayer, ApiRtcServerMessage, ApiTableAction, ApiTableView } from '@pokercontrol/contracts';
+import type { ApiGroup, ApiPlayer, ApiRtcServerMessage, ApiTableAction, ApiTableView } from '@pokercontrol/contracts';
 import { evaluate, formatMoney, parseAmount } from '@pokercontrol/core';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
@@ -10,6 +10,7 @@ import {
 } from '../components/ui';
 import { useGroup } from '../context';
 import { type TablePrefs, useTablePrefs, useTurnAlert, useWakeLock } from '../tablePrefs';
+import { shareInvite } from '../share';
 import { useTableSocket } from '../useTableSocket';
 import { VideoControls, VideoProvider, useTableVideo } from '../video';
 import { NickChooser } from './auth';
@@ -206,7 +207,7 @@ function TableView() {
             </div>
           )}
           {view.status === 'waiting'
-            ? <Waiting view={view} canEdit={canEdit} standing={standing} busy={busy} onJoin={join} onLeave={leave} onStart={() => setStartOpen(true)} />
+            ? <Waiting view={view} canEdit={canEdit} standing={standing} busy={busy} onJoin={join} onLeave={leave} onStart={() => setStartOpen(true)} onAddOpen={() => setAddOpen(true)} />
             : <Playing view={view} canEdit={canEdit} updatedAt={query.dataUpdatedAt} busy={busy} onJoin={join} onLeave={leave} onDeal={deal} onClose={close}
               onReveal={(playerId, cards) => run(() => post('reveal', {
                 ...(cards ? { cards } : {}), ...(playerId !== view.myPlayerId ? { playerId } : {}),
@@ -249,32 +250,62 @@ function TableView() {
 }
 
 // ─── Sala de espera ──────────────────────────────────────────────────────────
-function Waiting({ view, canEdit, standing, busy, onJoin, onLeave, onStart }: {
+function Waiting({ view, canEdit, standing, busy, onJoin, onLeave, onStart, onAddOpen }: {
   view: ApiTableView; canEdit: boolean; standing: boolean; busy: boolean; onJoin: () => void; onLeave: () => void; onStart: () => void;
+  onAddOpen: () => void;
 }) {
+  const { group, path, key } = useGroup();
+  const { notify } = useFeedback();
   const present = view.seats.filter(s => s.online);
   const canStart = present.length >= 2 && (canEdit || present.some(s => s.isYou));
+  // El código de invitación solo les llega a master y admins (misma consulta que Configuración).
+  const details = useQuery({ queryKey: key('group-details'), queryFn: () => api<ApiGroup>(path('')), enabled: canEdit });
+  const inviteCode = details.data?.inviteCode;
   return (
-    <div className="card">
-      <h2 style={{ marginBottom: 4 }}><Emoji>🃏</Emoji> Mesa del grupo</h2>
-      <p className="muted small" style={{ marginBottom: 8 }}>
-        Sin partida en curso. Cuando haya al menos 2 jugadores conectados se puede iniciar.
-      </p>
-      {view.seats.length === 0 && <p className="muted" style={{ padding: '12px 0' }}>Todavía no hay nadie sentado.</p>}
-      {view.seats.map(s => (
-        <div className="list-row" key={s.playerId}>
-          <Avatar name={s.name} />
-          <div className="grow"><strong>{s.isYou ? `${s.name} (vos)` : s.name}</strong></div>
-          <span className={`badge ${s.online ? 'badge-green' : 'badge-muted'}`}>{s.online ? 'Conectado' : 'No conectado'}</span>
+    <div className="lobby">
+      <section className="card" aria-labelledby="lobby-cfg">
+        <div className="row-between">
+          <h2 id="lobby-cfg">Configuración</h2>
+          {inviteCode && <Btn variant="ghost" onClick={() => { void shareInvite(group.name, inviteCode, notify); }}>Invitar</Btn>}
         </div>
-      ))}
-      <div className="stack" style={{ marginTop: 14 }}>
-        <Btn block disabled={!canStart || (standing && !canEdit)} onClick={onStart}>Iniciar partida ({present.length} {present.length === 1 ? 'jugador' : 'jugadores'})</Btn>
+        <div className="lobby-cfg">
+          <div><span className="xs muted">Entrada</span><strong className="num">{formatMoney(view.buyIn)}</strong></div>
+          <div><span className="xs muted">Ciegas</span><strong className="num">{view.smallBlind}/{view.bigBlind}</strong></div>
+          <div><span className="xs muted">Turno</span><strong className="num">{view.turnSeconds ? `${view.turnSeconds} s` : 'Sin límite'}</strong></div>
+        </div>
+        <p className="xs muted">Se puede cambiar al iniciar la partida.</p>
+      </section>
+
+      <section className="card" aria-labelledby="lobby-seats">
+        <div className="row-between">
+          <h2 id="lobby-seats">En la mesa <span className="muted num">· {view.seats.length}</span></h2>
+          {canEdit && <Btn variant="ghost" onClick={onAddOpen}>+ Agregar</Btn>}
+        </div>
+        {view.seats.length === 0 && <p className="muted" style={{ padding: '12px 0' }}>Todavía no hay nadie sentado.</p>}
+        {view.seats.map(s => (
+          <div className="list-row" key={s.playerId}>
+            <Avatar name={s.name} />
+            <div className="grow">
+              <strong>{s.isYou ? `${s.name} (vos)` : s.name}</strong>
+              <div className="xs muted">
+                <span className={`seat-dot${s.online ? (s.managed ? ' seat-dot-managed' : ' seat-dot-on') : ''}`} aria-hidden="true" />
+                {s.online ? (s.managed ? 'Lo jugás vos' : 'Conectado') : 'No conectado'}
+              </div>
+            </div>
+          </div>
+        ))}
+        <p className="xs muted" style={{ marginTop: 8 }}>Cuando haya al menos 2 jugadores conectados se puede iniciar.</p>
+      </section>
+
+      <div className="lobby-actions">
         {view.myPlayerId && (standing
-          ? <Btn variant="ghost" block busy={busy} onClick={onJoin}>Sentarme</Btn>
-          : <Btn variant="ghost" block busy={busy} onClick={onLeave}>Levantarme</Btn>)}
+          ? <Btn variant="ghost" busy={busy} onClick={onJoin}>Sentarme</Btn>
+          : <Btn variant="ghost" busy={busy} onClick={onLeave}>Levantarme</Btn>)}
+        <Btn disabled={!canStart || (standing && !canEdit)} onClick={onStart}>
+          Iniciar partida ({present.length} {present.length === 1 ? 'jugador' : 'jugadores'})
+        </Btn>
       </div>
-      {!canStart && <p className="muted small center" style={{ marginTop: 10 }}>Los demás miembros pueden sumarse después de iniciar.</p>}
+      {!canStart && <p className="muted small center">Los demás miembros pueden sumarse después de iniciar.</p>}
     </div>
   );
 }

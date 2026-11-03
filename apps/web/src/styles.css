@@ -235,11 +235,22 @@ input[type="text"], input[type="search"], select {
 /* Mesa online */
 :root { --hero-w: clamp(64px, 20vw, 88px); --seat-half: 48px; }
 .pcard {
-  display: inline-flex; align-items: center; justify-content: center; flex: none;
-  background: #fff; color: #1A1D21; border: 1px solid #C9CED6; border-radius: 6px;
-  font-weight: 700; font-variant-numeric: tabular-nums; box-shadow: 0 1px 3px rgba(0, 0, 0, .35);
+  position: relative; display: inline-flex; align-items: center; justify-content: center; flex: none; overflow: hidden;
+  background: #fff; color: #111318; border: 1px solid #C9CED6; border-radius: 6px;
+  font-weight: 700; font-variant-numeric: tabular-nums; font-variant-emoji: text; box-shadow: 0 1px 3px rgba(0, 0, 0, .35);
 }
-.pcard-red { color: #B91C1C; }
+.pcard-red { color: #C8102E; }
+/* Índice de esquina, como en un mazo real: número grande y el palo debajo. */
+.pcard-corner {
+  position: absolute; top: .14em; left: .18em; display: flex; flex-direction: column; align-items: center;
+  font-size: .66em; font-weight: 800; line-height: .95; letter-spacing: -.04em;
+}
+.pcard-corner span + span { font-size: .78em; }
+.pcard-corner-br { top: auto; left: auto; bottom: .14em; right: .18em; transform: rotate(180deg); }
+.pcard-pip { font-size: 1.2em; line-height: 1; }
+/* En las cartas chicas el índice de abajo no entra. */
+.pcard-sm .pcard-corner-br { display: none; }
+.pcard-sm .pcard-pip { font-size: 1em; margin: .5em 0 0 .3em; }
 .pcard-sm { width: 36px; height: 52px; font-size: 16px; }
 .pcard-md { width: 52px; height: 74px; font-size: 22px; }
 .pcard-lg {
@@ -247,50 +258,48 @@ input[type="text"], input[type="search"], select {
 }
 .pcard-back { background: repeating-linear-gradient(45deg, #1D4ED8, #1D4ED8 4px, #1E3A8A 4px, #1E3A8A 8px); border-color: #fff; }
 .pcard-empty { background: rgba(255, 255, 255, .12); border: 1px dashed rgba(255, 255, 255, .55); box-shadow: none; }
-.felt-wrap { padding: 54px 32px 64px; max-width: 700px; margin: 0 auto; }
+.felt-wrap { padding: 54px 32px 64px; max-width: 760px; margin: 0 auto; }
+/* Paño tipo estadio: verde liso con borde oscuro, como en el mockup. */
 .felt {
-  position: relative; aspect-ratio: 4 / 3; border-radius: 50%; container-type: inline-size;
-  background: radial-gradient(ellipse at center, #1F8A4C, #0B4F2A); border: 6px solid #5A3B1E;
+  position: relative; aspect-ratio: 16 / 10; border-radius: 999px; container-type: inline-size;
+  background: #13623E; border: 10px solid #0B3B26; box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .06);
 }
 .felt-center {
-  position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+  position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
 }
-.pot { color: #fff; font-weight: 700; background: rgba(0, 0, 0, .35); padding: 2px 12px; border-radius: 999px; font-size: 14px; }
-.board { display: flex; flex-direction: column; align-items: center; gap: 4px; }
-.board-row { display: flex; gap: 4px; }
-/* Las cartas del board son el 75% de las de mi mano; en una mesa angosta se achican hasta entrar en el paño. */
-/* Mis cartas y las de la mesa miden lo mismo (--card-w). Se define en los hijos del paño, que es el contenedor de las cqw. */
-.felt > * { --card-w: min(calc(var(--hero-w) * .75), 26cqw); }
-@media (orientation: landscape) {
-  .felt > * { --card-w: min(calc(var(--hero-w) * .75), 15cqw); }
-  .board { flex-direction: row; gap: 14px; }
-  .board-row:last-child { gap: 14px; }
-}
-.felt .pcard-md { width: var(--card-w); height: calc(var(--card-w) * 1.409); font-size: calc(var(--card-w) * .386); }
+.pot { color: #fff; font-weight: 700; background: rgba(0, 0, 0, .35); padding: 4px 14px; border-radius: 999px; font-size: 14px; }
+/* El board va siempre en una fila: flop | turn | river. */
+.board { display: flex; align-items: center; gap: 10px; }
+.board-row { display: flex; gap: 6px; }
+/* Las cartas de la mesa se achican con el paño (cqw) para no tapar los asientos. */
+.felt > * { --card-w: min(72px, 9cqw); }
+/* Paño angosto (celular en vertical): las cartas ocupan más proporción del ancho. */
+@container (max-width: 520px) { .felt > * { --card-w: min(56px, 14cqw); } }
+.felt .pcard-md { width: var(--card-w); height: calc(var(--card-w) * 1.409); font-size: calc(var(--card-w) * .4); border-radius: 6px; }
 .pseat {
-  position: absolute; transform: translate(-50%, -50%); width: 92px; text-align: center; color: #fff;
-  display: flex; flex-direction: column; align-items: center; gap: 1px; font-size: 12px;
+  position: absolute; transform: translate(-50%, -50%); width: 96px; text-align: center; color: #fff;
+  display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 12px;
 }
-.pseat .avatar { width: 36px; height: 36px; border: 2px solid #fff; }
+.pseat .avatar { width: 44px; height: 44px; border: 2px solid #0B3B26; font-size: 16px; }
 .pseat-cards { display: flex; gap: 2px; min-height: 0; }
-.pseat-name, .pseat-stack, .pseat-bet, .pseat-status {
-  max-width: 100%; padding: 0 6px; border-radius: 6px; background: rgba(0, 0, 0, .72); line-height: 1.35;
-}
-.pseat-stack { font-weight: 700; }
-.pseat-bet { background: #78350F; }
-.pseat-status { background: #fff; color: #1A1D21; font-weight: 700; }
+/* Nombre y fichas en una sola etiqueta. */
+.pseat-tag { max-width: 100%; padding: 3px 8px; border-radius: 8px; background: rgba(15, 20, 27, .9); line-height: 1.35; }
+.pseat-name { display: block; font-weight: 600; }
+.pseat-stack { display: block; color: #D5DBE3; }
+.pseat-bet, .pseat-status { max-width: 100%; padding: 1px 8px; border-radius: 999px; line-height: 1.5; font-weight: 700; }
+.pseat-bet { background: #F59E0B; color: #1F1300; }
+.pseat-status { background: #fff; color: #1A1D21; }
 .pseat-video {
-  flex: none; width: 56px; height: 56px; border-radius: 50%; object-fit: cover; background: #000; border: 2px solid #fff;
+  flex: none; width: 56px; height: 56px; border-radius: 50%; object-fit: cover; background: #000; border: 2px solid #0B3B26;
 }
 .video-mirror { transform: scaleX(-1); }
-.pseat-turn .avatar, .pseat-turn .pseat-video { box-shadow: 0 0 0 3px #FBBF24; }
+.pseat-turn .avatar, .pseat-turn .pseat-video { border-color: #FBBF24; box-shadow: 0 0 0 4px rgba(251, 191, 36, .3); }
 .pseat-folded .avatar, .pseat-folded .pseat-video { filter: grayscale(1); }
-.pseat-won .avatar, .pseat-won .pseat-video { box-shadow: 0 0 0 3px #34D399; }
+.pseat-won .avatar, .pseat-won .pseat-video { border-color: #34D399; box-shadow: 0 0 0 4px rgba(52, 211, 153, .3); }
 .video-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-bottom: 12px; }
 .video-mic { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; font-size: 14px; }
-.dealer { background: #fff; color: #1A1D21; border-radius: 999px; padding: 0 4px; font-weight: 700; }
+.dealer { margin-left: 4px; background: #fff; color: #1A1D21; border-radius: 999px; padding: 0 5px; font-weight: 800; }
 .table-status { margin-bottom: 12px; }
-.pseat-bet { background: #F59E0B; color: #1F1300; font-weight: 700; }
 .felt-wrap { position: relative; }
 
 /* Zona de la mano: tus cartas y tus acciones (y las de los jugadores que manejás), siempre en el mismo lugar. */
@@ -306,7 +315,7 @@ input[type="text"], input[type="search"], select {
 .dock-hand-acting { border-color: var(--amber); background: var(--amber-soft); }
 .dock-hand .hole { display: flex; flex: none; }
 .dock-hand .hole .pcard:first-child { transform: rotate(-4deg); }
-.dock-hand .hole .pcard + .pcard { margin-left: -10px; transform: rotate(4deg); }
+.dock-hand .hole .pcard + .pcard { margin-left: -.9em; transform: rotate(4deg); }
 .dock-hand-info { display: flex; flex-direction: column; min-width: 0; line-height: 1.3; }
 .dock-box { display: flex; flex-direction: column; gap: 6px; }
 .dock-title { font-size: 14px; margin: 0; }
@@ -348,6 +357,25 @@ input[type="text"], input[type="search"], select {
 }
 .raise-chip span + span { font-size: 12px; font-weight: 500; color: var(--text-muted); }
 .raise-chip[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
+
+/* Sala de espera */
+.lobby { display: flex; flex-direction: column; gap: 16px; }
+.lobby > .card { margin: 0; }
+.lobby-cfg { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 10px 0 8px; }
+.lobby-cfg > div { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: 12px; background: var(--surface-alt); }
+.lobby-cfg strong { font-size: 17px; }
+.seat-dot { display: inline-block; width: 8px; height: 8px; margin-right: 6px; border-radius: 50%; background: var(--text-muted); }
+.seat-dot-on { background: var(--green); }
+.seat-dot-managed { background: var(--accent); }
+/* Las acciones quedan a mano sobre la barra de navegación. */
+.lobby-actions {
+  position: sticky; bottom: calc(var(--nav-h) + 8px + env(safe-area-inset-bottom)); z-index: 5;
+  display: grid; grid-template-columns: 1fr 2fr; gap: 8px; padding: 12px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+}
+.lobby-actions:has(> :only-child) { grid-template-columns: 1fr; }
+.lobby-actions .btn { min-height: 52px; }
+@media (min-width: 768px) { .lobby-actions { bottom: 16px; } }
 
 /* Preferencias e historial */
 .icon-btn {
@@ -394,7 +422,7 @@ input[type="text"], input[type="search"], select {
 .table-landscape .shell { padding-left: 0; }
 .table-landscape .main { max-width: none; padding: 0 8px; }
 .table-landscape .table-stage { display: flex; gap: 8px; height: calc(100dvh - 8px); padding-top: 4px; }
-.table-landscape .felt-wrap { flex: 1; min-width: 0; max-width: none; display: flex; padding: 46px 8px 36px; }
+.table-landscape .felt-wrap { flex: 1; min-width: 0; max-width: none; margin: 0; display: flex; padding: 46px 8px 36px; }
 .table-landscape .felt { flex: 1; aspect-ratio: auto; }
 .table-landscape .hand-dock { flex: 0 0 200px; margin: 0; padding: 8px; overflow-y: auto; }
 .table-landscape .controls-row { grid-auto-flow: row; }
@@ -421,7 +449,7 @@ input[type="text"], input[type="search"], select {
     display: flex; flex-direction: column; box-sizing: border-box;
     height: calc(100dvh - var(--nav-h) - 16px - env(safe-area-inset-bottom));
   }
-  .table-active .felt-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 64px 34px 44px; }
+  .table-active .felt-wrap { flex: 1; min-height: 0; width: 100%; box-sizing: border-box; display: flex; flex-direction: column; padding: 64px 34px 44px; }
   .table-active .felt { flex: 1; min-height: 0; aspect-ratio: auto; }
   .table-active .hand-dock { flex: none; margin: 0; padding: 10px; }
 }
