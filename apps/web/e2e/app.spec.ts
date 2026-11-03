@@ -648,6 +648,41 @@ test('mesa online: un administrador agrega jugadores sin usuario y juega por ell
   await expect(page.getByRole('link', { name: 'Ver resultados y saldos' })).toBeVisible();
 });
 
+test('mesa online: al terminar, los jugadores que manejás se muestran juntos y repartir queda a la vista', async ({ page }) => {
+  test.setTimeout(60000);
+  await login(page, 'Seba');
+  await createGroup(page);
+  await nav(page, 'Jugadores');
+  for (const n of ['Ana', 'Beto', 'Caro', 'Nico']) await addPlayer(page, n);
+  await nav(page, 'Mesa');
+  await page.getByRole('button', { name: '+ Agregar jugador' }).click();
+  for (const n of ['Ana', 'Beto', 'Caro', 'Nico']) await page.getByRole('button', { name: `Agregar a ${n}` }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Cerrar' }).click();
+  await page.getByRole('button', { name: /Iniciar partida \(4 jugadores\)/ }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Iniciar partida' }).click();
+  await expect(page.getByTestId('felt')).toBeVisible();
+
+  // Se retiran tres (jugando por ellos): el cuarto gana solo.
+  for (let i = 1; i <= 3; i++) {
+    await page.getByRole('button', { name: 'Retirarme' }).click();
+    await expect(page.locator('.felt .pseat-folded')).toHaveCount(i);
+  }
+  await expect(page.getByTestId('hand-result').locator('visible=true')).toBeVisible();
+
+  // Los tres retirados van en una sola fila; quien ganó solo, en la suya (puede mostrar una carta).
+  const group = page.getByTestId('show-group');
+  await expect(group).toContainText('los jugás vos');
+  await expect(page.getByRole('button', { name: /^Mostrar cartas de / })).toHaveCount(1);
+  await expect(page.getByRole('button', { name: 'Repartir próxima mano' })).toBeInViewport();
+  await checkPage(page, 'mesa: mostrar cartas de varios');
+
+  // Mostrar las de los tres: pasan a verse en sus asientos y la fila desaparece.
+  await page.getByRole('button', { name: 'Mostrar las cartas de los jugadores que manejás', exact: true }).click();
+  await expect(group).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^Mostrar cartas de / })).toHaveCount(1);
+  await expect(page.locator('.felt .pseat .pcard:not(.pcard-own)')).toHaveCount(6);
+});
+
 test.describe('mesa online: video', () => {
   // Cámara y micrófono falsos del navegador (ver launchOptions en playwright.config.ts).
   test.use({ permissions: ['camera', 'microphone'] });

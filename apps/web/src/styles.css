@@ -435,7 +435,8 @@ input[type="text"], input[type="search"], select {
 .table-anim .pseat-bet { animation: chip-in .2s ease-out both; }
 
 @media (min-width: 768px) {
-  .felt-wrap { padding: 60px 70px 70px; }
+  /* Abajo alcanza con lo que tu asiento sale del paño: así la zona de las acciones entra en pantallas bajas. */
+  .felt-wrap { padding: 60px 70px 48px; }
   .pcard-sm { width: 44px; height: 62px; font-size: 19px; }
   .pseat { width: 110px; }
   .pseat-video { width: 72px; height: 72px; }

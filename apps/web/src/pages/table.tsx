@@ -263,9 +263,12 @@ function TableView() {
             ? <Waiting view={view} canEdit={canEdit} standing={standing} busy={busy} onJoin={join} onLeave={leave} onStart={() => setStartOpen(true)} onAddOpen={() => setAddOpen(true)} />
             : <Playing view={view} updatedAt={query.dataUpdatedAt} busy={busy} onJoin={join} onLeave={leave} onDeal={deal} onClose={close}
               bar={view.hand && <TableBar view={view} hand={view.hand} updatedAt={query.dataUpdatedAt} live={live} onPrefs={() => setPrefsOpen(true)} />}
-              onReveal={(playerId, cards) => run(() => post('reveal', {
-                ...(cards ? { cards } : {}), ...(playerId !== view.myPlayerId ? { playerId } : {}),
-              }))}
+              onReveal={(playerIds, cards) => run(async () => {
+                // Varios a la vez (los jugadores que manejás): uno por vez, cada uno con la mesa ya actualizada.
+                for (const playerId of playerIds) {
+                  await post('reveal', { ...(cards ? { cards } : {}), ...(playerId !== view.myPlayerId ? { playerId } : {}) });
+                }
+              })}
               onAction={action => run(async () => {
                 try {
                   // Si el turno es de un jugador sin usuario que manejás, se juega por él.
@@ -409,7 +412,7 @@ type Seat = ApiTableView['seats'][number];
 function Playing({ view, updatedAt, bar, busy, onJoin, onLeave, onDeal, onClose, onAction, onRebuy, onReveal }: {
   view: ApiTableView; updatedAt: number; bar: ReactNode; busy: boolean; onJoin: () => void; onLeave: () => void; onDeal: () => void;
   onClose: () => void; onAction: (a: ApiTableAction) => void; onRebuy: (amount: number) => void;
-  onReveal: (playerId: string, cards?: number[]) => void;
+  onReveal: (playerIds: string[], cards?: number[]) => void;
 }) {
   const me = view.seats.find(s => s.isYou);
   const hand = view.hand;
@@ -498,11 +501,14 @@ function NoChips({ view, sitting, busy, onLeave, onRebuy }: {
  * Al terminar la mano, hasta que se reparta la próxima: un solo panel para decidir qué mostrar,
  * tuyas y de los jugadores que manejás. "No" lo oculta hasta la próxima mano (las cartas siguen ocultas para los demás).
  * Una sola carta solo si todos los demás se retiraron.
+ * Los jugadores que manejás van juntos en una fila (con "Elegir" para decidir uno por uno): así el panel
+ * mide lo mismo con 2 que con 8 y "Repartir próxima mano" queda a la vista.
  */
 function ShowCards({ hand, players, busy, onReveal }: {
-  hand: Hand; players: Seat[]; busy: boolean; onReveal: (playerId: string, cards?: number[]) => void;
+  hand: Hand; players: Seat[]; busy: boolean; onReveal: (playerIds: string[], cards?: number[]) => void;
 }) {
   const [mucked, setMucked] = useState<Record<string, number>>({});
+  const [picking, setPicking] = useState(0);
   const rows = players.flatMap(s => {
     const p = hand.players.find(x => x.playerId === s.playerId);
     if (!p || p.hole.length < 2 || p.hole.includes('??') || p.shown.length >= 2 || mucked[s.playerId] === hand.handNo) return [];
@@ -511,10 +517,16 @@ function ShowCards({ hand, players, busy, onReveal }: {
     return [{ s, p, alone }];
   });
   if (rows.length === 0) return null;
+  const muck = (ids: string[]) => setMucked(m => ({ ...m, ...Object.fromEntries(ids.map(id => [id, hand.handNo])) }));
+  // Vos y quien quedó solo (puede mostrar una carta) van siempre en su propia fila.
+  const group = rows.filter(r => !r.s.isYou && !r.alone);
+  const grouped = group.length >= 2 && picking !== hand.handNo;
+  const single = grouped ? rows.filter(r => !group.includes(r)) : rows;
+  const ids = group.map(r => r.s.playerId);
   return (
     <div className="dock-box show-cards" data-testid="show-cards">
       <h3 className="dock-title">¿Mostrar cartas?</h3>
-      {rows.map(({ s, p, alone }) => (
+      {single.map(({ s, p, alone }) => (
         <div className="show-row" key={s.playerId}>
           <span className="grow ellipsis">
             <strong>{s.isYou ? 'Vos' : s.name}</strong>
@@ -522,19 +534,39 @@ function ShowCards({ hand, players, busy, onReveal }: {
           </span>
           <div className="show-actions">
             <Btn variant="ghost" busy={busy} aria-label={s.isYou ? 'Mostrar mis cartas' : `Mostrar cartas de ${s.name}`}
-              onClick={() => onReveal(s.playerId)}>Mostrar</Btn>
+              onClick={() => onReveal([s.playerId])}>Mostrar</Btn>
             {alone && p.hole.map((c, i) => !p.shown.includes(i) && (
-              <Btn key={i} variant="ghost" busy={busy} aria-label={`Mostrar una carta: ${cardText(c)}`} onClick={() => onReveal(s.playerId, [i])}>
+              <Btn key={i} variant="ghost" busy={busy} aria-label={`Mostrar una carta: ${cardText(c)}`} onClick={() => onReveal([s.playerId], [i])}>
                 {cardText(c)}
               </Btn>
             ))}
             <Btn variant="ghost" busy={busy} aria-label={s.isYou ? 'No mostrar mis cartas' : `No mostrar las cartas de ${s.name}`}
-              onClick={() => setMucked(m => ({ ...m, [s.playerId]: hand.handNo }))}>No</Btn>
+              onClick={() => muck([s.playerId])}>No</Btn>
           </div>
         </div>
       ))}
+      {grouped && (
+        <div className="show-row" data-testid="show-group">
+          <span className="grow ellipsis">
+            <strong>{listNames(group.map(r => r.s.name))}</strong>
+            <span className="xs muted"> · los jugás vos</span>
+          </span>
+          <div className="show-actions">
+            <Btn variant="ghost" busy={busy} aria-label="Mostrar las cartas de los jugadores que manejás" onClick={() => onReveal(ids)}>Mostrar</Btn>
+            <Btn variant="ghost" busy={busy} aria-label="No mostrar las cartas de los jugadores que manejás" onClick={() => muck(ids)}>No</Btn>
+            <Btn variant="ghost" aria-label="Elegir uno por uno" onClick={() => setPicking(hand.handNo)}>Elegir</Btn>
+          </div>
+        </div>
+      )}
     </div>
   );
+}
+
+/** "Ana", "Ana y Beto", "Ana, Beto y Caro", "Ana, Beto y 3 más". */
+function listNames(names: string[]): string {
+  if (names.length <= 1) return names.join('');
+  if (names.length <= 3) return `${names.slice(0, -1).join(', ')} y ${names[names.length - 1]}`;
+  return `${names.slice(0, 2).join(', ')} y ${names.length - 2} más`;
 }
 
 /**
