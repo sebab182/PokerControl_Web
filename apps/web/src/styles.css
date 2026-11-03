@@ -282,6 +282,12 @@ input[type="text"], input[type="search"], select {
 .hand-result p + p { margin-top: 6px; }
 .hand-result strong { display: block; font-size: 17px; }
 .hand-result-reason { display: block; font-size: 14px; color: #FDE68A; }
+/* Paño angosto: más compacto, para no llegar a los asientos de arriba cuando hay muchos jugadores. */
+@container (max-width: 520px) {
+  .hand-result { padding: 6px 30px 6px 12px; line-height: 1.3; }
+  .hand-result strong { font-size: 15px; }
+  .hand-result-reason { font-size: 13px; }
+}
 .hand-result-close {
   position: absolute; top: 2px; right: 2px; width: 32px; height: 32px; border: 0; border-radius: 8px;
   background: transparent; color: #fff; font-size: 20px; line-height: 1; cursor: pointer;
@@ -461,7 +467,7 @@ input[type="text"], input[type="search"], select {
 .table-landscape .shell { padding-left: 0; }
 .table-landscape .main { max-width: none; padding: 0 8px; }
 .table-landscape .table-stage { display: flex; gap: 8px; height: calc(100dvh - 8px); padding-top: 4px; }
-.table-landscape .felt-wrap { flex: 1; min-width: 0; max-width: none; margin: 0; display: flex; padding: 54px 8px 36px; }
+.table-landscape .felt-wrap { flex: 1; min-width: 0; max-width: none; margin: 0; display: flex; padding: 54px 56px 36px; }
 .table-landscape .felt { flex: 1; aspect-ratio: auto; container-type: size; }
 /* Horizontal: el paño es bajo, así que las cartas también se limitan por el alto, el pozo va al costado del board
    y el centro baja un poco porque el asiento de arriba (nombre, apuesta, lo ganado) ocupa más que el de abajo. */
