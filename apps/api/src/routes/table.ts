@@ -11,7 +11,9 @@ import {
   CloseTableResponse, ErrorResponse, GroupParams, RebuyBody, RevealBody, SeatParams, StartTableBody, TableActionBody, TableView,
   type ApiTableView,
 } from '@pokercontrol/contracts';
-import { HoldemError, applyAction, legalActions, publicView, revealCards, shownCards, startHand, type Action, type HandState } from '@pokercontrol/core';
+import {
+  HoldemError, applyAction, legalActions, publicView, revealCards, shownCards, startHand, winDetails, type Action, type HandState,
+} from '@pokercontrol/core';
 import { type Static } from '@sinclair/typebox';
 import { and, asc, desc, eq, gt, isNotNull, lte, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
@@ -87,6 +89,37 @@ function maxRebuy(seats: SeatRow[], live: HandState | undefined): number {
   return Math.floor(richest / 2);
 }
 
+/**
+ * Reparte la próxima mano y cierra la partida un administrador o quien la inició. Si esa persona se
+ * levantó o no tuvo la mesa abierta en los últimos ONLINE_MS (esté sentada o no), cualquiera que esté
+ * sentado, para que la partida no quede trabada.
+ */
+function mayHost(table: TableRow, seats: SeatRow[], viewer: Viewer, myId: string | null, now = Date.now()): boolean {
+  if (table.status !== 'playing') return false;
+  if (viewer.canManage || table.startedBy === viewer.userId) return true;
+  const mine = seats.find(s => s.playerId === myId);
+  if (!mine || mine.status !== 'sitting') return false;
+  if (!table.startedBy) return true;
+  if (seats.find(s => s.userId === table.startedBy)?.status === 'out') return true;
+  return !table.hostSeenAt || now - table.hostSeenAt.getTime() >= ONLINE_MS;
+}
+
+/** Latido de quien inició la partida. No cambia nada visible para los demás, así que no avisa. */
+async function hostBeat(tx: Tx, table: TableRow, userId: string): Promise<void> {
+  if (table.status === 'playing' && table.startedBy === userId) {
+    await tx.update(schema.pokerTables).set({ hostSeenAt: new Date() }).where(eq(schema.pokerTables.id, table.id));
+  }
+}
+
+/** Nombre de quien inició la partida: su jugador en la mesa o, si no se sentó (administrador), su usuario. */
+async function hostName(db: Conn, table: TableRow, seats: { seat: SeatRow; name: string }[]): Promise<string | null> {
+  if (table.status !== 'playing' || !table.startedBy) return null;
+  const seated = seats.find(({ seat }) => seat.userId === table.startedBy);
+  if (seated) return seated.name;
+  const [user] = await db.select({ name: schema.users.name }).from(schema.users).where(eq(schema.users.id, table.startedBy));
+  return user?.name ?? null;
+}
+
 async function buildView(db: Conn, table: TableRow, viewer: Viewer): Promise<ApiTableView> {
   const me = await myPlayer(db, table.groupId, viewer.userId);
   const myId = me?.id ?? null;
@@ -108,6 +141,7 @@ async function buildView(db: Conn, table: TableRow, viewer: Viewer): Promise<Api
     const actor = live && state.toAct >= 0 ? state.players[state.toAct].id : null;
     const actingFor = actor && (actor === myId || managedIds.has(actor)) ? actor : null;
     const legal = actingFor ? legalActions(state) : null;
+    const wins = winDetails(state);
     hand = {
       handNo: row.handNo,
       street: v.street,
@@ -135,7 +169,7 @@ async function buildView(db: Conn, table: TableRow, viewer: Viewer): Promise<Api
           ...(last.action.auto ? { auto: true } : {}),
         }
         : null,
-      payouts: v.payouts,
+      payouts: v.payouts.map(w => ({ ...w, ...wins[w.playerId] })),
       showdown: v.showdown,
     };
   }
@@ -153,6 +187,9 @@ async function buildView(db: Conn, table: TableRow, viewer: Viewer): Promise<Api
     serverTime: new Date(now).toISOString(),
     maxRebuy: maxRebuy(seats.map(x => x.seat), live),
     myPlayerId: myId,
+    host: await hostName(db, table, seats),
+    canHost: mayHost(table, seats.map(x => x.seat), viewer, myId, now),
+    isHost: table.status === 'playing' && table.startedBy === viewer.userId,
     hand,
     seats: seats.map(({ seat, name }) => ({
       playerId: seat.playerId,
@@ -215,6 +252,37 @@ async function finishHand(tx: Tx, handId: number, state: HandState): Promise<voi
 }
 
 const bump = sql`${schema.pokerTables.version} + 1`;
+
+/**
+ * El asiento guarda el usuario del jugador al sentarse. Si después se vincula o desvincula un usuario
+ * (elige su nick, lo asocia un administrador o abandona el grupo), se copia al asiento: así deja de
+ * manejarlo un administrador, o pasa a manejarlo. Devuelve la versión nueva de la mesa si cambió algo.
+ */
+async function syncSeatUsers(tx: Tx, groupId: string): Promise<number | null> {
+  const changed = await tx.update(schema.pokerSeats).set({ userId: sql`${schema.players.userId}` })
+    .from(schema.players)
+    .where(and(
+      eq(schema.pokerSeats.groupId, groupId),
+      eq(schema.players.groupId, schema.pokerSeats.groupId),
+      eq(schema.players.id, schema.pokerSeats.playerId),
+      sql`${schema.pokerSeats.userId} is distinct from ${schema.players.userId}`,
+    ))
+    .returning({ tableId: schema.pokerSeats.tableId });
+  if (changed.length === 0) return null;
+  const [table] = await tx.update(schema.pokerTables).set({ version: bump })
+    .where(eq(schema.pokerTables.id, changed[0].tableId)).returning({ version: schema.pokerTables.version });
+  return table.version;
+}
+
+/** Transacción que cambia a qué usuario pertenece un jugador; al confirmarse actualiza la mesa y avisa. */
+export async function relinkPlayers<T>(app: FastifyInstance, groupId: string, fn: (tx: Tx) => Promise<T>): Promise<T> {
+  const { result, version } = await app.db.transaction(async tx => {
+    const result = await fn(tx);
+    return { result, version: await syncSeatUsers(tx, groupId) };
+  });
+  if (version !== null) app.tableHub.notify(groupId, version);
+  return result;
+}
 
 /** Vencimiento del turno que sigue, o null si no hay turno o la mesa no tiene límite. */
 function deadlineFor(table: Pick<TableRow, 'turnSeconds'>, state: HandState): Date | null {
@@ -450,7 +518,16 @@ export async function tableRoutes(app: FastifyInstance) {
     schema: { ...base, response: { 200: TableView, ...err } },
   }, async req => mutate(req, async (tx, table) => {
     const playerId = await requirePlayer(tx, req.group.id, req.user.sub);
+    await hostBeat(tx, table, req.user.sub);
     return sitPlayer(tx, table, { id: playerId, userId: req.user.sub }, null);
+  }));
+
+  // Latido de quien inició la partida aunque no esté sentado (p. ej. un administrador que solo reparte).
+  app.post<G>('/table/ping', {
+    schema: { ...base, response: { 200: TableView, ...err } },
+  }, async req => mutate(req, async (tx, table) => {
+    await hostBeat(tx, table, req.user.sub);
+    return 'quiet';
   }));
 
   app.post<G>('/table/leave', {
@@ -542,7 +619,7 @@ export async function tableRoutes(app: FastifyInstance) {
           .where(and(eq(schema.pokerSeats.tableId, table.id), eq(schema.pokerSeats.playerId, seat.playerId)));
       }
       await tx.update(schema.pokerSeats).set({ stack: cfg.buyIn, status: 'sitting' }).where(eq(schema.pokerSeats.tableId, table.id));
-      await tx.update(schema.pokerTables).set({ ...cfg, status: 'playing', sessionId, version: bump })
+      await tx.update(schema.pokerTables).set({ ...cfg, status: 'playing', sessionId, startedBy: req.user.sub, hostSeenAt: now, version: bump })
         .where(eq(schema.pokerTables.id, table.id));
       const [fresh] = await tx.select().from(schema.pokerTables).where(eq(schema.pokerTables.id, table.id));
       await dealHand(tx, fresh);
@@ -555,7 +632,11 @@ export async function tableRoutes(app: FastifyInstance) {
     schema: { ...base, response: { 200: TableView, ...err } },
   }, async req => mutate(req, async (tx, table) => {
     if (table.status !== 'playing') throw new ApiError(409, 'not_playing', 'No hay una partida en juego.');
-    if (!isEditor(req.role)) await requirePlayer(tx, req.group.id, req.user.sub);
+    const viewer = viewerOf(req);
+    const me = viewer.canManage ? null : await requirePlayer(tx, req.group.id, req.user.sub);
+    if (!mayHost(table, (await loadSeats(tx, table.id)).map(s => s.seat), viewer, me)) {
+      throw new ApiError(403, 'not_host', 'Reparte quien inició la partida o un administrador.');
+    }
     if (await activeHand(tx, table.id)) throw new ApiError(409, 'hand_in_progress', 'Hay una mano en juego.');
     await dealHand(tx, table);
   }));
@@ -607,10 +688,11 @@ export async function tableRoutes(app: FastifyInstance) {
       const table = await ensureTable(tx, groupId, true);
       if (table.status !== 'playing') throw new ApiError(409, 'not_playing', 'No hay una partida en juego.');
       const seats = (await loadSeats(tx, table.id)).map(s => s.seat);
-      // Cierra quien juega en la mesa, o un administrador aunque no esté sentado.
-      if (!isEditor(req.role)) {
-        const playerId = await requirePlayer(tx, groupId, req.user.sub);
-        if (!seats.some(s => s.playerId === playerId)) throw new ApiError(409, 'not_seated', 'Solo quienes están en la mesa pueden cerrarla.');
+      // Cierra quien inició la partida o un administrador (aunque no esté sentado).
+      const viewer = viewerOf(req);
+      const me = viewer.canManage ? null : await requirePlayer(tx, groupId, req.user.sub);
+      if (!mayHost(table, seats, viewer, me)) {
+        throw new ApiError(403, 'not_host', 'Cierra la partida quien la inició o un administrador.');
       }
       if (await activeHand(tx, table.id)) throw new ApiError(409, 'hand_in_progress', 'Esperá a que termine la mano.');
       const sessionId = table.sessionId as string;
@@ -620,7 +702,7 @@ export async function tableRoutes(app: FastifyInstance) {
       }
       await closeSessionTx(tx, groupId, sessionId);
       await tx.delete(schema.pokerSeats).where(eq(schema.pokerSeats.tableId, table.id));
-      await tx.update(schema.pokerTables).set({ status: 'waiting', sessionId: null, version: bump })
+      await tx.update(schema.pokerTables).set({ status: 'waiting', sessionId: null, startedBy: null, hostSeenAt: null, version: bump })
         .where(eq(schema.pokerTables.id, table.id));
       const [fresh] = await tx.select().from(schema.pokerTables).where(eq(schema.pokerTables.id, table.id));
       return { sessionId, table: await buildView(tx, fresh, viewerOf(req)) };

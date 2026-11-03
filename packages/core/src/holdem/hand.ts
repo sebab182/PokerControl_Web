@@ -1,5 +1,5 @@
 import { type Card, newDeck, shuffle } from './cards';
-import { evaluate } from './evaluate';
+import { describeHand, evaluate, explainWin } from './evaluate';
 
 export type Street = 'preflop' | 'flop' | 'turn' | 'river' | 'done';
 
@@ -304,6 +304,31 @@ function finish(s: HandState, showdown: boolean): void {
   s.street = 'done';
   s.toAct = -1;
   void n;
+}
+
+/** Por qué ganó alguien en el showdown y las 5 cartas que forman su jugada (de la mesa y de su mano). */
+export interface WinDetail {
+  reason: string;
+  cards: Card[];
+}
+
+/**
+ * Por qué ganó cada uno en el showdown, contra la mejor mano que le ganó: "Doble par de jotas y ochos,
+ * con as de kicker". Si empató con otro, lo aclara. Vacío si nadie llegó al showdown.
+ */
+export function winDetails(s: HandState): Record<string, WinDetail> {
+  if (s.street !== 'done' || s.showdown.length === 0) return {};
+  const scores = new Map(s.players.filter((p) => !p.folded).map((p) => [p.id, evaluate([...p.hole, ...s.board])]));
+  const out: Record<string, WinDetail> = {};
+  for (const { playerId } of s.payouts) {
+    const w = scores.get(playerId);
+    if (!w) continue;
+    const others = [...scores].filter(([id]) => id !== playerId).map(([, x]) => x);
+    const beaten = others.filter((x) => x.score < w.score).sort((a, b) => b.score - a.score)[0] ?? null;
+    const reason = others.some((x) => x.score === w.score) ? `${describeHand(w)} (empate)` : explainWin(w, beaten);
+    out[playerId] = { reason, cards: w.best };
+  }
+  return out;
 }
 
 function seatDistance(s: HandState, id: string): number {

@@ -316,6 +316,8 @@ export function VideoControls({ compact = false }: { compact?: boolean }) {
   const [wantMic, setWantMic] = useState(false);
   if (!v || !v.canBroadcast) return null;
   if (!v.supported) {
+    // En la zona de la mano no hay lugar para el aviso: se muestra solo en la versión completa.
+    if (compact) return null;
     return <p className="muted small">Este navegador no permite transmitir video. Hace falta una conexión segura (https) y una cámara.</p>;
   }
   const live = !!v.local;

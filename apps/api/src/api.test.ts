@@ -936,7 +936,7 @@ describe('roles', () => {
       // Pagos: se autorizan por dueño del pagador, no por rol (ver test de pagos a nombre propio).
       'POST /api/v1/groups/{groupId}/payments', 'DELETE /api/v1/groups/{groupId}/payments/{paymentId}',
       // La mesa online la juega cualquier miembro.
-      ...['join', 'leave', 'start', 'deal', 'action', 'rebuy', 'reveal', 'close'].map(a => `POST /api/v1/groups/{groupId}/table/${a}`),
+      ...['join', 'leave', 'ping', 'start', 'deal', 'action', 'rebuy', 'reveal', 'close'].map(a => `POST /api/v1/groups/{groupId}/table/${a}`),
     ]);
     for (const route of open.filter(r => !allowed.has(r))) {
       const [method, path] = route.split(' ');
@@ -1089,6 +1089,60 @@ describe('mesa online', () => {
   const view = (c: Client) => c.ok('GET', '/g/table');
   const act = (c: Client, v: { version: number }, action: object) => c.ok('POST', '/g/table/action', { version: v.version, action });
 
+  it('reparte quien inició la partida o un administrador; si esa persona se va, cualquiera sentado', async () => {
+    const { a: admin, clients: [, host, other], byPlayer } = await setup(1);
+    for (const c of [admin, host, other]) await c.ok('POST', '/g/table/join');
+    let v = await host.idem('/g/table/start', {});
+    const finish = async () => {
+      for (let i = 0; v.hand.street !== 'done'; i++) {
+        if (i > 10) throw new Error('mano infinita');
+        v = await act(byPlayer(v.hand.toActPlayerId), v, { type: 'fold' });
+      }
+    };
+    await finish();
+    // Todos ven quién reparte; solo él y el administrador pueden.
+    const [hostView, otherView, adminView] = await Promise.all([host, other, admin].map(view));
+    expect([hostView.host, hostView.canHost, otherView.canHost, adminView.canHost]).toEqual(['J1', true, false, true]);
+    expect((await other.call('POST', '/g/table/deal')).body.error).toBe('not_host');
+    // Cerrar la partida, igual: otro sentado no puede.
+    expect((await other.call('POST', '/g/table/close', {}, 'close-not-host-1')).body.error).toBe('not_host');
+    v = await host.ok('POST', '/g/table/deal');
+    await finish();
+    v = await admin.ok('POST', '/g/table/deal');
+    await finish();
+    // Quien inició se desconecta: para no trabar la partida, reparte cualquiera que esté sentado.
+    expect([hostView.isHost, otherView.isHost]).toEqual([true, false]);
+    await conn.pool.query(`update poker_tables set host_seen_at = now() - interval '5 minutes'`);
+    expect((await view(other)).canHost).toBe(true);
+    // Vuelve (su pantalla manda el latido): reparte él de nuevo.
+    await host.ok('POST', '/g/table/ping');
+    expect((await view(other)).canHost).toBe(false);
+    await conn.pool.query(`update poker_tables set host_seen_at = now() - interval '5 minutes'`);
+    v = await other.ok('POST', '/g/table/deal');
+    await finish();
+    // Si se levanta, también; y entonces puede cerrar cualquiera que esté sentado.
+    await host.ok('POST', '/g/table/ping');
+    await host.ok('POST', '/g/table/leave');
+    expect((await view(other)).canHost).toBe(true);
+    expect((await other.idem('/g/table/close')).table.status).toBe('waiting');
+  });
+
+  it('si la inició un administrador sin sentarse y se va, reparte cualquiera que esté sentado', async () => {
+    const { a: admin, clients: [, b, c] } = await setup(1);
+    for (const x of [b, c]) await x.ok('POST', '/g/table/join');
+    await admin.idem('/g/table/start', {});
+    expect((await view(b)).host).toBe((await admin.ok('GET', '/me')).user.name);
+    expect((await b.call('POST', '/g/table/deal')).body.error).toBe('not_host');
+    // El latido del administrador lo mantiene; sin latido, se habilita a los sentados.
+    await admin.ok('POST', '/g/table/ping');
+    expect((await view(b)).canHost).toBe(false);
+    await conn.pool.query(`update poker_tables set host_seen_at = now() - interval '5 minutes'`);
+    expect((await view(b)).canHost).toBe(true);
+    // Un latido de otro no cuenta.
+    await b.ok('POST', '/g/table/ping');
+    expect((await view(c)).canHost).toBe(true);
+  });
+
   it('flujo completo: sentarse, iniciar (lector), jugar, cerrar y sumar a los saldos', async () => {
     const { a, b, pid, byPlayer } = await setup();
     const empty = await view(a);
@@ -1169,7 +1223,9 @@ describe('mesa online', () => {
       expect(v.hand.showdown).toHaveLength(2);
       expect(v.seats.reduce((x: number, s: { stack: number }) => x + s.stack, 0)).toBe(2000);
     }
-    const closed = await b.idem('/g/table/close');
+    // Cierra quien la inició, no el otro jugador.
+    expect((await b.call('POST', '/g/table/close', {}, 'close-showdown-1')).body.error).toBe('not_host');
+    const closed = await a.idem('/g/table/close');
     const sess = await a.ok('GET', `/g/sessions/${closed.sessionId}`);
     expect(sess.status).toBe('closed');
   });
@@ -1377,6 +1433,14 @@ describe('mesa online', () => {
         });
       }
       expect(v.hand.showdown).toHaveLength(2);
+      // Cada ganador viene con el porqué (la jugada y, si hizo falta, la carta que desempata).
+      for (const w of v.hand.payouts) {
+        expect(w.reason).toMatch(/^(Carta alta|Par|Doble par|Trío|Escalera|Color|Full house|Póker)/);
+        // Y las 5 cartas de su jugada, todas visibles: de la mesa o de su mano (que gana y se muestra).
+        const winner = v.hand.players.find((p: { playerId: string }) => p.playerId === w.playerId);
+        expect(w.cards).toHaveLength(5);
+        for (const c of w.cards) expect([...v.hand.board, ...winner.hole]).toContain(c);
+      }
       // El administrador reparte y cierra sin estar sentado.
       v = await admin.ok('POST', '/g/table/deal');
       expect(v.hand.handNo).toBe(2);
@@ -1407,6 +1471,30 @@ describe('mesa online', () => {
       }
       expect(v.hand.toActPlayerId).toBe(ghost);
       expect(v.hand.actingPlayerId).toBe(ghost);
+    });
+
+    it('si un jugador sentado se vincula a un usuario, juega él; si se desvincula, vuelve a manejarlo el administrador', async () => {
+      const { admin, reader, players } = await adminTable();
+      const [ghost, other] = players;
+      await admin.ok('POST', `/g/table/seats/${ghost.id}`);
+      await admin.ok('POST', `/g/table/seats/${other.id}`);
+      let v = await admin.idem('/g/table/start', {});
+      const before = v.version;
+      // Con la mano en juego, el lector elige al jugador sentado como su nick.
+      await reader.ok('POST', '/g/me/player', { playerId: ghost.id });
+      v = await view(admin);
+      expect(v.version).toBeGreaterThan(before);
+      expect(v.seats.find((s: { playerId: string }) => s.playerId === ghost.id).managed).toBe(false);
+      expect(v.hand.players.find((p: { playerId: string }) => p.playerId === ghost.id).hole).toEqual(['??', '??']);
+      expect((await admin.call('POST', '/g/table/action', { version: v.version, playerId: ghost.id, action: { type: 'fold' } })).body.error).toBe('not_managed');
+      const readerView = await view(reader);
+      expect(readerView.myPlayerId).toBe(ghost.id);
+      expect(readerView.hand.players.find((p: { playerId: string }) => p.playerId === ghost.id).hole[0]).not.toBe('??');
+      // El administrador lo desvincula: vuelve a manejarlo.
+      await admin.ok('POST', `/g/players/${ghost.id}/user`, { userId: null });
+      v = await view(admin);
+      expect(v.seats.find((s: { playerId: string }) => s.playerId === ghost.id).managed).toBe(true);
+      expect(v.hand.players.find((p: { playerId: string }) => p.playerId === ghost.id).hole[0]).not.toBe('??');
     });
 
     it('suma, recompra y levanta con la partida en curso', async () => {
@@ -1447,6 +1535,11 @@ describe('mesa online', () => {
       const v = await ctx.a.idem('/g/table/start', turnSeconds === undefined ? {} : { turnSeconds });
       return { ...ctx, v };
     }
+
+    it('por defecto, 45 segundos por turno', async () => {
+      const { v } = await started();
+      expect(v.turnSeconds).toBe(45);
+    });
 
     it('arma el vencimiento del turno y informa la hora del servidor', async () => {
       const { v } = await started(30);

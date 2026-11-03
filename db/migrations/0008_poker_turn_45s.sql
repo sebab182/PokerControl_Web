@@ -1,0 +1,1 @@
+ALTER TABLE "poker_tables" ALTER COLUMN "turn_seconds" SET DEFAULT 45;

@@ -13,16 +13,32 @@ export function cardText(card: string): string {
 }
 
 /** Carta con su nombre accesible. "??" es una carta oculta (dorso). */
-export function PokerCard({ card, size = 'md' }: { card: string; size?: 'sm' | 'md' | 'lg' }) {
+/**
+ * Al terminar una mano con showdown, las cartas que forman alguna jugada ganadora; null si no hay que marcar nada.
+ * Las demás de la mesa (y las mostradas) se atenúan.
+ */
+export function winningCards(hand: ApiHandView): Set<string> | null {
+  if (hand.street !== 'done') return null;
+  const cards = hand.payouts.flatMap(w => w.cards ?? []);
+  return cards.length > 0 ? new Set(cards) : null;
+}
+
+/** Marca de una carta al final de la mano: forma la jugada ganadora o queda atenuada. */
+export const markOf = (win: Set<string> | null, card: string) => (win ? (win.has(card) ? 'win' : 'dim') : undefined);
+
+export function PokerCard({ card, size = 'md', mark }: { card: string; size?: 'sm' | 'md' | 'lg'; mark?: 'win' | 'dim' }) {
   if (card === '??') {
     return <span role="img" aria-label="Carta oculta" className={`pcard pcard-back pcard-${size}`} />;
   }
   const suit = SUIT[card[1] as keyof typeof SUIT];
   const rank = card[0] === 'T' ? '10' : card[0];
   return (
-    <span role="img" aria-label={`${RANK_NAME[card[0]] ?? card[0]} de ${suit.name}`}
-      className={`pcard pcard-${size} ${suit.red ? 'pcard-red' : ''}`}>
-      <span aria-hidden="true">{rank}{suit.sym}</span>
+    <span role="img" aria-label={`${RANK_NAME[card[0]] ?? card[0]} de ${suit.name}${mark === 'win' ? ', de la jugada ganadora' : ''}`}
+      className={`pcard pcard-${size} ${suit.red ? 'pcard-red' : ''}${mark ? ` pcard-${mark}` : ''}`}>
+      {/* Diseño de naipe clásico: índice arriba a la izquierda (y al revés abajo) y el palo grande al centro. */}
+      <span className="pcard-corner" aria-hidden="true"><span>{rank}</span><span>{suit.sym}</span></span>
+      <span className="pcard-pip" aria-hidden="true">{suit.sym}</span>
+      <span className="pcard-corner pcard-corner-br" aria-hidden="true"><span>{rank}</span><span>{suit.sym}</span></span>
     </span>
   );
 }
@@ -49,6 +65,7 @@ export function PlayerSeat({ view, hand, playerId, offset, total }: {
   const turn = hand.toActPlayerId === playerId;
   const dealer = hand.players[hand.button]?.playerId === playerId;
   const won = hand.payouts.find(x => x.playerId === playerId);
+  const win = winningCards(hand);
   const status = p.folded ? 'Retirado' : p.allIn ? 'All-in' : null;
   return (
     <div className={`pseat ${turn ? 'pseat-turn' : ''} ${p.folded ? 'pseat-folded' : ''} ${won ? 'pseat-won' : ''}`}
@@ -56,14 +73,17 @@ export function PlayerSeat({ view, hand, playerId, offset, total }: {
       <div className="pseat-cards">
         {/* Solo lo que se mostró (showdown o a voluntad); mis cartas sin mostrar quedan al costado del asiento. */}
         {p.hole.map((c, i) => c !== '??' && p.shown.includes(i)
-          ? <PokerCard key={i} card={c} size="sm" />
+          ? <PokerCard key={i} card={c} size="sm" mark={markOf(win, c)} />
           : null)}
       </div>
       {stream
         ? <StreamVideo stream={stream} className="pseat-video" muted={seat.isYou || video?.muteOthers} mirrored={seat.isYou} />
         : <Avatar name={seat.name} />}
-      <div className="pseat-name ellipsis">{seat.isYou ? 'Vos' : seat.name}{dealer && <span className="dealer" title="Botón"> D</span>}</div>
-      <div className="pseat-stack num">{formatMoney(p.stack)}</div>
+      <div className="pseat-tag">
+        {/* El botón (D) va aparte del nombre: si el nombre no entra se corta con "…", pero la D siempre se ve. */}
+        <span className="pseat-name"><span className="ellipsis">{seat.isYou ? 'Vos' : seat.name}</span>{dealer && <span className="dealer" title="Botón">D</span>}</span>
+        <span className="pseat-stack num">{formatMoney(p.stack)}</span>
+      </div>
       {p.bet > 0 && <div className="pseat-bet num">Apuesta {formatMoney(p.bet)}</div>}
       {status && <div className="pseat-status">{status}</div>}
       {turn && <div className="pseat-status">{seat.isYou ? 'Tu turno' : 'Piensa…'}</div>}

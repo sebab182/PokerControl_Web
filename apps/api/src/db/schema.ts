@@ -236,9 +236,13 @@ export const pokerTables = pgTable('poker_tables', {
   /** Se incrementa en cada cambio visible: evita acciones sobre estados viejos. */
   version: integer('version').notNull().default(0),
   /** Segundos por turno; 0 = sin límite. */
-  turnSeconds: integer('turn_seconds').notNull().default(30),
+  turnSeconds: integer('turn_seconds').notNull().default(45),
   /** Vencimiento del turno en curso; al pasarlo el servidor juega por el jugador. */
   turnDeadline: ts('turn_deadline'),
+  /** Quien inició la partida en curso: reparte las manos (además de los administradores). */
+  startedBy: text('started_by').references(() => users.id, { onDelete: 'set null' }),
+  /** Última vez que quien inició tuvo la mesa abierta (esté sentado o no); si pasa ONLINE_MS, reparte cualquiera. */
+  hostSeenAt: ts('host_seen_at'),
   createdAt: ts('created_at').notNull().defaultNow(),
 }, t => [
   unique('uq_poker_tables_group').on(t.groupId),

@@ -1,0 +1,1 @@
+ALTER TABLE "poker_tables" ADD COLUMN "host_seen_at" timestamp with time zone;

@@ -264,7 +264,13 @@ export const HandView = Obj({
     /** true si la jugó el servidor por tiempo agotado. */
     auto: T.Optional(T.Boolean()),
   })),
-  payouts: T.Array(Obj({ playerId: T.String(), amount: T.Integer() })),
+  /**
+   * Solo si hubo showdown: `reason`, por qué ganó, con la carta que desempata si hizo falta ("Doble par de jotas y
+   * ochos, con as de kicker"); `cards`, las 5 cartas que forman su jugada (de la mesa y de su mano, que se muestra).
+   */
+  payouts: T.Array(Obj({
+    playerId: T.String(), amount: T.Integer(), reason: T.Optional(T.String()), cards: T.Optional(T.Array(T.String())),
+  })),
   showdown: T.Array(Obj({ playerId: T.String(), hole: T.Array(T.String()), handName: T.String() })),
 }, 'HandView');
 export const TableView = Obj({
@@ -282,6 +288,12 @@ export const TableView = Obj({
   maxRebuy: T.Integer(),
   /** Tu jugador en este grupo; null si todavía no elegiste nick. */
   myPlayerId: Nullable(T.String()),
+  /** Nombre de quien inició la partida, que es quien reparte y la cierra; null sin partida. */
+  host: Nullable(T.String()),
+  /** Si podés repartir la próxima mano y cerrar la partida: sos administrador o quien la inició (o esa persona ya no está en la mesa). */
+  canHost: T.Boolean(),
+  /** Vos iniciaste la partida: tu pantalla avisa que seguís (POST /table/ping) aunque no estés sentado. */
+  isHost: T.Boolean(),
   hand: Nullable(HandView),
 }, 'TableView');
 // ─── Video de la mesa (señalización WebRTC por el WebSocket) ─────────────────

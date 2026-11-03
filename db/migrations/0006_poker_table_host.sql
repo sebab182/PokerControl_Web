@@ -1,0 +1,2 @@
+ALTER TABLE "poker_tables" ADD COLUMN "started_by" text;--> statement-breakpoint
+ALTER TABLE "poker_tables" ADD CONSTRAINT "poker_tables_started_by_users_id_fk" FOREIGN KEY ("started_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;
