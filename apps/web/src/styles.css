@@ -289,45 +289,84 @@ input[type="text"], input[type="search"], select {
 .video-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-bottom: 12px; }
 .video-mic { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; font-size: 14px; }
 .dealer { background: #fff; color: #1A1D21; border-radius: 999px; padding: 0 4px; font-weight: 700; }
-.reveal-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
 .table-status { margin-bottom: 12px; }
-/* Cartas y controles pegados a mi asiento (y al de los jugadores que manejo), fuera del paño. */
+.pseat-bet { background: #F59E0B; color: #1F1300; font-weight: 700; }
 .felt-wrap { position: relative; }
-.felt-wrap:has(.aside) { padding-bottom: 112px; }
-.aside { position: absolute; z-index: 3; display: flex; gap: 4px; }
-.aside:empty { display: none; }
-.aside-cards { transform: translate(calc(-100% - var(--seat-half) - 4px), -25%); flex-direction: column; align-items: flex-end; }
-.aside-ctl { transform: translate(calc(var(--seat-half) + 4px), -35%); flex-direction: column; width: 118px; }
-.aside-below { flex-direction: column; align-items: center; width: 118px; margin-top: 56px; }
-.aside-below-left { transform: translateX(-30px); }
-.aside-below-right { transform: translateX(calc(-100% + 30px)); }
-.aside-hand .hole { display: flex; }
-.aside-hand .hole .pcard + .pcard { margin-left: calc(var(--card-w) * -.25); }
-.aside-hand p { margin-top: 2px; }
-.dock-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-bottom: 12px; }
-.dock-row:empty { display: none; }
-.dock-box { display: flex; flex-direction: column; gap: 3px; position: relative; font-size: 12px; }
-.dock-title { font-size: 13px; margin: 0; }
-.dock-actions { display: flex; flex-direction: column; gap: 3px; }
-.aside .btn, .dock-row .btn {
-  min-height: 28px; padding: 0 6px; font-size: 12px; border-radius: 8px; white-space: normal; line-height: 1.1; background-color: var(--surface);
+
+/* Zona de la mano: tus cartas y tus acciones (y las de los jugadores que manejás), siempre en el mismo lugar. */
+.hand-dock {
+  display: flex; flex-direction: column; gap: 10px; margin-top: 12px; padding: 12px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
 }
-.aside .btn-primary, .dock-row .btn-primary { background-color: var(--accent); }
-.aside .btn-chip { min-height: 26px; }
-.aside label.field, .dock-row label.field { margin: 0; font-size: 11px; }
-.aside .field input, .dock-row .field input { min-height: 30px; padding: 0 8px; font-size: 13px; }
-.aside .video-mic, .dock-row .video-mic { min-height: 24px; font-size: 11px; gap: 4px; color: var(--text); background: var(--surface); border-radius: 6px; padding: 0 6px; }
-.dock-popup {
-  position: absolute; bottom: 100%; right: 0; width: 220px; margin-bottom: 6px; z-index: 5;
-  background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 10px;
+.dock-hands { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+.dock-hand {
+  display: flex; align-items: center; gap: 10px; min-width: 0; padding: 4px 10px 4px 4px;
+  border: 2px solid transparent; border-radius: 12px;
 }
-.aside-below-left .dock-popup { left: 0; right: auto; }
-.video-controls-dock { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 3px; margin: 0; }
-.video-controls-dock > .btn { flex: 1 1 100%; }
-.video-controls-dock .video-mic { flex: 1 1 0; justify-content: center; }
-.controls-row { display: flex; gap: 8px; }
-.controls-row .btn { flex: 1; padding: 0 8px; }
-.btn-chip { min-height: 36px; padding: 0 12px; font-size: 14px; }
+.dock-hand-acting { border-color: var(--amber); background: var(--amber-soft); }
+.dock-hand .hole { display: flex; flex: none; }
+.dock-hand .hole .pcard:first-child { transform: rotate(-4deg); }
+.dock-hand .hole .pcard + .pcard { margin-left: -10px; transform: rotate(4deg); }
+.dock-hand-info { display: flex; flex-direction: column; min-width: 0; line-height: 1.3; }
+.dock-box { display: flex; flex-direction: column; gap: 6px; }
+.dock-title { font-size: 14px; margin: 0; }
+.controls { display: flex; flex-direction: column; gap: 8px; }
+.acting-for { margin: 0; font-size: 13px; color: var(--accent); }
+.controls-row { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; }
+.controls-row .btn { min-height: 52px; padding: 0 8px; font-size: 15px; }
+.turn-bar { height: 4px; border-radius: 4px; background: var(--surface-alt); overflow: hidden; }
+.turn-bar span { display: block; height: 100%; background: var(--amber); transition: width .5s linear; }
+.turn-bar-low span { background: var(--red); }
+.kbd { display: none; margin-left: 8px; padding: 0 5px; border: 1px solid currentColor; border-radius: 4px; font-size: 11px; line-height: 16px; opacity: .7; }
+@media (pointer: fine) { .kbd { display: inline-block; } }
+.show-row { display: flex; align-items: center; gap: 8px; min-height: 48px; }
+.show-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.show-actions .btn { min-height: 40px; padding: 0 12px; }
+.video-controls-dock { margin: 0; }
+.video-controls-dock .video-mic { min-height: 32px; }
+
+/* Hoja para subir */
+.raise-amount { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 4px 0 8px; }
+.raise-step {
+  flex: none; width: 52px; height: 52px; border-radius: 14px; border: 1.5px solid var(--border);
+  background: var(--surface-alt); color: var(--text); font-size: 26px; cursor: pointer;
+}
+.raise-step:disabled { opacity: .4; cursor: default; }
+.raise-input { display: flex; flex-direction: column; align-items: center; min-width: 0; font-size: 12px; color: var(--text-muted); }
+.raise-input input {
+  width: 100%; max-width: 200px; padding: 2px 0; text-align: center; font-size: 36px; font-weight: 800;
+  color: var(--text); background: transparent; border: 0; border-bottom: 2px solid var(--border);
+}
+.raise-input input:focus-visible { outline: none; border-bottom-color: var(--accent); }
+.raise-range { width: 100%; height: 44px; margin: 0; accent-color: var(--accent); }
+.raise-limits { display: flex; justify-content: space-between; margin-bottom: 12px; }
+.raise-quick { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.raise-chip {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 56px; padding: 4px;
+  border-radius: 12px; border: 1.5px solid var(--border); background: var(--surface-alt); color: var(--text);
+  font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.raise-chip span + span { font-size: 12px; font-weight: 500; color: var(--text-muted); }
+.raise-chip[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
+
+/* Preferencias e historial */
+.icon-btn {
+  display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px;
+  border: 0; border-radius: 10px; background: transparent; color: var(--text); cursor: pointer;
+}
+.icon-btn:hover { background: var(--surface-alt); }
+.pref-row { min-height: 60px; border-top: 1px solid var(--border); }
+.pref-row input { width: 22px; height: 22px; }
+.hand-log summary { display: flex; align-items: center; min-height: 44px; cursor: pointer; }
+.hand-log ol { margin: 0; padding: 0; list-style: none; font-size: 13px; }
+.hand-log li { padding: 6px 0; border-top: 1px solid var(--border); }
+
+/* Animaciones de reparto y fichas (preferencia de la mesa; prefers-reduced-motion las anula). Sin opacidad: el contraste no cambia mientras se mueven. */
+@keyframes deal-in { from { transform: translateY(-16px) scale(.85); } }
+@keyframes chip-in { from { transform: scale(.5); } }
+.table-anim .board .pcard:not(.pcard-empty), .table-anim .dock-hand .pcard { animation: deal-in .28s ease-out both; }
+.table-anim .pseat-bet { animation: chip-in .2s ease-out both; }
+
 @media (min-width: 768px) {
   .felt-wrap { padding: 60px 70px 70px; }
   .pcard-sm { width: 44px; height: 62px; font-size: 19px; }
@@ -335,43 +374,54 @@ input[type="text"], input[type="search"], select {
   .pseat-video { width: 72px; height: 72px; }
   :root { --hero-w: 104px; --seat-half: 55px; }
 }
+/* Compu: la mesa usa el ancho y el historial y la administración van en un panel al costado. */
+@media (min-width: 1200px) {
+  .table-page .main { max-width: 1320px; }
+  .table-layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 24px; align-items: start; }
+  .table-side { position: sticky; top: 16px; }
+  .table-side > :first-child { margin-top: 0 !important; }
+}
 @media (max-width: 420px) {
   .tabbar .nav-link { font-size: 11px; }
 }
 
 .last-action { font-weight: 600; }
 
-/* Celular en horizontal: mesa a pantalla completa, sin menú ni encabezado. */
+/* Celular en horizontal: mesa a pantalla completa, sin menú ni encabezado; tu mano y acciones en una columna a la derecha. */
 .fs-btn { display: none; }
-.table-landscape { --hero-w: 72px; }
+.table-landscape { --hero-w: 56px; }
 .table-landscape .sidebar, .table-landscape .tabbar, .table-landscape .page-head { display: none !important; }
 .table-landscape .shell { padding-left: 0; }
 .table-landscape .main { max-width: none; padding: 0 8px; }
-.table-landscape .felt-wrap, .table-landscape .felt-wrap:has(.aside) { max-width: none; padding: 58px 8px 100px; }
-.table-landscape .felt { width: min(calc(100vw - 32px), calc((100dvh - 158px) * 2.2)); aspect-ratio: auto; height: calc(100dvh - 158px); margin: 0 auto; }
+.table-landscape .table-stage { display: flex; gap: 8px; height: calc(100dvh - 8px); padding-top: 4px; }
+.table-landscape .felt-wrap { flex: 1; min-width: 0; max-width: none; display: flex; padding: 46px 8px 36px; }
+.table-landscape .felt { flex: 1; aspect-ratio: auto; }
+.table-landscape .hand-dock { flex: 0 0 200px; margin: 0; padding: 8px; overflow-y: auto; }
+.table-landscape .controls-row { grid-auto-flow: row; }
+.table-landscape .controls-row .btn { min-height: 44px; }
 .table-landscape .table-status {
-  position: fixed; top: 4px; left: 50%; transform: translateX(-50%); z-index: 6; margin: 0;
-  padding: 2px 10px; font-size: 12px; max-width: 70vw;
+  position: fixed; top: 4px; left: 8px; z-index: 6; margin: 0;
+  padding: 2px 10px; font-size: 12px; max-width: calc(100vw - 280px);
 }
 .table-landscape .fs-btn {
-  display: flex; align-items: center; justify-content: center; position: fixed; top: 4px; right: 8px; z-index: 20;
+  display: flex; align-items: center; justify-content: center; position: fixed; top: 4px; right: 216px; z-index: 20;
   width: 36px; height: 36px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 18px;
 }
-.video-controls-dock .video-mic { padding: 0 3px; gap: 3px; }
-.video-controls-dock .video-mic input { margin: 0; width: 14px; height: 14px; }
 
-/* Celular en vertical: la mesa ocupa todo el alto de la pantalla (el estado flota arriba) y las cartas y controles quedan en los costados. */
+/* Celular en vertical: la mesa y la zona de la mano llenan la pantalla; el estado flota arriba. */
 @media (orientation: portrait) {
   .table-active .page-head { position: fixed; top: 4px; right: 8px; z-index: 7; margin: 0; }
   .table-active .page-head h1, .table-active .page-head .badge-green { display: none; }
   .table-active .main { padding-top: 8px; }
   .table-active .table-status {
-    position: fixed; top: 4px; left: 50%; transform: translateX(-50%); z-index: 6; margin: 0;
-    padding: 2px 10px; font-size: 12px; max-width: 70vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    position: fixed; top: 4px; left: 8px; z-index: 6; margin: 0;
+    padding: 4px 10px; font-size: 12px; max-width: calc(100vw - 140px);
   }
-  .table-active .felt-wrap {
-    display: flex; flex-direction: column; box-sizing: border-box; padding-top: 70px;
+  .table-active .table-stage {
+    display: flex; flex-direction: column; box-sizing: border-box;
     height: calc(100dvh - var(--nav-h) - 16px - env(safe-area-inset-bottom));
   }
+  .table-active .felt-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 64px 34px 44px; }
   .table-active .felt { flex: 1; min-height: 0; aspect-ratio: auto; }
+  .table-active .hand-dock { flex: none; margin: 0; padding: 10px; }
 }
