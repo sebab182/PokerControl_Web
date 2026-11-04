@@ -1,5 +1,6 @@
 import type { ApiHandView, ApiTableView } from '@pokercontrol/contracts';
 import { evaluate, formatMoney } from '@pokercontrol/core';
+import type { CSSProperties } from 'react';
 import { StreamVideo, useSeatStream, useVideo } from '../video';
 import { Avatar } from './ui';
 
@@ -59,6 +60,15 @@ export function seatPosition(offset: number, total: number): { left: string; top
 }
 
 /**
+ * Hacia dónde correr la imagen agrandada de quien piensa: hacia el centro de la mesa (-1 a 1 en cada eje, según el
+ * asiento). Así los asientos de los costados no se salen de la pantalla ni tapan el borde de arriba.
+ */
+export function seatInward(offset: number, total: number): CSSProperties {
+  const angle = (Math.PI / 2) + (offset * 2 * Math.PI) / total;
+  return { '--in-x': (-Math.cos(angle)).toFixed(2), '--in-y': (-Math.sin(angle)).toFixed(2) } as CSSProperties;
+}
+
+/**
  * Un asiento del paño. Las cartas propias (las tuyas y las de los jugadores sin usuario que manejás) van en el asiento:
  * en el tuyo, abajo y grandes, con el nombre de tu jugada; en los demás, chicas en abanico sobre el avatar.
  */
@@ -95,8 +105,8 @@ export function PlayerSeat({ view, hand, playerId, offset, total }: {
   );
   const holeCards = cards.map(x => <PokerCard key={x.i} card={x.c} size={hero ? 'lg' : 'sm'} mark={markOf(win, x.c)} own={x.own} />);
   return (
-    <div className={`pseat ${hero ? 'pseat-hero' : ''} ${turn ? 'pseat-turn' : ''} ${p.folded ? 'pseat-folded' : ''} ${won ? 'pseat-won' : ''}`}
-      style={seatPosition(offset, total)} data-testid={`seat-${seat.name}`}>
+    <div className={`pseat ${hero ? 'pseat-hero' : ''} ${turn ? 'pseat-turn' : ''} ${turn && !mine ? 'pseat-thinking' : ''} ${p.folded ? 'pseat-folded' : ''} ${won ? 'pseat-won' : ''}`}
+      style={{ ...seatPosition(offset, total), ...(turn && !mine ? seatInward(offset, total) : {}) }} data-testid={`seat-${seat.name}`}>
       {hero ? (
         <>
           <div className="pseat-hole" data-testid="my-hand">{holeCards}</div>

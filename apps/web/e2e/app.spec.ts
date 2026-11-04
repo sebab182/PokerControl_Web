@@ -554,6 +554,10 @@ test('mesa online: sala de espera, iniciar, jugar una mano y cerrar', async ({ p
   // Quien tiene el turno se retira: la mano termina y el otro cobra.
   const actor = (await page.getByRole('button', { name: 'Retirarme' }).count()) > 0 ? page : page2;
   const other = actor === page ? page2 : page;
+  // Quien piensa se ve agrandado para los demás; en su propia pantalla no.
+  const thinking = actor === page ? 'Seba' : 'Nico';
+  await expect(other.getByTestId(`seat-${thinking}`)).toHaveClass(/pseat-thinking/);
+  await expect(actor.getByTestId(`seat-${thinking}`)).not.toHaveClass(/pseat-thinking/);
   await actor.getByRole('button', { name: 'Retirarme' }).click();
   await expect(actor.getByTestId('last-action')).toContainText('te retiraste');
   // El polling con el socket en vivo es de 15 s: ver el cambio antes prueba que llegó por WebSocket.
