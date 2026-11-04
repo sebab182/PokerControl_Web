@@ -1,4 +1,4 @@
-import type { ApiGroup, ApiPlayer, ApiRtcServerMessage, ApiTableAction, ApiTableView } from '@pokercontrol/contracts';
+import type { ApiEmojiServerMessage, ApiGroup, ApiPlayer, ApiRtcServerMessage, ApiTableAction, ApiTableView } from '@pokercontrol/contracts';
 import { formatMoney, parseAmount } from '@pokercontrol/core';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
@@ -11,6 +11,7 @@ import {
 import { useGroup } from '../context';
 import { DECKS, type Deck, type TablePrefs, useTablePrefs, useTurnAlert, useWakeLock } from '../tablePrefs';
 import { shareInvite } from '../share';
+import { EmojiFab, EmojiLayer } from '../components/emoji';
 import { useTableSocket } from '../useTableSocket';
 import { VideoControls, VideoMenu, VideoProvider, useTableVideo } from '../video';
 import { NickChooser } from './auth';
@@ -124,7 +125,7 @@ export function TablePage() {
 function TableView() {
   const { group, canEdit, path, key, invalidate } = useGroup();
   const qc = useQueryClient();
-  const { confirm } = useFeedback();
+  const { confirm, notify } = useFeedback();
   const { busy, run } = useAction();
   const queryKey = key('table');
   const [standing, setStanding] = useState(false);
@@ -138,7 +139,8 @@ function TableView() {
   // se ve sin cambiar la versión de la mano (que solo protege las jugadas). Un GET repetido sale barato.
   // El socket necesita el manejador de video y el video necesita el socket: se une por ref.
   const signal = useRef<(msg: ApiRtcServerMessage) => void>(() => {});
-  const socket = useTableSocket(group.id, () => { void qc.invalidateQueries({ queryKey }); }, msg => signal.current(msg));
+  const emojiHandler = useRef<(m: ApiEmojiServerMessage) => void>(() => {});
+  const socket = useTableSocket(group.id, () => { void qc.invalidateQueries({ queryKey }); }, msg => signal.current(msg), msg => emojiHandler.current(msg));
   const { live } = socket;
   const video = useTableVideo(socket, group.playerId);
   signal.current = video.onSignal;
@@ -162,6 +164,18 @@ function TableView() {
   useTurnAlert(myTurn, prefs);
   useWakeLock(prefs.keepAwake && view?.status === 'playing');
   const log = useHandLog(view);
+  // Las ciegas suben entre manos: al empezar la que ya las trae más altas, un aviso.
+  const lastHand = useRef<number | null>(null);
+  const lastBig = useRef<number | null>(null);
+  const handNo = view?.hand?.handNo;
+  const bigBlind = view?.bigBlind;
+  const smallBlind = view?.smallBlind;
+  useEffect(() => {
+    if (handNo === undefined || bigBlind === undefined || handNo === lastHand.current) return;
+    lastHand.current = handNo;
+    if (lastBig.current !== null && bigBlind > lastBig.current) notify(`Las ciegas subieron a ${formatMoney(smallBlind ?? 0)}/${formatMoney(bigBlind)}.`);
+    lastBig.current = bigBlind;
+  }, [handNo, bigBlind, smallBlind, notify]);
 
   useLandscapeTable(view?.status === 'playing' && !!view.hand);
   // En la compu la mesa usa más ancho que el resto de las páginas (ver styles.css).
@@ -242,6 +256,9 @@ function TableView() {
 
   return (
     <VideoProvider state={video.state}>
+      <EmojiLayer handler={emojiHandler} enabled={prefs.emojis} />
+      {/* En el paño el botón va en la esquina del propio paño; en la sala de espera, flotando sobre la página. */}
+      {prefs.emojis && !(view.status === 'playing' && view.hand) && <EmojiFab placement="page" live={live} onSend={socket.sendEmoji} />}
       {/* Con una mano en juego, la barra de la mesa reemplaza al encabezado. */}
       {!(view.status === 'playing' && view.hand) && (
         <div className="page-head">
@@ -261,7 +278,8 @@ function TableView() {
           )}
           {view.status === 'waiting'
             ? <Waiting view={view} canEdit={canEdit} standing={standing} busy={busy} onJoin={join} onLeave={leave} onStart={() => setStartOpen(true)} onAddOpen={() => setAddOpen(true)} />
-            : <Playing view={view} updatedAt={query.dataUpdatedAt} busy={busy} onJoin={join} onLeave={leave} onDeal={deal} onClose={close}
+            : <Playing view={view} updatedAt={query.dataUpdatedAt} busy={busy}
+              fab={prefs.emojis ? <EmojiFab placement="felt" live={live} onSend={socket.sendEmoji} /> : null} onJoin={join} onLeave={leave} onDeal={deal} onClose={close}
               bar={view.hand && <TableBar view={view} hand={view.hand} updatedAt={query.dataUpdatedAt} live={live} onPrefs={() => setPrefsOpen(true)} />}
               onReveal={(playerIds, cards) => run(async () => {
                 // Varios a la vez (los jugadores que manejás): uno por vez, cada uno con la mesa ya actualizada.
@@ -327,8 +345,9 @@ function Waiting({ view, canEdit, standing, busy, onJoin, onLeave, onStart, onAd
         </div>
         <div className="lobby-cfg">
           <div><span className="xs muted">Entrada</span><strong className="num">{formatMoney(view.buyIn)}</strong></div>
-          <div><span className="xs muted">Ciegas</span><strong className="num">{view.smallBlind}/{view.bigBlind}</strong></div>
+          <div><span className="xs muted">Ciegas</span><strong className="num">{formatMoney(view.smallBlind)}/{formatMoney(view.bigBlind)}</strong></div>
           <div><span className="xs muted">Turno</span><strong className="num">{view.turnSeconds ? `${view.turnSeconds} s` : 'Sin límite'}</strong></div>
+          <div><span className="xs muted">Ciegas ×2</span><strong className="num">{view.blinds.minutes ? `cada ${view.blinds.minutes} min` : 'Nunca'}</strong></div>
         </div>
         <p className="xs muted">Se puede cambiar al iniciar la partida.</p>
       </section>
@@ -369,13 +388,14 @@ function Waiting({ view, canEdit, standing, busy, onJoin, onLeave, onStart, onAd
 
 function StartModal({ view, open, onClose, onStart, busy }: {
   view: ApiTableView; open: boolean; onClose: () => void; busy: boolean;
-  onStart: (cfg: { buyIn: number; smallBlind: number; bigBlind: number; turnSeconds: number }) => void;
+  onStart: (cfg: { buyIn: number; smallBlind: number; bigBlind: number; turnSeconds: number; blindMinutes: number }) => void;
 }) {
   const [error, setError] = useState('');
   const [buyIn, setBuyIn] = useState(String(view.buyIn));
   const [sb, setSb] = useState(String(view.smallBlind));
   const [bb, setBb] = useState(String(view.bigBlind));
   const [turn, setTurn] = useState(String(view.turnSeconds));
+  const [blindMin, setBlindMin] = useState(String(view.blinds.minutes));
   const submit = () => {
     const cfg = { buyIn: parseAmount(buyIn), smallBlind: parseAmount(sb), bigBlind: parseAmount(bb) };
     if ([cfg.buyIn, cfg.smallBlind, cfg.bigBlind].some(n => n === null || n <= 0 || !Number.isInteger(n))) {
@@ -385,8 +405,12 @@ function StartModal({ view, open, onClose, onStart, busy }: {
     if (turnSeconds === null || !Number.isInteger(turnSeconds) || (turnSeconds !== 0 && (turnSeconds < 10 || turnSeconds > 300))) {
       return setError('El tiempo por turno es 0 (sin límite) o entre 10 y 300 segundos.');
     }
+    const blindMinutes = parseAmount(blindMin);
+    if (blindMinutes === null || !Number.isInteger(blindMinutes) || (blindMinutes !== 0 && (blindMinutes < 5 || blindMinutes > 120))) {
+      return setError('Las ciegas se duplican cada 0 (nunca) o entre 5 y 120 minutos.');
+    }
     setError('');
-    onStart({ ...cfg, turnSeconds } as { buyIn: number; smallBlind: number; bigBlind: number; turnSeconds: number });
+    onStart({ ...cfg, turnSeconds, blindMinutes } as { buyIn: number; smallBlind: number; bigBlind: number; turnSeconds: number; blindMinutes: number });
   };
   return (
     <Modal open={open} onClose={onClose} title="Iniciar partida"
@@ -397,6 +421,10 @@ function StartModal({ view, open, onClose, onStart, busy }: {
         <TextField label="Ciega grande" value={bb} onChange={setBb} decimal />
       </div>
       <TextField label="Tiempo por turno (segundos, 0 = sin límite)" value={turn} onChange={setTurn} decimal />
+      <TextField label="Duplicar las ciegas cada (minutos, 0 = nunca)" value={blindMin} onChange={setBlindMin} decimal />
+      <p className="xs muted" style={{ marginTop: -6, marginBottom: 12 }}>
+        Suben entre manos y se frenan cuando la ciega grande llega a la mitad de la entrada.
+      </p>
       {error && <p className="notice notice-err" role="alert">{error}</p>}
       <div className="modal-actions">
         <Btn variant="ghost" onClick={onClose}>Cancelar</Btn>
@@ -409,17 +437,17 @@ function StartModal({ view, open, onClose, onStart, busy }: {
 // ─── Partida en curso ────────────────────────────────────────────────────────
 type Seat = ApiTableView['seats'][number];
 
-function Playing({ view, updatedAt, bar, busy, onJoin, onLeave, onDeal, onClose, onAction, onRebuy, onReveal }: {
-  view: ApiTableView; updatedAt: number; bar: ReactNode; busy: boolean; onJoin: () => void; onLeave: () => void; onDeal: () => void;
+function Playing({ view, updatedAt, bar, fab, busy, onJoin, onLeave, onDeal, onClose, onAction, onRebuy, onReveal }: {
+  view: ApiTableView; updatedAt: number; bar: ReactNode; fab: ReactNode; busy: boolean; onJoin: () => void; onLeave: () => void; onDeal: () => void;
   onClose: () => void; onAction: (a: ApiTableAction) => void; onRebuy: (amount: number) => void;
   onReveal: (playerIds: string[], cards?: number[]) => void;
 }) {
   const me = view.seats.find(s => s.isYou);
   const hand = view.hand;
   const live = !!hand && hand.street !== 'done';
-  // Sin fichas se puede recomprar entre manos o si ya te retiraste de la que está en juego.
+  // Sin fichas se puede recomprar entre manos, si ya te retiraste de la que está en juego o mientras seguís pendiente de pagar.
   const myPlayer = hand?.players.find(p => p.playerId === me?.playerId);
-  const canRebuy = !!me && me.stack === 0 && (!live || !myPlayer || myPlayer.folded);
+  const canRebuy = !!me && me.stack === 0 && (!live || !myPlayer || myPlayer.folded || myPlayer.pending);
   // Vos y los jugadores sin usuario que manejás, en el orden de la mesa.
   const mine = (hand?.players ?? [])
     .map(p => view.seats.find(s => s.playerId === p.playerId))
@@ -434,7 +462,7 @@ function Playing({ view, updatedAt, bar, busy, onJoin, onLeave, onDeal, onClose,
       {hand && (
         <div className="table-stage">
           {bar}
-          <Felt view={view} hand={hand} />
+          <Felt view={view} hand={hand} updatedAt={updatedAt} fab={fab} />
           {/* Tus cartas van en tu asiento; acá solo lo que hay que decidir, siempre en el mismo lugar. */}
           <section className="hand-dock" aria-label="Tus acciones">
             <HandResult view={view} hand={hand} where="dock" />
@@ -442,7 +470,7 @@ function Playing({ view, updatedAt, bar, busy, onJoin, onLeave, onDeal, onClose,
             {hand.street === 'done' && <ShowCards hand={hand} players={mine} busy={busy} onReveal={onReveal} />}
             {canDeal && <Btn block busy={busy} onClick={onDeal}>Repartir próxima mano</Btn>}
             {hand.street === 'done' && waitingDeal}
-            {canRebuy && me && <NoChips view={view} sitting={me.status === 'sitting'} busy={busy} onLeave={onLeave} onRebuy={onRebuy} />}
+            {canRebuy && me && <NoChips view={view} sitting={me.status === 'sitting'} pending={!!myPlayer?.pending && !myPlayer.folded} busy={busy} onLeave={onLeave} onRebuy={onRebuy} />}
           </section>
         </div>
       )}
@@ -465,8 +493,8 @@ function Playing({ view, updatedAt, bar, busy, onJoin, onLeave, onDeal, onClose,
 }
 
 /** Sin saldo: levantarse o recomprar hasta la mitad de lo que tiene quien más fichas tiene. */
-function NoChips({ view, sitting, busy, onLeave, onRebuy }: {
-  view: ApiTableView; sitting: boolean; busy: boolean; onLeave: () => void; onRebuy: (amount: number) => void;
+function NoChips({ view, sitting, pending, busy, onLeave, onRebuy }: {
+  view: ApiTableView; sitting: boolean; pending: boolean; busy: boolean; onLeave: () => void; onRebuy: (amount: number) => void;
 }) {
   const { notify } = useFeedback();
   const max = view.maxRebuy;
@@ -482,6 +510,11 @@ function NoChips({ view, sitting, busy, onLeave, onRebuy }: {
   return (
     <section className="dock-box" aria-labelledby="no-chips" data-testid="no-chips">
       <h2 id="no-chips" className="dock-title">Sin saldo</h2>
+      {pending && (
+        <p className="xs" data-testid="pending-note" style={{ marginBottom: 4 }}>
+          Te repartieron cartas, pero no las ves hasta que recompres. Si no recomprás en tu turno, te retirás de la mano.
+        </p>
+      )}
       {max >= 1 ? (
         <>
           <p className="xs muted" style={{ marginBottom: 4 }}>Hasta {formatMoney(max)} (la mitad del que más tiene).</p>
@@ -492,7 +525,7 @@ function NoChips({ view, sitting, busy, onLeave, onRebuy }: {
           </div>
         </>
       ) : <p className="xs muted">No hay fichas para recomprar.</p>}
-      {sitting && <Btn variant="ghost" busy={busy} onClick={onLeave}>Levantarme</Btn>}
+      {sitting && !pending && <Btn variant="ghost" busy={busy} onClick={onLeave}>Levantarme</Btn>}
     </section>
   );
 }
@@ -614,7 +647,7 @@ function winnersText(view: ApiTableView, ids: string[]): string {
   return `${names.slice(0, -1).join(', ')} y ${names[names.length - 1]} ganan`;
 }
 
-function Felt({ view, hand }: { view: ApiTableView; hand: Hand }) {
+function Felt({ view, hand, updatedAt, fab }: { view: ApiTableView; hand: Hand; updatedAt: number; fab: ReactNode }) {
   const players = hand.players;
   const myIdx = Math.max(0, players.findIndex(p => p.playerId === view.myPlayerId));
   // Al terminar con showdown se resaltan las cartas de la jugada ganadora.
@@ -624,6 +657,8 @@ function Felt({ view, hand }: { view: ApiTableView; hand: Hand }) {
   const heroCards = !!heroSeat && (heroSeat.isYou || heroSeat.managed) && !!hero && hero.hole.some(c => c !== '??');
   return (
     <div className="felt-wrap">
+      <BlindsChip view={view} updatedAt={updatedAt} />
+      {fab}
       <div className={`felt${heroCards ? ' felt-hero' : ''}`} data-testid="felt">
         <div className="felt-center">
           <HandResult view={view} hand={hand} fallback={<div className="pot num" data-testid="pot">Pozo {formatMoney(hand.pot)}</div>} />
@@ -642,6 +677,41 @@ function Felt({ view, hand }: { view: ApiTableView; hand: Hand }) {
             offset={(i - myIdx + players.length) % players.length} total={players.length} />
         ))}
       </div>
+    </div>
+  );
+}
+
+/** "8:31" a partir de milisegundos. */
+const clock = (ms: number) => {
+  const total = Math.max(0, Math.ceil(ms / 1000));
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+};
+
+/**
+ * Ciegas de la mano y cuándo suben. Se calcula contra la hora del servidor, no la del dispositivo.
+ * Con "nunca" (0 minutos) muestra solo las ciegas.
+ */
+function BlindsChip({ view, updatedAt }: { view: ApiTableView; updatedAt: number }) {
+  const b = view.blinds;
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!b.nextAt) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [b.nextAt]);
+  let note: string | null = null;
+  if (b.minutes > 0) {
+    if (view.bigBlind < b.big) note = `Próxima mano: ${formatMoney(b.small)}/${formatMoney(b.big)}`;
+    else if (b.atCap) note = 'Ciegas al máximo';
+    else if (b.nextAt) {
+      const left = Date.parse(b.nextAt) - (now + (Date.parse(view.serverTime) - updatedAt));
+      note = left > 0 ? `Suben a ${formatMoney(b.small * 2)}/${formatMoney(b.big * 2)} en ${clock(left)}` : 'Suben en la próxima mano';
+    }
+  }
+  return (
+    <div className="blinds-chip" data-testid="blinds">
+      <strong className="num">Ciegas {formatMoney(view.smallBlind)}/{formatMoney(view.bigBlind)}</strong>
+      {note && <span className="blinds-note" data-testid="blinds-note">{note}</span>}
     </div>
   );
 }
@@ -731,6 +801,7 @@ function Controls({ view, hand, updatedAt, busy, onAction }: {
     if ((e.target as HTMLElement).closest?.('input, textarea, select, [role="dialog"]')) return;
     const k = e.key.toLowerCase();
     if (k === 'f') onAction({ type: 'fold' });
+    else if (legal.mustBuy) return;
     else if (k === 'c') onAction({ type: legal.canCheck ? 'check' : 'call' });
     else if (k === 'r' && legal.canRaise) setRaising(true);
     else return;
@@ -759,7 +830,7 @@ function Controls({ view, hand, updatedAt, busy, onAction }: {
       )}
       <div className="controls-row">
         <Btn variant="danger" busy={busy} aria-keyshortcuts="F" onClick={() => onAction({ type: 'fold' })}>Retirarme<Kbd>F</Kbd></Btn>
-        {legal.canCheck
+        {legal.mustBuy ? null : legal.canCheck
           ? <Btn busy={busy} aria-keyshortcuts="C" onClick={() => onAction({ type: 'check' })}>Pasar<Kbd>C</Kbd></Btn>
           : (
             <Btn busy={busy} aria-keyshortcuts="C" onClick={() => onAction({ type: 'call' })}>
@@ -770,6 +841,7 @@ function Controls({ view, hand, updatedAt, busy, onAction }: {
           <Btn variant="ghost" busy={busy} aria-keyshortcuts="R" aria-haspopup="dialog" onClick={() => setRaising(true)}>Subir<Kbd>R</Kbd></Btn>
         )}
       </div>
+      {legal.mustBuy && <p className="xs muted" style={{ marginTop: 6 }}>Recomprá para jugar esta mano, o retirate.</p>}
       {legal.canRaise && (
         <RaiseSheet view={view} hand={hand} open={raising} onClose={() => setRaising(false)} busy={busy} onAction={onAction} />
       )}
@@ -890,11 +962,12 @@ const DECK_HINT: Record<Deck, string> = {
 function PrefsModal({ open, onClose, prefs, onChange }: {
   open: boolean; onClose: () => void; prefs: TablePrefs; onChange: (patch: Partial<TablePrefs>) => void;
 }) {
-  const items: { key: 'sound' | 'vibrate' | 'animations' | 'keepAwake'; label: string; hint: string }[] = [
+  const items: { key: 'sound' | 'vibrate' | 'animations' | 'keepAwake' | 'emojis'; label: string; hint: string }[] = [
     { key: 'sound', label: 'Sonidos', hint: 'Un tono cuando te toca jugar' },
     { key: 'vibrate', label: 'Vibrar en mi turno', hint: 'Solo en celulares que lo permiten' },
     { key: 'animations', label: 'Animaciones', hint: 'Reparto de cartas y fichas' },
     { key: 'keepAwake', label: 'Mantener la pantalla encendida', hint: 'Mientras haya una partida en juego' },
+    { key: 'emojis', label: 'Emojis', hint: 'Ver los de los demás y poder mandar los tuyos' },
   ];
   return (
     <Modal open={open} onClose={onClose} title="Preferencias de la mesa" description="Se guardan en este dispositivo.">

@@ -64,6 +64,13 @@
       "when": 1793717613107,
       "tag": "0008_poker_turn_45s",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1793829768243,
+      "tag": "0009_poker_blind_timer",
+      "breakpoints": true
     }
   ]
 }

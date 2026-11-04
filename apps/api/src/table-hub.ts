@@ -48,6 +48,11 @@ export class TableHub {
     for (const socket of this.groups.get(groupId)?.keys() ?? []) this.deliver(socket, message);
   }
 
+  /** Manda un mensaje a todos los conectados a la mesa, incluido quien lo originó. */
+  broadcast(groupId: string, payload: string): void {
+    for (const socket of this.groups.get(groupId)?.keys() ?? []) this.deliver(socket, payload);
+  }
+
   count(groupId: string): number {
     return this.groups.get(groupId)?.size ?? 0;
   }

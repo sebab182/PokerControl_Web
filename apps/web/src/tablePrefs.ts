@@ -6,6 +6,8 @@ export interface TablePrefs {
   vibrate: boolean;
   animations: boolean;
   keepAwake: boolean;
+  /** Ver los emojis de los demás y poder mandar los propios. */
+  emojis: boolean;
   /**
    * Tipo de mazo. Con el clásico, tréboles y picas (los dos negros) se confunden: "four" pinta diamantes de azul y tréboles
    * de verde; "color" además pinta el fondo de cada carta con el color de su palo y agranda el número.
@@ -17,7 +19,7 @@ export const DECKS = ['classic', 'four', 'color'] as const;
 export type Deck = typeof DECKS[number];
 
 const KEY = 'pc_table_prefs';
-const DEFAULTS: TablePrefs = { sound: true, vibrate: true, animations: true, keepAwake: true, deck: 'four' };
+const DEFAULTS: TablePrefs = { sound: true, vibrate: true, animations: true, keepAwake: true, emojis: true, deck: 'four' };
 
 function load(): TablePrefs {
   try {

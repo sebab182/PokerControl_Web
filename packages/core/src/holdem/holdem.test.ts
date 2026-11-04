@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  type Action, applyAction, computePots, describeHand, evaluate, explainWin, HoldemError, type HandState, legalActions, newDeck,
+  blindLevel, buyInHand, maxBlindLevel, type Action, applyAction, computePots, describeHand, evaluate, explainWin, HoldemError, type HandState, legalActions, newDeck,
   publicView, revealCards, shownCards, shuffle, startHand, winDetails,
 } from './index';
 
@@ -290,5 +290,182 @@ describe('fuzz: conservación de fichas', () => {
       expect(view.showdown.find((e) => e.playerId === lose.id)).toMatchObject({ hole: ['??', '??'], handName: '' });
       expect(shownCards(revealCards(s, lose.id), lose.id)).toEqual([0, 1]);
     });
+  });
+});
+
+describe('ciegas por tiempo', () => {
+  const base = { smallBlind: 10, bigBlind: 20, buyIn: 1000 };
+  const min = (n: number) => n * 60_000;
+
+  it('se duplican cada intervalo, siempre sobre las ciegas base', () => {
+    expect(blindLevel({ ...base, minutes: 15, elapsedMs: 0 })).toEqual({ level: 0, small: 10, big: 20, atCap: false, nextAtMs: min(15) });
+    expect(blindLevel({ ...base, minutes: 15, elapsedMs: min(14) + 59_000 }).big).toBe(20);
+    expect(blindLevel({ ...base, minutes: 15, elapsedMs: min(15) })).toMatchObject({ level: 1, small: 20, big: 40, nextAtMs: min(30) });
+    expect(blindLevel({ ...base, minutes: 15, elapsedMs: min(47) })).toMatchObject({ level: 3, small: 80, big: 160 });
+  });
+
+  it('la ciega grande no pasa de la mitad de la entrada', () => {
+    // 20 → 40 → 80 → 160 → 320; 640 supera 500.
+    expect(maxBlindLevel(20, 1000)).toBe(4);
+    const capped = blindLevel({ ...base, minutes: 15, elapsedMs: min(15 * 50) });
+    expect(capped).toEqual({ level: 4, small: 160, big: 320, atCap: true, nextAtMs: null });
+    expect(blindLevel({ ...base, minutes: 15, elapsedMs: min(15 * 4) }).atCap).toBe(true);
+    expect(blindLevel({ ...base, minutes: 15, elapsedMs: min(15 * 3) }).atCap).toBe(false);
+  });
+
+  it('con 0 minutos nunca se duplican', () => {
+    expect(blindLevel({ ...base, minutes: 0, elapsedMs: min(10_000) })).toEqual({ level: 0, small: 10, big: 20, atCap: true, nextAtMs: null });
+  });
+
+  it('si la entrada es justa (el doble de la ciega) no hay subidas; un reloj adelantado no baja el nivel', () => {
+    expect(maxBlindLevel(500, 1000)).toBe(0);
+    expect(blindLevel({ smallBlind: 250, bigBlind: 500, buyIn: 1000, minutes: 15, elapsedMs: min(999) })).toMatchObject({ level: 0, atCap: true });
+    expect(blindLevel({ ...base, minutes: 15, elapsedMs: -5000 }).level).toBe(0);
+  });
+});
+
+describe('sin fichas: cartas ocultas hasta recomprar', () => {
+  const seat = (id: string, stack: number, pending = false) => ({ id, stack, ...(pending ? { pending: true } : {}) });
+  // Reparto desde la ciega chica, de una en una; luego flop, turn y river.
+  const deckFor = (hole: string[], board: string) => {
+    const used = new Set([...hole, ...board.split(' ')]);
+    return [...hole, ...board.split(' '), ...newDeck().filter((c) => !used.has(c))];
+  };
+
+  it('recibe cartas, no pone ciegas y el botón y las ciegas se reparten entre quienes tienen fichas', () => {
+    // Orden: p (sin fichas), a, b, c. Botón en a: ciega chica b, grande c.
+    const s = startHand([seat('p', 0, true), seat('a', 1000), seat('b', 1000), seat('c', 1000)], {
+      button: 1, smallBlind: 10, bigBlind: 20, randomInt: rng(11),
+    });
+    const by = Object.fromEntries(s.players.map((p) => [p.id, p]));
+    expect([by.p.bet, by.a.bet, by.b.bet, by.c.bet]).toEqual([0, 0, 10, 20]);
+    expect(by.p.hole).toHaveLength(2);
+    expect(by.p.pending).toBe(true);
+    expect(by.p.allIn).toBe(false);
+    // Primero actúa quien sigue a la ciega grande: p, que no tiene fichas.
+    expect(s.players[s.toAct].id).toBe('p');
+  });
+
+  it('solo puede retirarse: no puede pasar, igualar ni subir', () => {
+    const s = startHand([seat('a', 1000), seat('b', 1000), seat('p', 0, true)], { button: 0, smallBlind: 10, bigBlind: 20, randomInt: rng(12) });
+    // Dos con fichas: a es el botón y la ciega chica, b la grande. Primero a, luego b, después p.
+    let cur = applyAction(s, 'a', { type: 'call' });
+    cur = applyAction(cur, 'b', { type: 'check' });
+    expect(cur.players[cur.toAct].id).toBe('p');
+    expect(legalActions(cur)).toMatchObject({ playerId: 'p', canCheck: false, canCall: false, canRaise: false, mustBuy: true });
+    for (const a of [{ type: 'check' }, { type: 'call' }, { type: 'allin' }, { type: 'raise', to: 40 }] as Action[]) {
+      expect(() => applyAction(cur, 'p', a)).toThrow(/Recomprá/);
+    }
+    // Retirarse no aporta nada: la mano sigue entre los dos.
+    cur = applyAction(cur, 'p', { type: 'fold' });
+    expect(cur.street).toBe('flop');
+    expect(cur.players.find((p) => p.id === 'p')).toMatchObject({ folded: true, totalBet: 0, stack: 0 });
+  });
+
+  it('el pendiente no ve sus cartas ni siquiera siendo el dueño, y tampoco después de retirarse', () => {
+    const s = startHand([seat('a', 1000), seat('b', 1000), seat('p', 0, true)], { button: 0, smallBlind: 10, bigBlind: 20, randomInt: rng(13) });
+    expect(publicView(s, 'p').players.find((p) => p.id === 'p')!.hole).toEqual(['??', '??']);
+    expect(publicView(s, ['p', 'a']).players.find((p) => p.id === 'p')!.hole).toEqual(['??', '??']);
+    expect(publicView(s, 'p').players.find((p) => p.id === 'a')!.hole).toEqual(['??', '??']);
+    expect(publicView(s, 'a').players.find((p) => p.id === 'a')!.hole[0]).not.toBe('??');
+  });
+
+  it('al recomprar ve sus cartas y juega frente a la apuesta vigente', () => {
+    // p recibe 7c 7d; a: Ah Kd; b: 2h 3d.
+    const deck = deckFor(['2h', '2s', '7c', '3d', 'Ah', '7d'].slice(0, 6), 'Kc Ks 9h 4s 5d');
+    let s = startHand([seat('a', 1000), seat('b', 1000), seat('p', 0, true)], { button: 0, smallBlind: 10, bigBlind: 20, deck });
+    s = applyAction(s, 'a', { type: 'raise', to: 60 });
+    s = applyAction(s, 'b', { type: 'call' });
+    expect(s.players[s.toAct].id).toBe('p');
+    s = buyInHand(s, 'p', 500);
+    expect(publicView(s, 'p').players.find((p) => p.id === 'p')!.hole).not.toContain('??');
+    expect(s.players[s.toAct].id).toBe('p');
+    // Ya con fichas, enfrenta los 60 de la mano: puede igualar o subir.
+    expect(legalActions(s)).toMatchObject({ playerId: 'p', toCall: 60, canCall: true, canRaise: true, mustBuy: false });
+    s = applyAction(s, 'p', { type: 'call' });
+    expect(s.players.find((p) => p.id === 'p')).toMatchObject({ stack: 440, totalBet: 60, pending: false });
+  });
+
+  it('no se puede recomprar sin estar pendiente, ya retirado, ni con montos inválidos', () => {
+    const s = startHand([seat('a', 1000), seat('b', 1000), seat('p', 0, true)], { button: 0, smallBlind: 10, bigBlind: 20, randomInt: rng(14) });
+    expect(() => buyInHand(s, 'a', 100)).toThrow(HoldemError);
+    expect(() => buyInHand(s, 'p', 0)).toThrow(/inválido/);
+    expect(() => buyInHand(s, 'p', 10.5)).toThrow(/inválido/);
+    let cur = applyAction(applyAction(s, 'a', { type: 'call' }), 'b', { type: 'check' });
+    cur = applyAction(cur, 'p', { type: 'fold' });
+    expect(() => buyInHand(cur, 'p', 100)).toThrow(HoldemError);
+    expect(() => revealCards(cur, 'p')).toThrow();
+  });
+
+  it('si los demás se retiran antes de que le toque, gana quien sigue con fichas: el pendiente no cuenta como jugador', () => {
+    // Orden: p (sin fichas) antes de a y b; a es el botón y la ciega chica, b la grande.
+    let s = startHand([seat('p', 0, true), seat('a', 1000), seat('b', 1000)], { button: 1, smallBlind: 10, bigBlind: 20, randomInt: rng(15) });
+    // Actúa primero a (ciega chica con dos jugadores con fichas) y se retira: gana b, aunque p no haya actuado.
+    s = applyAction(s, 'a', { type: 'fold' });
+    expect(s.street).toBe('done');
+    expect(s.payouts).toEqual([{ playerId: 'b', amount: 30 }]);
+    expect(s.players.find((x) => x.id === 'p')).toMatchObject({ stack: 0, totalBet: 0, pending: true });
+    expect(s.players.reduce((x, y) => x + y.stack, 0)).toBe(2000);
+    // Mismo caso con el pendiente al final del orden.
+    let t = startHand([seat('a', 1000), seat('b', 1000), seat('p', 0, true)], { button: 0, smallBlind: 10, bigBlind: 20, randomInt: rng(16) });
+    t = applyAction(t, 'a', { type: 'fold' });
+    expect(t.street).toBe('done');
+    expect(t.payouts).toEqual([{ playerId: 'b', amount: 30 }]);
+    expect(t.players.find((x) => x.id === 'p')).toMatchObject({ stack: 0, folded: false, pending: true });
+  });
+
+  it('exige dos jugadores con fichas y un botón con fichas', () => {
+    expect(() => startHand([seat('a', 1000), seat('p', 0, true), seat('q', 0, true)], { button: 0, smallBlind: 10, bigBlind: 20, randomInt: rng(1) })).toThrow(/al menos 2/);
+    expect(() => startHand([seat('p', 0, true), seat('a', 1000), seat('b', 1000)], { button: 0, smallBlind: 10, bigBlind: 20, randomInt: rng(1) })).toThrow(/botón/);
+    expect(() => startHand([seat('a', 1000), seat('b', 1000), seat('p', 5, true)], { button: 0, smallBlind: 10, bigBlind: 20, randomInt: rng(1) })).toThrow();
+  });
+});
+
+describe('fuzz: manos con jugadores pendientes', () => {
+  it('terminan y las fichas se conservan (las compradas se suman)', () => {
+    const r = rng(777);
+    for (let g = 0; g < 1500; g++) {
+      const funded = 2 + r(5);
+      const pend = 1 + r(3);
+      const ids = Array.from({ length: funded + pend }, (_, i) => `p${i}`);
+      // Los pendientes quedan intercalados entre los demás.
+      const order = [...ids].sort(() => r(3) - 1);
+      const pendingIds = new Set(order.filter((id) => ids.indexOf(id) >= funded));
+      const seats = order.map((id) => ({ id, stack: pendingIds.has(id) ? 0 : 20 + r(500), ...(pendingIds.has(id) ? { pending: true } : {}) }));
+      const fundedSeats = seats.filter((x) => !x.pending);
+      const buttonId = fundedSeats[r(fundedSeats.length)].id;
+      const button = seats.findIndex((x) => x.id === buttonId);
+      const total = seats.reduce((x, p) => x + p.stack, 0);
+      let bought = 0;
+      let s = startHand(seats, { button, smallBlind: 5, bigBlind: 10, randomInt: r });
+      let guard = 0;
+      while (s.street !== 'done') {
+        if (++guard > 500) throw new Error('mano infinita');
+        // A veces un pendiente recompra antes de que le toque.
+        const waiting = s.players.filter((p) => p.pending && !p.folded);
+        if (waiting.length && r(4) === 0) {
+          const chips = 10 + r(300);
+          s = buyInHand(s, waiting[r(waiting.length)].id, chips);
+          bought += chips;
+          continue;
+        }
+        const l = legalActions(s)!;
+        const pick = r(10);
+        let a: Action;
+        if (l.mustBuy) a = { type: 'fold' };
+        else if (pick < 2) a = { type: 'fold' };
+        else if (pick < 3 && l.canRaise) a = { type: 'allin' };
+        else if (pick < 6 && l.canRaise) a = { type: 'raise', to: l.minRaiseTo + r(Math.max(1, l.maxRaiseTo - l.minRaiseTo + 1)) };
+        else a = l.canCheck ? { type: 'check' } : { type: 'call' };
+        s = applyAction(s, l.playerId, a);
+      }
+      expect(s.players.reduce((x, p) => x + p.stack, 0)).toBe(total + bought);
+      expect(s.players.every((p) => p.stack >= 0)).toBe(true);
+      expect(s.payouts.reduce((x, p) => x + p.amount, 0)).toBe(s.pots.reduce((x, p) => x + p.amount, 0));
+      // Quien nunca recompró no aportó nada ni ganó.
+      for (const p of s.players.filter((x) => x.pending)) {
+        expect([p.totalBet, p.stack, s.payouts.some((w) => w.playerId === p.id)]).toEqual([0, 0, false]);
+      }
+    }
   });
 });

@@ -28,9 +28,12 @@ async function login(page: Page, name: string, role: 'master' | 'admin' | 'reade
   return token;
 }
 
-async function checkPage(page: Page, where: string) {
+/** `exclude`: selector de lo que se deja afuera, p. ej. una capa decorativa que se desvanece (su contraste cambia con la opacidad). */
+async function checkPage(page: Page, where: string, exclude?: string) {
   await page.waitForLoadState('networkidle');
-  const { violations } = await new AxeBuilder({ page }).analyze();
+  const axe = new AxeBuilder({ page });
+  if (exclude) axe.exclude(exclude);
+  const { violations } = await axe.analyze();
   expect(violations.filter(v => ['serious', 'critical'].includes(v.impact ?? '')).map(v => `${where}: ${v.id}: ${v.nodes[0]?.html}`)).toEqual([]);
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
   expect(overflow, `${where}: scroll horizontal`).toBe(false);
@@ -536,6 +539,9 @@ test('mesa online: sala de espera, iniciar, jugar una mano y cerrar', async ({ p
   await expect(page.getByTestId('pot')).toHaveText('Pozo $30');
   // Cuenta regresiva del turno y conexión en vivo.
   await expect(page.getByTestId('turn-timer')).toContainText(/\d:\d\d/);
+  // Ciegas de la mano y cuándo suben (por defecto se duplican cada 15 minutos).
+  await expect(page.getByTestId('blinds')).toContainText('Ciegas $10/$20');
+  await expect(page.getByTestId('blinds-note')).toContainText(/Suben a \$20\/\$40 en 1[45]:\d\d/);
   await expect(page.getByRole('img', { name: 'En vivo' })).toBeVisible({ timeout: 10000 });
   // Mazo de 4 colores por defecto: tréboles verdes y diamantes azules, para no confundirlos con picas y corazones.
   await expect(page.locator('.table-layout')).toHaveClass(/deck-four/);
@@ -601,6 +607,10 @@ test('mesa online: al agotarse el tiempo el servidor juega por quien no responde
   await page.getByRole('dialog').getByRole('button', { name: 'Iniciar partida' }).click();
   await expect(page.getByRole('alert')).toContainText('entre 10 y 300');
   await page.getByLabel('Tiempo por turno (segundos, 0 = sin límite)').fill('10');
+  await page.getByLabel('Duplicar las ciegas cada (minutos, 0 = nunca)').fill('3');
+  await page.getByRole('dialog').getByRole('button', { name: 'Iniciar partida' }).click();
+  await expect(page.getByRole('alert')).toContainText('Las ciegas se duplican cada 0');
+  await page.getByLabel('Duplicar las ciegas cada (minutos, 0 = nunca)').fill('15');
   await page.getByRole('dialog').getByRole('button', { name: 'Iniciar partida' }).click();
 
   await expect(page.getByTestId('turn-timer')).toContainText(/0:(0\d|10)/);
@@ -753,4 +763,170 @@ test.describe('mesa online: video', () => {
     await expect(page2.locator('.pseat-video')).toHaveCount(0, { timeout: 10000 });
     await context2.close();
   });
+});
+
+test('mesa online: sin fichas te reparten pero ves tus cartas solo si recomprás', async ({ page, browser }) => {
+  test.setTimeout(90000);
+  await login(page, 'Seba');
+  const code = await createGroup(page);
+  const master = await apiLogin(page, MASTER_TOKEN);
+  const gid = (await (await page.request.get(`${API}/groups`, { headers: { authorization: `Bearer ${master}` } })).json())[0].id as string;
+
+  // Tres jugadores (por API, para ir rápido); Seba es administrador y solo reparte.
+  const players: { name: string; page: Page; token: string; id: string }[] = [];
+  for (const name of ['Nico', 'Pablo', 'Caro']) {
+    const ctx = await browser.newContext();
+    const p = await ctx.newPage();
+    const token = await login(p, name, 'reader');
+    const auth = { authorization: `Bearer ${token}` };
+    await p.request.post(`${API}/groups/join`, { headers: auth, data: { inviteCode: code } });
+    const claimed = await p.request.post(`${API}/groups/${gid}/me/player`, { headers: auth, data: { name } });
+    players.push({ name, page: p, token, id: (await claimed.json()).id });
+    await p.goto('/table');
+    await expect(p.getByText(`${name} (vos)`)).toBeVisible();
+  }
+  const [, pablo] = players;
+
+  await page.goto('/table');
+  const start = page.getByRole('button', { name: /Iniciar partida \(3 jugadores\)/ });
+  await expect(start).toBeEnabled({ timeout: 15000 });
+  await start.click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Iniciar partida' }).click();
+  await expect(page.getByTestId('felt')).toBeVisible();
+
+  /** Quien tenga el turno hace `pick`; devuelve cuando `done` se cumple. */
+  const play = async (pick: (p: Page) => Promise<boolean>, done: () => Promise<boolean>) => {
+    for (let i = 0; i < 40 && !(await done()); i++) {
+      for (const pl of players) if (await pick(pl.page)) break;
+      await page.waitForTimeout(250);
+    }
+    expect(await done()).toBe(true);
+  };
+  const click = async (p: Page, name: RegExp | string) => {
+    const b = p.getByRole('button', { name });
+    if ((await b.count()) === 0 || !(await b.first().isVisible())) return false;
+    await b.first().click();
+    return true;
+  };
+
+  // Primera mano: todos se retiran y gana quien quede.
+  await play(p => click(p, 'Retirarme'), async () => (await page.getByRole('status').filter({ hasText: /ganó|ganaste/ }).count()) > 0);
+
+  // Pablo se queda sin fichas y se reparte otra mano.
+  await page.request.post('http://127.0.0.1:3100/e2e/bust', { data: { playerId: pablo.id } });
+  await page.getByRole('button', { name: 'Repartir próxima mano' }).click();
+  await expect(pablo.page.getByTestId('seat-Pablo')).toContainText('Sin fichas');
+  // Le repartieron, pero no ve sus cartas.
+  await expect(pablo.page.getByTestId('my-hand')).toHaveCount(0);
+  await expect(pablo.page.getByTestId('pending-note')).toContainText('no las ves hasta que recompres');
+
+  // Los demás igualan o pasan hasta que le toca a Pablo: solo puede retirarse (o recomprar).
+  await play(
+    async p => (p === pablo.page ? false : (await click(p, /^(Igualar|Pasar)/))),
+    async () => (await pablo.page.getByRole('button', { name: 'Retirarme' }).count()) > 0,
+  );
+  await expect(pablo.page.getByRole('button', { name: /^(Igualar|Pasar)/ })).toHaveCount(0);
+  await checkPage(pablo.page, 'mesa: sin fichas (pendiente de recompra)');
+
+  // Recompra a tiempo: ve sus cartas y juega.
+  await pablo.page.getByLabel('Fichas a recomprar').fill('200');
+  await pablo.page.getByRole('button', { name: 'Recomprar' }).click();
+  await expect(pablo.page.getByTestId('my-hand').getByRole('img')).toHaveCount(2);
+  await expect(pablo.page.getByTestId('pending-note')).toHaveCount(0);
+  await expect(pablo.page.getByRole('button', { name: /^Igualar/ })).toBeVisible();
+  await expect(pablo.page.getByTestId('seat-Pablo')).not.toContainText('Sin fichas');
+});
+
+/** Animación Lottie mínima (un círculo): el e2e no depende del CDN de Google. */
+const TINY_LOTTIE = JSON.stringify({
+  v: '5.7.0', fr: 30, ip: 0, op: 60, w: 100, h: 100, nm: 't', ddd: 0, assets: [],
+  layers: [{
+    ddd: 0, ind: 1, ty: 4, nm: 's', sr: 1, ao: 0, ip: 0, op: 60, st: 0,
+    ks: { o: { a: 0, k: 100 }, r: { a: 0, k: 0 }, p: { a: 0, k: [50, 50, 0] }, a: { a: 0, k: [0, 0, 0] }, s: { a: 0, k: [100, 100, 100] } },
+    shapes: [{ ty: 'gr', nm: 'g', it: [
+      { ty: 'el', nm: 'e', d: 1, p: { a: 0, k: [0, 0] }, s: { a: 0, k: [60, 60] } },
+      { ty: 'fl', nm: 'f', c: { a: 0, k: [1, 0.8, 0.2, 1] }, o: { a: 0, k: 100 }, r: 1 },
+      { ty: 'tr', p: { a: 0, k: [0, 0] }, a: { a: 0, k: [0, 0] }, s: { a: 0, k: [100, 100] }, r: { a: 0, k: 0 }, o: { a: 0, k: 100 } },
+    ] }],
+  }],
+});
+
+test('mesa online: emojis animados desde el botón flotante, estés sentado o no', async ({ page, browser }) => {
+  test.setTimeout(90000);
+  const fakeCdn = (ctx: import('@playwright/test').BrowserContext) => ctx.route('https://fonts.gstatic.com/**', route => route.fulfill({
+    status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: TINY_LOTTIE,
+  }));
+  await fakeCdn(page.context());
+  await login(page, 'Seba');
+  const code = await createGroup(page);
+  const master = await apiLogin(page, MASTER_TOKEN);
+  const gid = (await (await page.request.get(`${API}/groups`, { headers: { authorization: `Bearer ${master}` } })).json())[0].id as string;
+
+  // Dos jugadores (por API, para ir rápido); Seba es administrador y solo mira.
+  const players: { name: string; page: Page; id: string }[] = [];
+  for (const name of ['Nico', 'Pablo']) {
+    const ctx = await browser.newContext();
+    await fakeCdn(ctx);
+    const p = await ctx.newPage();
+    const token = await login(p, name, 'reader');
+    const auth = { authorization: `Bearer ${token}` };
+    await p.request.post(`${API}/groups/join`, { headers: auth, data: { inviteCode: code } });
+    const claimed = await p.request.post(`${API}/groups/${gid}/me/player`, { headers: auth, data: { name } });
+    players.push({ name, page: p, id: (await claimed.json()).id });
+    await p.goto('/table');
+    await expect(p.getByText(`${name} (vos)`)).toBeVisible();
+  }
+  const [nico, pablo] = players;
+  await page.goto('/table');
+  await expect(page.getByText('Pablo', { exact: true }).first()).toBeVisible({ timeout: 15000 });
+
+  const fab = (p: Page) => p.getByRole('button', { name: 'Enviar un emoji' });
+  const send = async (p: Page, label: string) => {
+    await fab(p).click();
+    await p.getByRole('group', { name: 'Emojis' }).getByRole('button', { name: label }).click();
+  };
+
+  // Sala de espera (nadie está en la mano): el botón flota sobre la página y cualquiera lo ve, sentado o no.
+  await fab(nico.page).click();
+  await checkPage(nico.page, 'mesa: paleta de emojis');
+  await nico.page.getByRole('group', { name: 'Emojis' }).getByRole('button', { name: 'Risa' }).click();
+  for (const p of [nico.page, pablo.page, page]) {
+    await expect(p.getByTestId('emoji-float')).toContainText('Nico');
+    await expect(p.getByTestId('emoji-said')).toHaveText('Nico envió Risa');
+  }
+  // La animación se descarga y reemplaza al emoji común.
+  await expect(page.locator('.emoji-lottie svg').first()).toBeAttached({ timeout: 10000 });
+  // El botón descansa lo que el servidor deja pasar.
+  await expect(fab(nico.page)).toBeDisabled();
+  await expect(fab(nico.page)).toBeEnabled({ timeout: 4000 });
+
+  // Ya en la mesa, el botón está en el paño y el emoji sale desde el asiento de quien lo manda.
+  await page.getByRole('button', { name: /Iniciar partida \(2 jugadores\)/ }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Iniciar partida' }).click();
+  await expect(pablo.page.getByTestId('felt')).toBeVisible();
+  await expect(pablo.page.locator('.emoji-fab-felt')).toBeVisible();
+  await send(nico.page, 'Fuego');
+  const floating = pablo.page.getByTestId('emoji-float').last();
+  await expect(floating).toContainText('Nico');
+  const seat = await pablo.page.locator(`[data-player="${nico.id}"]`).boundingBox();
+  const at = await floating.boundingBox();
+  expect(Math.abs(at!.x + at!.width / 2 - (seat!.x + seat!.width / 2))).toBeLessThan(70);
+  // La capa de emojis es decorativa (aria-hidden) y transitoria: el texto se anuncia por la región aria-live y su contraste
+  // varía con el fundido, así que no se mide ahí.
+  await checkPage(pablo.page, 'mesa: emoji en el paño', '.emoji-layer');
+
+  // El administrador que solo mira también puede mandar, y los jugadores lo ven con su nombre.
+  await expect(fab(page)).toBeEnabled({ timeout: 4000 });
+  await send(page, 'Aplausos');
+  await expect(pablo.page.getByTestId('emoji-said')).toHaveText('Seba envió Aplausos');
+
+  // Silenciar: se oculta el botón y no se ven los de los demás.
+  await pablo.page.getByRole('button', { name: 'Preferencias de la mesa' }).first().click();
+  await pablo.page.getByRole('switch', { name: /Emojis/ }).uncheck();
+  await pablo.page.getByRole('button', { name: 'Listo' }).click();
+  await expect(fab(pablo.page)).toHaveCount(0);
+  await expect(fab(nico.page)).toBeEnabled({ timeout: 4000 });
+  await send(nico.page, 'Bien');
+  await expect(page.getByTestId('emoji-said')).toHaveText('Nico envió Bien');
+  await expect(pablo.page.getByTestId('emoji-float')).toHaveCount(0);
 });

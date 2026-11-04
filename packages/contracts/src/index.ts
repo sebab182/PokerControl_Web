@@ -4,6 +4,7 @@
  */
 
 import { Type as T, type Static, type TSchema } from '@sinclair/typebox';
+import { TABLE_EMOJIS } from './emojis';
 
 const Nullable = <S extends TSchema>(s: S) => T.Union([s, T.Null()]);
 const Obj = <P extends Parameters<typeof T.Object>[0]>(p: P, id?: string) =>
@@ -237,6 +238,8 @@ export const TableSeat = Obj({
 export const HandPlayerView = Obj({
   playerId: T.String(), stack: T.Integer(), bet: T.Integer(), totalBet: T.Integer(),
   folded: T.Boolean(), allIn: T.Boolean(),
+  /** Sin fichas: se le repartió pero no ve sus cartas ni juega hasta recomprar (solo puede retirarse). */
+  pending: T.Boolean(),
   /** Tus cartas, las mostradas en el showdown, o "??" si están ocultas. */
   hole: T.Array(T.String()),
   /** Índices de `hole` que ven todos los de la mesa: el showdown o lo que el jugador decidió mostrar. */
@@ -245,6 +248,8 @@ export const HandPlayerView = Obj({
 export const LegalActionsView = Obj({
   toCall: T.Integer(), canCheck: T.Boolean(), canCall: T.Boolean(), callAmount: T.Integer(),
   canRaise: T.Boolean(), minRaiseTo: T.Integer(), maxRaiseTo: T.Integer(),
+  /** Sin fichas: solo puede retirarse, o recomprar para jugar la mano. */
+  mustBuy: T.Boolean(),
 }, 'LegalActions');
 export const HandView = Obj({
   handNo: T.Integer(),
@@ -275,7 +280,12 @@ export const HandView = Obj({
 }, 'HandView');
 export const TableView = Obj({
   id: T.String(), status: TableStatus, sessionId: Nullable(T.String()),
+  /** Ciegas de la mano en curso (o las que se usarán en la próxima). */
   smallBlind: T.Integer(), bigBlind: T.Integer(), buyIn: T.Integer(),
+  /** Ciegas por tiempo: lo que se usará en la próxima mano, el nivel y cuándo sube (null si no hay más subidas). */
+  blinds: Obj({
+    minutes: T.Integer(), level: T.Integer(), small: T.Integer(), big: T.Integer(), atCap: T.Boolean(), nextAt: Nullable(T.String()),
+  }, 'TableBlinds'),
   /** Cambia con cada acción: se envía de vuelta en POST /table/action. */
   version: T.Integer(),
   /** Segundos por turno (0 = sin límite) y vencimiento del turno en curso. */
@@ -321,10 +331,26 @@ export const RtcServerMessage = Obj({
   data: T.Optional(T.Unknown()),
 }, 'RtcServerMessage');
 
+/**
+ * Paleta fija de emojis animados que se pueden mandar a la mesa. `id` es el código Unicode: así se llama su animación
+ * en Noto Emoji Animation (Google). Solo viajan estos ids: nunca texto libre.
+ */
+export { TABLE_EMOJIS, type TableEmojiId } from './emojis';
+const EmojiId = T.Union(TABLE_EMOJIS.map(e => T.Literal(e.id)));
+export const EmojiClientMessage = Obj({ type: T.Literal('emoji'), id: EmojiId }, 'EmojiClientMessage');
+export const EmojiServerMessage = Obj({
+  type: T.Literal('emoji'), id: EmojiId,
+  /** Jugador del que lo manda; null si no tiene (p. ej. un administrador que mira). */
+  playerId: Nullable(T.String()),
+  name: T.String({ maxLength: 60 }),
+}, 'EmojiServerMessage');
+
 export const StartTableBody = Obj({
   smallBlind: T.Optional(Chips), bigBlind: T.Optional(Chips), buyIn: T.Optional(Chips),
   /** 0 = sin límite; si no, entre 10 y 300 segundos. */
   turnSeconds: T.Optional(T.Integer({ minimum: 0, maximum: 300 })),
+  /** Cada cuántos minutos se duplican las ciegas: 0 (nunca) o entre 5 y 120. */
+  blindMinutes: T.Optional(T.Integer({ minimum: 0, maximum: 120 })),
 });
 export const TableActionBody = Obj({
   version: T.Integer(),
@@ -378,3 +404,4 @@ export type ApiTableAction = Static<typeof TableActionBody>['action'];
 export type ApiRtcKind = Static<typeof RtcKind>;
 export type ApiRtcClientMessage = Static<typeof RtcClientMessage>;
 export type ApiRtcServerMessage = Static<typeof RtcServerMessage>;
+export type ApiEmojiServerMessage = Static<typeof EmojiServerMessage>;

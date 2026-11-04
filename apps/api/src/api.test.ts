@@ -1524,6 +1524,197 @@ describe('mesa online', () => {
     });
   });
 
+  describe('sin fichas: cartas ocultas hasta recomprar', () => {
+    const expire = () => conn.pool.query(`update poker_tables set turn_deadline = now() - interval '1 second'`);
+    const seatOf = async (playerId: string) => (await conn.pool.query('select status, timeouts, stack from poker_seats where player_id = $1', [playerId])).rows[0];
+
+    /** Tres jugadores en la mesa; el tercero se queda sin fichas y se reparte la mano siguiente. */
+    async function withBrokePlayer(startBody: object = { turnSeconds: 10 }) {
+      const ctx = await setup(1);
+      const [a, b, c] = ctx.clients;
+      for (const x of [a, b, c]) await x.ok('POST', '/g/table/join');
+      let v = await a.idem('/g/table/start', startBody);
+      // Termina la primera mano (todos se retiran) y el tercero queda sin fichas.
+      while (v.hand.street !== 'done') {
+        const who = ctx.byPlayer(v.hand.toActPlayerId);
+        v = await act(who, await view(who), { type: 'fold' });
+      }
+      await conn.pool.query('update poker_seats set stack = 0 where player_id = $1', [ctx.pid[2]]);
+      v = await a.ok('POST', '/g/table/deal');
+      return { ...ctx, a, b, c, v, broke: ctx.pid[2] };
+    }
+    /** Hasta que le toque al pendiente, los demás igualan o pasan. */
+    async function untilTurnOf(ctx: Awaited<ReturnType<typeof withBrokePlayer>>, playerId: string) {
+      let v = await view(ctx.a);
+      for (let i = 0; v.hand.toActPlayerId !== playerId; i++) {
+        if (i > 10 || v.hand.street === 'done') throw new Error('no le llegó el turno');
+        const who = ctx.byPlayer(v.hand.toActPlayerId);
+        const cur = await view(who);
+        v = await act(who, cur, cur.hand.legal.canCheck ? { type: 'check' } : { type: 'call' });
+      }
+      return v;
+    }
+
+    it('al sentado sin fichas se le reparte, pero no ve sus cartas ni puede jugar: solo retirarse', async () => {
+      const ctx = await withBrokePlayer();
+      const { c, broke, v } = ctx;
+      const mine = v.hand.players.find((p: { playerId: string }) => p.playerId === broke);
+      expect([mine.pending, mine.stack, mine.bet]).toEqual([true, 0, 0]);
+      // Sus cartas están ocultas para todos, incluido él.
+      expect((await view(c)).hand.players.find((p: { playerId: string }) => p.playerId === broke).hole).toEqual(['??', '??']);
+      const turn = await untilTurnOf(ctx, broke);
+      const own = await view(c);
+      expect(own.hand.legal).toMatchObject({ mustBuy: true, canCheck: false, canCall: false, canRaise: false });
+      for (const action of [{ type: 'check' }, { type: 'call' }, { type: 'allin' }]) {
+        expect((await c.call('POST', '/g/table/action', { version: turn.version, action })).body.error).toBe('illegal_action');
+      }
+      const folded = await act(c, own, { type: 'fold' });
+      expect(folded.hand.players.find((p: { playerId: string }) => p.playerId === broke)).toMatchObject({ folded: true, pending: true, hole: ['??', '??'] });
+      expect(await seatOf(broke)).toMatchObject({ status: 'sitting', timeouts: 0 });
+    });
+
+    it('si recompra a tiempo ve sus cartas, juega con esas fichas y la compra suma a la partida', async () => {
+      const ctx = await withBrokePlayer();
+      const { a, c, broke } = ctx;
+      await untilTurnOf(ctx, broke);
+      const bought = await c.idem('/g/table/rebuy', { amount: 200 });
+      const mine = bought.hand.players.find((p: { playerId: string }) => p.playerId === broke);
+      expect(mine).toMatchObject({ pending: false, stack: 200 });
+      expect(mine.hole.every((x: string) => x !== '??')).toBe(true);
+      expect(bought.hand.toActPlayerId).toBe(broke);
+      expect(bought.hand.legal).toMatchObject({ mustBuy: false, canCall: true });
+      const sess = await a.ok('GET', `/g/sessions/${bought.sessionId}`);
+      expect(sess.participants.find((p: { playerId: string }) => p.playerId === broke).buys.map((x: { amount: number }) => x.amount)).toEqual([1000, 200]);
+      // Ya con fichas, actúa frente a la apuesta vigente.
+      const after = await act(c, bought, { type: 'call' });
+      expect(after.hand.lastAction).toMatchObject({ playerId: broke, type: 'call' });
+      // El tope de la recompra sigue vigente.
+      const again = await withBrokePlayer();
+      await untilTurnOf(again, again.broke);
+      expect((await again.c.call('POST', '/g/table/rebuy', { amount: 10_000 }, 'rebuy-tope-001')).body.error).toBe('rebuy_too_high');
+    });
+
+    it('si no recompra a tiempo, el servidor lo retira y nunca lo saca de la mesa', async () => {
+      const ctx = await withBrokePlayer();
+      const { a, broke } = ctx;
+      await untilTurnOf(ctx, broke);
+      await expire();
+      expect(await sweepTurns(app)).toEqual([a.groupId]);
+      const v = await view(a);
+      expect(v.hand.players.find((p: { playerId: string }) => p.playerId === broke)).toMatchObject({ folded: true, pending: true });
+      expect(v.hand.lastAction).toEqual({ playerId: broke, type: 'fold', auto: true });
+      expect(await seatOf(broke)).toMatchObject({ status: 'sitting', timeouts: 0 });
+      // Termina la mano y en la siguiente le reparten otra vez, y otra vez se retira: sigue sentado.
+      let cur = v;
+      while (cur.hand.street !== 'done') {
+        const who = ctx.byPlayer(cur.hand.toActPlayerId);
+        cur = await act(who, await view(who), { type: 'fold' });
+      }
+      await a.ok('POST', '/g/table/deal');
+      await untilTurnOf(ctx, broke);
+      await expire();
+      await sweepTurns(app);
+      expect(await seatOf(broke)).toMatchObject({ status: 'sitting', timeouts: 0 });
+    });
+
+    it('si se desconecta antes de su turno, se retira en cuanto le toca, sin esperar', async () => {
+      const ctx = await withBrokePlayer();
+      const { a, broke } = ctx;
+      await conn.pool.query(`update poker_seats set last_seen_at = now() - interval '5 minutes' where player_id = $1`, [broke]);
+      await untilTurnOf(ctx, broke);
+      // El vencimiento ya está cumplido: no hace falta adelantar el reloj.
+      expect((await view(a)).turnDeadline && new Date((await view(a)).turnDeadline).getTime() <= Date.now() + 1000).toBe(true);
+      expect(await sweepTurns(app)).toEqual([a.groupId]);
+      expect((await view(a)).hand.lastAction).toEqual({ playerId: broke, type: 'fold', auto: true });
+    });
+
+    it('un sentado sin fichas que ya no está conectado no se reparte, y sigue en la mesa', async () => {
+      const ctx = await setup(1);
+      const [a, b, c] = ctx.clients;
+      for (const x of [a, b, c]) await x.ok('POST', '/g/table/join');
+      let v = await a.idem('/g/table/start', { turnSeconds: 10 });
+      while (v.hand.street !== 'done') {
+        const who = ctx.byPlayer(v.hand.toActPlayerId);
+        v = await act(who, await view(who), { type: 'fold' });
+      }
+      await conn.pool.query(`update poker_seats set stack = 0, last_seen_at = now() - interval '5 minutes' where player_id = $1`, [ctx.pid[2]]);
+      v = await a.ok('POST', '/g/table/deal');
+      expect(v.hand.players.map((p: { playerId: string }) => p.playerId)).not.toContain(ctx.pid[2]);
+      expect(await seatOf(ctx.pid[2])).toMatchObject({ status: 'sitting' });
+    });
+
+    it('sin límite de turno, quien debe recomprar igual tiene un tiempo (los demás no)', async () => {
+      const ctx = await withBrokePlayer({ turnSeconds: 0 });
+      const { a, broke } = ctx;
+      let v = await view(a);
+      if (v.hand.toActPlayerId !== broke) expect(v.turnDeadline).toBeNull();
+      v = await untilTurnOf(ctx, broke);
+      const left = new Date(v.turnDeadline).getTime() - new Date(v.serverTime).getTime();
+      expect(left).toBeGreaterThan(40_000);
+      expect(left).toBeLessThanOrEqual(45_000);
+      await expire();
+      expect(await sweepTurns(app)).toEqual([a.groupId]);
+    });
+  });
+
+  describe('ciegas por tiempo', () => {
+    const rewind = (minutes: number) => conn.pool.query(`update poker_tables set blinds_started_at = now() - make_interval(mins => $1)`, [minutes]);
+
+    async function twoAtTable(body: object = {}) {
+      const ctx = await setup();
+      await ctx.a.ok('POST', '/g/table/join');
+      await ctx.b.ok('POST', '/g/table/join');
+      const v = await ctx.a.idem('/g/table/start', body);
+      return { ...ctx, v };
+    }
+
+    it('por defecto se duplican cada 15 minutos y la vista dice cuándo sube', async () => {
+      const { v } = await twoAtTable();
+      expect(v.blinds).toMatchObject({ minutes: 15, level: 0, small: 10, big: 20, atCap: false });
+      expect([v.smallBlind, v.bigBlind]).toEqual([10, 20]);
+      const left = new Date(v.blinds.nextAt).getTime() - new Date(v.serverTime).getTime();
+      expect(left).toBeGreaterThan(14 * 60_000);
+      expect(left).toBeLessThanOrEqual(15 * 60_000);
+    });
+
+    it('la suba entra en la mano siguiente, nunca en medio de la que está en juego', async () => {
+      const { a, byPlayer, v } = await twoAtTable({ blindMinutes: 5 });
+      expect(v.hand.pot).toBe(30);
+      await rewind(6);
+      const mid = await view(a);
+      // Ya corresponde el nivel 1, pero la mano en curso conserva sus ciegas.
+      expect(mid.blinds).toMatchObject({ level: 1, small: 20, big: 40 });
+      expect([mid.smallBlind, mid.bigBlind, mid.hand.pot]).toEqual([10, 20, 30]);
+      const done = await act(byPlayer(mid.hand.toActPlayerId), mid, { type: 'fold' });
+      expect(done.hand.street).toBe('done');
+      // Sin mano en juego, se muestran las que usará la próxima.
+      expect([done.smallBlind, done.bigBlind]).toEqual([20, 40]);
+      const next = await a.ok('POST', '/g/table/deal');
+      expect([next.smallBlind, next.bigBlind, next.hand.pot]).toEqual([20, 40, 60]);
+    });
+
+    it('la ciega grande no pasa de la mitad de la entrada', async () => {
+      const { a, byPlayer, v } = await twoAtTable({ blindMinutes: 5 });
+      await rewind(5 * 60);
+      const folded = await act(byPlayer(v.hand.toActPlayerId), v, { type: 'fold' });
+      expect(folded.blinds).toMatchObject({ level: 4, small: 160, big: 320, atCap: true, nextAt: null });
+      const next = await a.ok('POST', '/g/table/deal');
+      expect([next.smallBlind, next.bigBlind]).toEqual([160, 320]);
+    });
+
+    it('con 0 nunca se duplican; el valor se valida', async () => {
+      const { a, b } = await setup();
+      await a.ok('POST', '/g/table/join');
+      await b.ok('POST', '/g/table/join');
+      expect((await a.call('POST', '/g/table/start', { blindMinutes: 3 }, 'blind-key-0001')).body.error).toBe('invalid_blind_time');
+      expect((await a.call('POST', '/g/table/start', { blindMinutes: 121 }, 'blind-key-0002')).status).toBe(400);
+      const v = await a.idem('/g/table/start', { blindMinutes: 0 });
+      expect(v.blinds).toMatchObject({ minutes: 0, level: 0, big: 20, atCap: true, nextAt: null });
+      await rewind(5 * 60);
+      expect((await view(a)).blinds).toMatchObject({ level: 0, big: 20, nextAt: null });
+    });
+  });
+
   describe('tiempo por turno', () => {
     const expire = () => conn.pool.query(`update poker_tables set turn_deadline = now() - interval '1 second'`);
     const seatsOf = async () => (await conn.pool.query('select player_id, status, timeouts from poker_seats')).rows;
@@ -1734,6 +1925,90 @@ describe('mesa online', () => {
         expect(pb.rtc()).toHaveLength(0);
         pa.ws.close(); pb.ws.close();
       });
+    });
+
+    /** Conecta y autentica un socket; devuelve también los mensajes que va recibiendo. */
+    async function connect(c: Client, groupId = c.groupId) {
+      const ws = await app.injectWS(`/api/v1/groups/${groupId}/table/ws`);
+      const received: { type: string; [k: string]: unknown }[] = [];
+      const ready = nextMessage(ws);
+      ws.send(JSON.stringify({ type: 'auth', token: c.token }));
+      expect(await ready).toEqual({ type: 'ready' });
+      ws.on('message', (d: Buffer) => received.push(JSON.parse(d.toString())));
+      return { ws, received };
+    }
+    const emojis = (r: { type: string; [k: string]: unknown }[]) => r.filter(m => m.type === 'emoji');
+    const settle = (ms = 250) => new Promise(r => setTimeout(r, ms));
+
+    it('un emoji llega a todos los conectados, incluido quien lo mandó, con su nombre y sin guardarse', async () => {
+      const { a, b, pid } = await setup();
+      const sa = await connect(a);
+      const sb = await connect(b);
+      sa.ws.send(JSON.stringify({ type: 'emoji', id: '1f602' }));
+      await settle();
+      const expected = { type: 'emoji', id: '1f602', playerId: pid[0], name: 'J0' };
+      expect(emojis(sa.received)).toEqual([expected]);
+      expect(emojis(sb.received)).toEqual([expected]);
+      // Nada queda en la base: es efímero.
+      expect((await conn.pool.query('select count(*)::int as n from poker_actions')).rows[0].n).toBe(0);
+      sa.ws.close();
+      sb.ws.close();
+    });
+
+    it('quien mira sin jugador (administrador) también puede mandar: va con el nombre de su usuario', async () => {
+      const { c: admin, group } = await withGroup('master');
+      const reader = await login('lector');
+      await reader.ok('POST', '/groups/join', { inviteCode: group.inviteCode });
+      reader.groupId = group.id;
+      const sr = await connect(reader);
+      const sa = await connect(admin);
+      sa.ws.send(JSON.stringify({ type: 'emoji', id: '1f44f' }));
+      await settle();
+      expect(emojis(sr.received)).toEqual([{ type: 'emoji', id: '1f44f', playerId: null, name: 'master' }]);
+      sa.ws.close();
+      sr.ws.close();
+    });
+
+    it('solo acepta la paleta fija, y a uno por conexión cada ~1,5 s', async () => {
+      const { a, b } = await setup();
+      const sa = await connect(a);
+      const sb = await connect(b);
+      // Fuera de la paleta o mal formados: se ignoran (y no gastan el turno del límite).
+      for (const bad of [{ id: '1f4a9' }, { id: '<script>' }, { id: 5 }, {}, { id: '1f602', extra: true }]) {
+        sa.ws.send(JSON.stringify({ type: 'emoji', ...bad }));
+      }
+      sa.ws.send('no es json');
+      await settle();
+      expect(emojis(sb.received)).toEqual([]);
+      // Dos seguidos: pasa el primero.
+      sa.ws.send(JSON.stringify({ type: 'emoji', id: '1f525' }));
+      sa.ws.send(JSON.stringify({ type: 'emoji', id: '1f62d' }));
+      await settle();
+      expect(emojis(sb.received).map(m => m.id)).toEqual(['1f525']);
+      await settle(1500);
+      sa.ws.send(JSON.stringify({ type: 'emoji', id: '1f62d' }));
+      await settle();
+      expect(emojis(sb.received).map(m => m.id)).toEqual(['1f525', '1f62d']);
+      sa.ws.close();
+      sb.ws.close();
+    });
+
+    it('no cruza de grupo, y sin autenticar no se puede mandar', async () => {
+      const { a } = await setup();
+      const { c: other } = await withGroup('ajeno-admin');
+      const sa = await connect(a);
+      const so = await connect(other);
+      sa.ws.send(JSON.stringify({ type: 'emoji', id: '1f60e' }));
+      await settle();
+      expect(emojis(sa.received)).toHaveLength(1);
+      expect(emojis(so.received)).toEqual([]);
+      sa.ws.close();
+      so.ws.close();
+
+      const anon = await app.injectWS(wsUrl(a));
+      const anonClosed = closeCode(anon);
+      anon.send(JSON.stringify({ type: 'emoji', id: '1f602' }));
+      expect(await anonClosed).toBe(4401);
     });
 
     it('rechaza token inválido, mensaje sin auth y a quien no es del grupo', async () => {

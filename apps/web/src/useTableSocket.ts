@@ -1,4 +1,4 @@
-import type { ApiRtcClientMessage, ApiRtcServerMessage } from '@pokercontrol/contracts';
+import type { ApiEmojiServerMessage, ApiRtcClientMessage, ApiRtcServerMessage, TableEmojiId } from '@pokercontrol/contracts';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getToken, wsUrl } from './api';
 
@@ -10,22 +10,27 @@ export interface TableSocket {
   live: boolean;
   /** Manda señalización del video; si no hay conexión, se descarta (la renegociación la rehace al reconectar). */
   send: (msg: Omit<ApiRtcClientMessage, 'type'>) => void;
+  /** Manda un emoji de la paleta a la mesa; si no hay conexión, se descarta. */
+  sendEmoji: (id: TableEmojiId) => void;
 }
 
 /**
  * Escucha los avisos de la mesa. El socket solo dice "cambió": los datos se
  * piden por HTTP, así que si se corta no se pierde nada, solo se vuelve al polling.
- * Por el mismo canal pasa la señalización del video (`onSignal`). Reconecta con espera
+ * Por el mismo canal pasa la señalización del video (`onSignal`) y los emojis (`onEmoji`). Reconecta con espera
  * creciente (1 s hasta 15 s).
  */
 export function useTableSocket(
   groupId: string, onChanged: () => void, onSignal?: (msg: ApiRtcServerMessage) => void,
+  onEmoji?: (msg: ApiEmojiServerMessage) => void,
 ): TableSocket {
   const [live, setLive] = useState(false);
   const callback = useRef(onChanged);
   callback.current = onChanged;
   const signalCallback = useRef(onSignal);
   signalCallback.current = onSignal;
+  const emojiCallback = useRef(onEmoji);
+  emojiCallback.current = onEmoji;
   const current = useRef<WebSocket | null>(null);
 
   useEffect(() => {
@@ -52,6 +57,8 @@ export function useTableSocket(
             callback.current();
           } else if (msg.type === 'rtc') {
             signalCallback.current?.(msg as ApiRtcServerMessage);
+          } else if (msg.type === 'emoji') {
+            emojiCallback.current?.(msg as ApiEmojiServerMessage);
           }
         } catch { /* mensaje ajeno: se ignora */ }
       };
@@ -78,5 +85,10 @@ export function useTableSocket(
     if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'rtc', ...msg }));
   }, []);
 
-  return { live, send };
+  const sendEmoji = useCallback((id: TableEmojiId) => {
+    const ws = current.current;
+    if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'emoji', id }));
+  }, []);
+
+  return { live, send, sendEmoji };
 }

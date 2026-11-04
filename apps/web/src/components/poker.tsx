@@ -84,7 +84,7 @@ export function PlayerSeat({ view, hand, playerId, offset, total }: {
   const dealer = hand.players[hand.button]?.playerId === playerId;
   const won = hand.payouts.find(x => x.playerId === playerId);
   const win = winningCards(hand);
-  const status = p.folded ? 'Retirado' : p.allIn ? 'All-in' : null;
+  const status = p.folded ? 'Retirado' : p.allIn ? 'All-in' : p.pending ? 'Sin fichas' : null;
   const mine = seat.isYou || seat.managed;
   // Se ve lo que se mostró y, en los asientos propios, también lo que solo ves vos.
   const cards = p.hole.flatMap((c, i) => c !== '??' && (p.shown.includes(i) || mine) ? [{ c, i, own: !p.shown.includes(i) }] : []);
@@ -106,7 +106,7 @@ export function PlayerSeat({ view, hand, playerId, offset, total }: {
   const holeCards = cards.map(x => <PokerCard key={x.i} card={x.c} size={hero ? 'lg' : 'sm'} mark={markOf(win, x.c)} own={x.own} />);
   return (
     <div className={`pseat ${hero ? 'pseat-hero' : ''} ${turn ? 'pseat-turn' : ''} ${turn && !mine ? 'pseat-thinking' : ''} ${p.folded ? 'pseat-folded' : ''} ${won ? 'pseat-won' : ''}`}
-      style={{ ...seatPosition(offset, total), ...(turn && !mine ? seatInward(offset, total) : {}) }} data-testid={`seat-${seat.name}`}>
+      style={{ ...seatPosition(offset, total), ...(turn && !mine ? seatInward(offset, total) : {}) }} data-testid={`seat-${seat.name}`} data-player={playerId}>
       {hero ? (
         <>
           <div className="pseat-hole" data-testid="my-hand">{holeCards}</div>
