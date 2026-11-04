@@ -363,6 +363,27 @@ input[type="text"], input[type="search"], select {
 .video-mirror { transform: scaleX(-1); }
 .pseat-turn .avatar, .pseat-turn .pseat-video { border-color: #FBBF24; box-shadow: 0 0 0 4px rgba(251, 191, 36, .3); }
 .pseat-folded .avatar, .pseat-folded .pseat-video { filter: grayscale(1); }
+/*
+ * Quien piensa (turno de otro jugador): su imagen o video se agranda sobre su propia posición para verse bien.
+ * Solo es visual (la propiedad `scale` no ocupa lugar), así que no mueve ni empuja a ningún asiento. Pasa por encima
+ * de los vecinos, y el nombre y el saldo quedan por delante, como un epígrafe sobre la imagen.
+ */
+.pseat-thinking { z-index: 6; }
+.pseat-thinking .avatar, .pseat-thinking .pseat-video {
+  /* --in-x / --in-y (-1 a 1) los pone el asiento: apuntan al centro de la mesa. */
+  scale: 2.4; translate: calc(var(--in-x, 0) * 12px) calc(var(--in-y, 0) * 20px); transform-origin: 50% 50%;
+  pointer-events: none; transition: scale .25s ease, translate .25s ease;
+  box-shadow: 0 0 0 3px rgba(251, 191, 36, .45), 0 6px 18px rgba(0, 0, 0, .55);
+}
+.pseat-thinking .pseat-video { scale: 1.9; }
+.pseat-thinking .pseat-tag, .pseat-thinking .pseat-bet, .pseat-thinking .pseat-status { position: relative; z-index: 3; }
+@media (min-width: 768px) {
+  .pseat-thinking .avatar, .pseat-thinking .pseat-video { translate: calc(var(--in-x, 0) * 10px) calc(var(--in-y, 0) * 12px); }
+  .pseat-thinking .pseat-video { scale: 1.8; }
+}
+/* Horizontal en celular: hay poco alto, se agranda menos para no tapar la barra de arriba. */
+.table-landscape .pseat-thinking .avatar { scale: 2; }
+.table-landscape .pseat-thinking .pseat-video { scale: 1.6; }
 .pseat-won .avatar, .pseat-won .pseat-video { border-color: #34D399; box-shadow: 0 0 0 4px rgba(52, 211, 153, .3); }
 .video-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-bottom: 12px; }
 .video-mic { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; font-size: 14px; }
