@@ -12,10 +12,10 @@ import {
   type ApiTableView,
 } from '@pokercontrol/contracts';
 import {
-  HoldemError, applyAction, blindLevel, legalActions, publicView, revealCards, shownCards, startHand, winDetails, type Action, type HandState,
+  HoldemError, applyAction, blindLevel, buyInHand, legalActions, publicView, revealCards, shownCards, startHand, winDetails, type Action, type HandState,
 } from '@pokercontrol/core';
 import { type Static } from '@sinclair/typebox';
-import { and, asc, desc, eq, gt, isNotNull, lte, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, isNotNull, lte, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import * as schema from '../db/schema';
 import type { LoggedAction } from '../db/schema';
@@ -162,13 +162,13 @@ async function buildView(db: Conn, table: TableRow, viewer: Viewer): Promise<Api
       toActPlayerId: v.toAct >= 0 ? v.players[v.toAct].id : null,
       players: v.players.map(p => ({
         playerId: p.id, stack: p.stack, bet: p.bet, totalBet: p.totalBet, folded: p.folded, allIn: p.allIn, hole: p.hole,
-        shown: shownCards(state, p.id),
+        shown: shownCards(state, p.id), pending: !!p.pending,
       })),
       actingPlayerId: legal ? actingFor : null,
       legal: legal
         ? {
           toCall: legal.toCall, canCheck: legal.canCheck, canCall: legal.canCall, callAmount: legal.callAmount,
-          canRaise: legal.canRaise, minRaiseTo: legal.minRaiseTo, maxRaiseTo: legal.maxRaiseTo,
+          canRaise: legal.canRaise, minRaiseTo: legal.minRaiseTo, maxRaiseTo: legal.maxRaiseTo, mustBuy: legal.mustBuy,
         }
         : null,
       lastAction: last
@@ -234,22 +234,28 @@ function pickButton(order: string[], eligible: string[], prevButton: string | nu
 
 async function dealHand(tx: Tx, table: TableRow): Promise<void> {
   const seats = (await loadSeats(tx, table.id)).map(s => s.seat);
-  const eligible = seats.filter(s => s.status === 'sitting' && s.stack > 0);
-  if (eligible.length < 2) throw new ApiError(422, 'not_enough_players', 'Hacen falta al menos 2 jugadores con fichas.');
+  const funded = seats.filter(s => s.status === 'sitting' && s.stack > 0);
+  if (funded.length < 2) throw new ApiError(422, 'not_enough_players', 'Hacen falta al menos 2 jugadores con fichas.');
+  // Sentados, conectados y sin fichas: se les reparte igual, pero no ven sus cartas ni juegan hasta recomprar.
+  const pending = seats.filter(s => s.status === 'sitting' && s.stack === 0 && isPresent(s));
+  const inHand = seats.filter(s => funded.includes(s) || pending.includes(s));
   const prev = await latestHand(tx, table.id);
   const prevState = prev?.state as HandState | undefined;
   const prevButton = prevState ? prevState.players[prevState.button]?.id ?? null : null;
-  const button = pickButton(seats.map(s => s.playerId), eligible.map(s => s.playerId), prevButton);
+  const fundedIds = funded.map(s => s.playerId);
+  // El botón rota solo entre quienes tienen fichas; el índice es el del orden de la mano.
+  const buttonId = fundedIds[pickButton(seats.map(s => s.playerId), fundedIds, prevButton)];
+  const button = inHand.findIndex(s => s.playerId === buttonId);
 
   const blinds = currentBlinds(table);
-  const state = startHand(eligible.map(s => ({ id: s.playerId, stack: s.stack })), {
+  const state = startHand(inHand.map(s => ({ id: s.playerId, stack: s.stack, ...(pending.includes(s) ? { pending: true } : {}) })), {
     // Las ciegas se fijan al repartir: no cambian en medio de la mano.
     button, smallBlind: blinds.small, bigBlind: blinds.big, randomInt,
   });
   const handNo = table.handCount + 1;
   const [row] = await tx.insert(schema.pokerHands).values({ tableId: table.id, handNo, state }).returning();
   await tx.update(schema.pokerTables)
-    .set({ handCount: handNo, button, version: bump, turnDeadline: deadlineFor(table, state) })
+    .set({ handCount: handNo, button, version: bump, turnDeadline: await armDeadline(tx, table, state) })
     .where(eq(schema.pokerTables.id, table.id));
   // Si todos quedaron all-in por las ciegas, la mano ya puede estar terminada.
   if (state.street === 'done') await finishHand(tx, row.id, state);
@@ -307,6 +313,19 @@ function deadlineFor(table: Pick<TableRow, 'turnSeconds'>, state: HandState): Da
   return new Date(Date.now() + table.turnSeconds * 1000);
 }
 
+/**
+ * Vencimiento del turno que sigue. Quien debe recomprar siempre tiene uno (aunque la mesa no tenga límite) y, si no
+ * está conectado, vence ya: no hay a quién esperar.
+ */
+async function armDeadline(tx: Tx, table: TableRow, state: HandState): Promise<Date | null> {
+  const actor = state.street !== 'done' && state.toAct >= 0 ? state.players[state.toAct] : null;
+  if (!actor?.pending) return deadlineFor(table, state);
+  const [seat] = await tx.select().from(schema.pokerSeats)
+    .where(and(eq(schema.pokerSeats.tableId, table.id), eq(schema.pokerSeats.playerId, actor.id)));
+  if (!seat || !isPresent(seat)) return new Date();
+  return new Date(Date.now() + (table.turnSeconds > 0 ? table.turnSeconds : 45) * 1000);
+}
+
 async function activeHand(tx: Conn, tableId: string): Promise<HandRow | null> {
   const row = await latestHand(tx, tableId);
   return row?.status === 'active' ? row : null;
@@ -320,6 +339,8 @@ async function activeHand(tx: Conn, tableId: string): Promise<HandRow | null> {
 async function playAction(tx: Tx, table: TableRow, hand: HandRow, playerId: string, action: Action, auto: boolean): Promise<void> {
   const state = hand.state as HandState;
   const before = legalActions(state);
+  // Quien no recompró no cuenta para la expulsión por turnos perdidos (se queda en la mesa).
+  const wasPending = !!state.players.find(p => p.id === playerId)?.pending;
   const logged: LoggedAction = action.type === 'call' && before ? { type: 'call', amount: before.callAmount }
     : action.type === 'raise' ? { type: 'raise', to: action.to, amount: action.to }
       : action.type === 'allin' && before ? { type: 'allin', amount: before.canRaise ? before.maxRaiseTo : before.callAmount }
@@ -340,7 +361,9 @@ async function playAction(tx: Tx, table: TableRow, hand: HandRow, playerId: stri
   if (next.street === 'done') await finishHand(tx, hand.id, next);
 
   const seat = and(eq(schema.pokerSeats.tableId, table.id), eq(schema.pokerSeats.playerId, playerId));
-  if (auto) {
+  if (auto && wasPending) {
+    // Sin fichas y sin responder: se retira de la mano, pero sigue sentado.
+  } else if (auto) {
     // Dos turnos seguidos sin responder: se lo saca de las próximas manos (vuelve con "Volver a sentarme").
     await tx.update(schema.pokerSeats)
       .set({ timeouts: sql`${schema.pokerSeats.timeouts} + 1`, status: sql`case when ${schema.pokerSeats.timeouts} + 1 >= 2 then 'out' else ${schema.pokerSeats.status} end` })
@@ -348,7 +371,7 @@ async function playAction(tx: Tx, table: TableRow, hand: HandRow, playerId: stri
   } else {
     await tx.update(schema.pokerSeats).set({ timeouts: 0 }).where(seat);
   }
-  await tx.update(schema.pokerTables).set({ version: bump, turnDeadline: deadlineFor(table, next) })
+  await tx.update(schema.pokerTables).set({ version: bump, turnDeadline: await armDeadline(tx, table, next) })
     .where(eq(schema.pokerTables.id, table.id));
 }
 
@@ -359,14 +382,14 @@ async function playAction(tx: Tx, table: TableRow, hand: HandRow, playerId: stri
  */
 export async function sweepTurns(app: FastifyInstance): Promise<string[]> {
   const due = await app.db.select({ id: schema.pokerTables.id }).from(schema.pokerTables).where(and(
-    eq(schema.pokerTables.status, 'playing'), gt(schema.pokerTables.turnSeconds, 0), isNotNull(schema.pokerTables.turnDeadline), lte(schema.pokerTables.turnDeadline, new Date()),
+    eq(schema.pokerTables.status, 'playing'), isNotNull(schema.pokerTables.turnDeadline), lte(schema.pokerTables.turnDeadline, new Date()),
   ));
   const changed: string[] = [];
   for (const { id } of due) {
     const done = await app.db.transaction(async tx => {
       const [table] = await tx.select().from(schema.pokerTables).where(eq(schema.pokerTables.id, id)).for('update', { skipLocked: true });
       // Otro proceso la tomó, o el jugador actuó justo antes: no hay nada que vencer.
-      if (!table?.turnDeadline || table.turnSeconds <= 0 || table.turnDeadline.getTime() > Date.now()) return null;
+      if (!table?.turnDeadline || table.turnDeadline.getTime() > Date.now()) return null;
       const hand = await activeHand(tx, table.id);
       const state = hand?.state as HandState | undefined;
       const legal = state ? legalActions(state) : null;
@@ -374,6 +397,8 @@ export async function sweepTurns(app: FastifyInstance): Promise<string[]> {
         await tx.update(schema.pokerTables).set({ turnDeadline: null }).where(eq(schema.pokerTables.id, table.id));
         return null;
       }
+      // Sin límite de turno solo vencen los pendientes de recompra (que siempre tienen un tiempo para pagar).
+      if (table.turnSeconds <= 0 && !legal.mustBuy) return null;
       await playAction(tx, table, hand, legal.playerId, legal.canCheck ? { type: 'check' } : { type: 'fold' }, true);
       const [fresh] = await tx.select({ version: schema.pokerTables.version }).from(schema.pokerTables).where(eq(schema.pokerTables.id, table.id));
       return { groupId: table.groupId, version: fresh.version };
@@ -452,7 +477,8 @@ async function rebuyPlayer(tx: Tx, table: TableRow, playerId: string, amount?: n
   const hand = await activeHand(tx, table.id);
   const state = hand?.state as HandState | undefined;
   const inHand = state?.players.find(p => p.id === playerId);
-  if (inHand && !inHand.folded) throw new ApiError(409, 'in_hand', 'Esperá a que termine la mano.');
+  // Quien debe recomprar (pendiente) puede hacerlo con la mano en juego: ve sus cartas y juega.
+  if (inHand && !inHand.folded && !inHand.pending) throw new ApiError(409, 'in_hand', 'Esperá a que termine la mano.');
   if ((inHand ? inHand.stack : seat.stack) > 0) throw new ApiError(409, 'has_chips', 'Solo se puede recomprar sin fichas.');
   const max = maxRebuy(seats, state);
   if (max < 1) throw new ApiError(422, 'rebuy_unavailable', 'No hay fichas suficientes en la mesa para recomprar.');
@@ -464,9 +490,12 @@ async function rebuyPlayer(tx: Tx, table: TableRow, playerId: string, amount?: n
   await tx.update(schema.pokerSeats).set({ stack: chips, status: 'sitting' })
     .where(and(eq(schema.pokerSeats.tableId, table.id), eq(schema.pokerSeats.playerId, playerId)));
   if (hand && state && inHand) {
-    // Retirado de la mano en juego: las fichas nuevas viajan en el estado, que se vuelca a la mesa al terminar.
-    inHand.stack = chips;
-    await tx.update(schema.pokerHands).set({ state }).where(eq(schema.pokerHands.id, hand.id));
+    // Las fichas nuevas viajan en el estado de la mano, que se vuelca a la mesa al terminar. Si estaba pendiente
+    // (sin retirarse) pasa a jugar y ve sus cartas; si ya se había retirado, juega la próxima.
+    let next = state;
+    if (inHand.pending && !inHand.folded) next = buyInHand(state, playerId, chips);
+    else inHand.stack = chips;
+    await tx.update(schema.pokerHands).set({ state: next }).where(eq(schema.pokerHands.id, hand.id));
   }
   await tx.update(schema.pokerTables).set({ version: bump }).where(eq(schema.pokerTables.id, table.id));
 }

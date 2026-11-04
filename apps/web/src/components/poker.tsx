@@ -84,7 +84,7 @@ export function PlayerSeat({ view, hand, playerId, offset, total }: {
   const dealer = hand.players[hand.button]?.playerId === playerId;
   const won = hand.payouts.find(x => x.playerId === playerId);
   const win = winningCards(hand);
-  const status = p.folded ? 'Retirado' : p.allIn ? 'All-in' : null;
+  const status = p.folded ? 'Retirado' : p.allIn ? 'All-in' : p.pending ? 'Sin fichas' : null;
   const mine = seat.isYou || seat.managed;
   // Se ve lo que se mostró y, en los asientos propios, también lo que solo ves vos.
   const cards = p.hole.flatMap((c, i) => c !== '??' && (p.shown.includes(i) || mine) ? [{ c, i, own: !p.shown.includes(i) }] : []);

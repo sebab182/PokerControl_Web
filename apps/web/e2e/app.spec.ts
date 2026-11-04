@@ -761,3 +761,75 @@ test.describe('mesa online: video', () => {
     await context2.close();
   });
 });
+
+test('mesa online: sin fichas te reparten pero ves tus cartas solo si recomprás', async ({ page, browser }) => {
+  test.setTimeout(90000);
+  await login(page, 'Seba');
+  const code = await createGroup(page);
+  const master = await apiLogin(page, MASTER_TOKEN);
+  const gid = (await (await page.request.get(`${API}/groups`, { headers: { authorization: `Bearer ${master}` } })).json())[0].id as string;
+
+  // Tres jugadores (por API, para ir rápido); Seba es administrador y solo reparte.
+  const players: { name: string; page: Page; token: string; id: string }[] = [];
+  for (const name of ['Nico', 'Pablo', 'Caro']) {
+    const ctx = await browser.newContext();
+    const p = await ctx.newPage();
+    const token = await login(p, name, 'reader');
+    const auth = { authorization: `Bearer ${token}` };
+    await p.request.post(`${API}/groups/join`, { headers: auth, data: { inviteCode: code } });
+    const claimed = await p.request.post(`${API}/groups/${gid}/me/player`, { headers: auth, data: { name } });
+    players.push({ name, page: p, token, id: (await claimed.json()).id });
+    await p.goto('/table');
+    await expect(p.getByText(`${name} (vos)`)).toBeVisible();
+  }
+  const [, pablo] = players;
+
+  await page.goto('/table');
+  const start = page.getByRole('button', { name: /Iniciar partida \(3 jugadores\)/ });
+  await expect(start).toBeEnabled({ timeout: 15000 });
+  await start.click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Iniciar partida' }).click();
+  await expect(page.getByTestId('felt')).toBeVisible();
+
+  /** Quien tenga el turno hace `pick`; devuelve cuando `done` se cumple. */
+  const play = async (pick: (p: Page) => Promise<boolean>, done: () => Promise<boolean>) => {
+    for (let i = 0; i < 40 && !(await done()); i++) {
+      for (const pl of players) if (await pick(pl.page)) break;
+      await page.waitForTimeout(250);
+    }
+    expect(await done()).toBe(true);
+  };
+  const click = async (p: Page, name: RegExp | string) => {
+    const b = p.getByRole('button', { name });
+    if ((await b.count()) === 0 || !(await b.first().isVisible())) return false;
+    await b.first().click();
+    return true;
+  };
+
+  // Primera mano: todos se retiran y gana quien quede.
+  await play(p => click(p, 'Retirarme'), async () => (await page.getByRole('status').filter({ hasText: /ganó|ganaste/ }).count()) > 0);
+
+  // Pablo se queda sin fichas y se reparte otra mano.
+  await page.request.post('http://127.0.0.1:3100/e2e/bust', { data: { playerId: pablo.id } });
+  await page.getByRole('button', { name: 'Repartir próxima mano' }).click();
+  await expect(pablo.page.getByTestId('seat-Pablo')).toContainText('Sin fichas');
+  // Le repartieron, pero no ve sus cartas.
+  await expect(pablo.page.getByTestId('my-hand')).toHaveCount(0);
+  await expect(pablo.page.getByTestId('pending-note')).toContainText('no las ves hasta que recompres');
+
+  // Los demás igualan o pasan hasta que le toca a Pablo: solo puede retirarse (o recomprar).
+  await play(
+    async p => (p === pablo.page ? false : (await click(p, /^(Igualar|Pasar)/))),
+    async () => (await pablo.page.getByRole('button', { name: 'Retirarme' }).count()) > 0,
+  );
+  await expect(pablo.page.getByRole('button', { name: /^(Igualar|Pasar)/ })).toHaveCount(0);
+  await checkPage(pablo.page, 'mesa: sin fichas (pendiente de recompra)');
+
+  // Recompra a tiempo: ve sus cartas y juega.
+  await pablo.page.getByLabel('Fichas a recomprar').fill('200');
+  await pablo.page.getByRole('button', { name: 'Recomprar' }).click();
+  await expect(pablo.page.getByTestId('my-hand').getByRole('img')).toHaveCount(2);
+  await expect(pablo.page.getByTestId('pending-note')).toHaveCount(0);
+  await expect(pablo.page.getByRole('button', { name: /^Igualar/ })).toBeVisible();
+  await expect(pablo.page.getByTestId('seat-Pablo')).not.toContainText('Sin fichas');
+});

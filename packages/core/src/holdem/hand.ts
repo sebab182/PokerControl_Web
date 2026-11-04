@@ -16,6 +16,11 @@ export interface HandPlayer {
   acted: boolean;
   canRaise: boolean;
   hole: Card[];
+  /**
+   * Sentado sin fichas: se le reparten cartas pero no las ve ni juega hasta recomprar (buyInHand). No pone ciegas.
+   * Su único movimiento es retirarse. Si se retira sin haber recomprado, queda en true (sus cartas siguen ocultas).
+   */
+  pending?: boolean;
 }
 
 export interface Pot {
@@ -69,6 +74,8 @@ export interface LegalActions {
   canRaise: boolean;
   minRaiseTo: number;
   maxRaiseTo: number;
+  /** Sin fichas: solo puede retirarse, o recomprar para jugar la mano. */
+  mustBuy: boolean;
 }
 
 export class HoldemError extends Error {
@@ -89,6 +96,9 @@ export interface StartOptions {
 }
 
 const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x)) as T;
+
+/** Sigue disputando la mano: ni se retiró ni está pendiente de recompra (el pendiente no cuenta como jugador). */
+const inPlay = (p: HandPlayer): boolean => !p.folded && !p.pending;
 
 function able(p: HandPlayer): boolean {
   return !p.folded && !p.allIn;
@@ -115,11 +125,19 @@ function postBlind(p: HandPlayer, amount: number): void {
   if (p.stack === 0) p.allIn = true;
 }
 
-/** Inicia una mano. `seats` en orden de asiento; solo jugadores con fichas. */
-export function startHand(seats: { id: string; stack: number }[], opts: StartOptions): HandState {
+/**
+ * Inicia una mano. `seats` en orden de asiento. Cada uno tiene fichas, o es `pending` (sin fichas: recibe cartas pero
+ * debe recomprar para verlas y jugar). El botón y las ciegas se reparten solo entre quienes tienen fichas; los pending
+ * ocupan su lugar en el orden de turnos.
+ */
+export function startHand(seats: { id: string; stack: number; pending?: boolean }[], opts: StartOptions): HandState {
   const n = seats.length;
-  if (n < 2) throw new HoldemError('Se necesitan al menos 2 jugadores');
-  if (seats.some((p) => !(p.stack > 0))) throw new HoldemError('Todos los jugadores deben tener fichas');
+  const fundedIdx = seats.map((p, i) => (p.pending ? -1 : i)).filter((i) => i >= 0);
+  const m = fundedIdx.length;
+  if (m < 2) throw new HoldemError('Se necesitan al menos 2 jugadores con fichas');
+  if (seats.some((p) => (p.pending ? p.stack !== 0 : !(p.stack > 0)))) {
+    throw new HoldemError('Todos los jugadores deben tener fichas (o estar pendientes de recompra)');
+  }
   if (new Set(seats.map((p) => p.id)).size !== n) throw new HoldemError('Jugadores duplicados');
   if (!(opts.bigBlind > 0) || !(opts.smallBlind > 0) || opts.smallBlind > opts.bigBlind) {
     throw new HoldemError('Ciegas inválidas');
@@ -127,10 +145,15 @@ export function startHand(seats: { id: string; stack: number }[], opts: StartOpt
   const deck = opts.deck ? opts.deck.slice() : shuffle(newDeck(), opts.randomInt ?? failRandom);
   const players: HandPlayer[] = seats.map((p) => ({
     id: p.id, stack: p.stack, bet: 0, totalBet: 0, folded: false, allIn: false, acted: false, canRaise: true, hole: [],
+    ...(p.pending ? { pending: true } : {}),
   }));
   const button = ((opts.button % n) + n) % n;
-  const sb = n === 2 ? button : (button + 1) % n;
-  const bb = (sb + 1) % n;
+  if (seats[button].pending) throw new HoldemError('El botón debe estar en un jugador con fichas');
+  // Posiciones entre quienes tienen fichas: con 2 el botón es la ciega chica.
+  const bPos = fundedIdx.indexOf(button);
+  const sbPos = m === 2 ? bPos : (bPos + 1) % m;
+  const sb = fundedIdx[sbPos];
+  const bb = fundedIdx[(sbPos + 1) % m];
 
   const s: HandState = {
     players, button, smallBlind: opts.smallBlind, bigBlind: opts.bigBlind, street: 'preflop',
@@ -140,11 +163,12 @@ export function startHand(seats: { id: string; stack: number }[], opts: StartOpt
   postBlind(players[bb], opts.bigBlind);
   s.currentBet = Math.max(players[sb].bet, players[bb].bet);
 
+  // Las cartas se reparten de una en una desde la ciega chica, también a quienes deben recomprar.
   for (let round = 0; round < 2; round++) {
     for (let k = 0; k < n; k++) players[(sb + k) % n].hole.push(s.deck.shift()!);
   }
 
-  s.toAct = nextIndex(s, n === 2 ? sb : (bb + 1) % n, (p) => needsAction(s, p));
+  s.toAct = nextIndex(s, m === 2 ? sb : (bb + 1) % n, (p) => needsAction(s, p));
   settle(s);
   return s;
 }
@@ -158,6 +182,10 @@ export function legalActions(s: HandState): LegalActions | null {
   if (s.street === 'done' || s.toAct < 0) return null;
   const p = s.players[s.toAct];
   const toCall = Math.max(0, s.currentBet - p.bet);
+  // Sin fichas ni cartas a la vista: no puede pasar ni igualar (sería jugar gratis); retirarse o recomprar.
+  if (p.pending) {
+    return { playerId: p.id, toCall, canCheck: false, canCall: false, callAmount: 0, canRaise: false, minRaiseTo: 0, maxRaiseTo: 0, mustBuy: true };
+  }
   const maxRaiseTo = p.bet + p.stack;
   const minRaiseTo = Math.min(s.currentBet + s.minRaise, maxRaiseTo);
   return {
@@ -169,6 +197,7 @@ export function legalActions(s: HandState): LegalActions | null {
     canRaise: p.canRaise && p.stack > toCall,
     minRaiseTo,
     maxRaiseTo,
+    mustBuy: false,
   };
 }
 
@@ -179,6 +208,8 @@ export function applyAction(prev: HandState, playerId: string, action: Action): 
   if (legal.playerId !== playerId) throw new HoldemError('No es tu turno');
   const s = clone(prev);
   const p = s.players[s.toAct];
+
+  if (p.pending && action.type !== 'fold') throw new HoldemError('Recomprá para jugar esta mano o retirate');
 
   let act = action;
   if (act.type === 'allin') {
@@ -230,10 +261,25 @@ export function applyAction(prev: HandState, playerId: string, action: Action): 
   return s;
 }
 
+/**
+ * Recompra en medio de la mano: quien estaba pendiente (sin fichas) paga, ve sus cartas y pasa a jugar con esas fichas.
+ * Actúa frente a la apuesta vigente cuando le toque. Las fichas son nuevas: las suma quien llama (la compra a la partida).
+ */
+export function buyInHand(prev: HandState, playerId: string, chips: number): HandState {
+  if (prev.street === 'done') throw new HoldemError('La mano ya terminó');
+  const s = clone(prev);
+  const p = s.players.find((x) => x.id === playerId);
+  if (!p || !p.pending || p.folded) throw new HoldemError('No tenés que recomprar en esta mano');
+  if (!Number.isInteger(chips) || chips <= 0) throw new HoldemError('Monto inválido');
+  p.stack = chips;
+  p.pending = false;
+  return s;
+}
+
 /** Avanza calles / cierra la mano cuando corresponde. */
 function settle(s: HandState): void {
   for (;;) {
-    const live = s.players.filter((p) => !p.folded);
+    const live = s.players.filter(inPlay);
     if (live.length === 1) return finish(s, false);
     if (s.toAct >= 0) {
       // Un único jugador con fichas que ya igualó la apuesta máxima: no hay nada más que decidir.
@@ -273,7 +319,7 @@ export function computePots(players: Pick<HandPlayer, 'id' | 'totalBet' | 'folde
 }
 
 function finish(s: HandState, showdown: boolean): void {
-  const live = s.players.filter((p) => !p.folded);
+  const live = s.players.filter(inPlay);
   s.pots = computePots(s.players);
   const won = new Map<string, number>();
   const n = s.players.length;
@@ -318,7 +364,7 @@ export interface WinDetail {
  */
 export function winDetails(s: HandState): Record<string, WinDetail> {
   if (s.street !== 'done' || s.showdown.length === 0) return {};
-  const scores = new Map(s.players.filter((p) => !p.folded).map((p) => [p.id, evaluate([...p.hole, ...s.board])]));
+  const scores = new Map(s.players.filter(inPlay).map((p) => [p.id, evaluate([...p.hole, ...s.board])]));
   const out: Record<string, WinDetail> = {};
   for (const { playerId } of s.payouts) {
     const w = scores.get(playerId);
@@ -353,8 +399,9 @@ export function publicView(s: HandState, viewerId: string | string[] | null): Om
       return shown.length === 2 ? e : { ...e, hole: e.hole.map((c, i) => (shown.includes(i) ? c : '??')), handName: '' };
     }),
     players: rest.players.map((p) => {
-      if (own.has(p.id)) return p;
-      const shown = shownCards(s, p.id);
+      // Quien no pagó la recompra no ve sus cartas (ni quien juega por él).
+      if (own.has(p.id) && !p.pending) return p;
+      const shown = p.pending ? [] : shownCards(s, p.id);
       return { ...p, hole: p.hole.map((c, i) => (shown.includes(i) ? c : '??')) };
     }),
   };
@@ -371,7 +418,7 @@ export function shownCards(s: HandState, playerId: string): number[] {
 
 /** ¿Quedó un único jugador sin retirarse? Entonces ganó sin showdown y decide qué mostrar. */
 export function isUncontested(s: HandState): boolean {
-  return s.street === 'done' && s.showdown.length === 0 && s.players.filter((p) => !p.folded).length === 1;
+  return s.street === 'done' && s.showdown.length === 0 && s.players.filter(inPlay).length === 1;
 }
 
 /**
@@ -383,6 +430,7 @@ export function revealCards(prev: HandState, playerId: string, cards: number[] =
   const p = s.players.find((x) => x.id === playerId);
   if (s.street !== 'done') throw new HoldemError('Las cartas se muestran cuando termina la mano');
   if (!p) throw new HoldemError('El jugador no jugó esta mano');
+  if (p.pending) throw new HoldemError('No recompraste: tus cartas no se muestran');
   const idx = [...new Set(cards)].sort();
   if (idx.length === 0 || idx.some((i) => i !== 0 && i !== 1)) throw new HoldemError('Carta inválida');
   if (shownCards(s, playerId).length === 2) throw new HoldemError('Tus cartas ya se mostraron');

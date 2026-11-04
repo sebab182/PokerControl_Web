@@ -1478,6 +1478,7 @@ paths:
                             - totalBet
                             - folded
                             - allIn
+                            - pending
                             - hole
                             - shown
                           properties:
@@ -1492,6 +1493,8 @@ paths:
                             folded:
                               type: boolean
                             allIn:
+                              type: boolean
+                            pending:
                               type: boolean
                             hole:
                               type: array
@@ -1513,6 +1516,7 @@ paths:
                           - canRaise
                           - minRaiseTo
                           - maxRaiseTo
+                          - mustBuy
                         properties:
                           toCall:
                             type: integer
@@ -1528,6 +1532,8 @@ paths:
                             type: integer
                           maxRaiseTo:
                             type: integer
+                          mustBuy:
+                            type: boolean
                         nullable: true
                       actingPlayerId:
                         type: string
@@ -1822,6 +1828,7 @@ paths:
                             - totalBet
                             - folded
                             - allIn
+                            - pending
                             - hole
                             - shown
                           properties:
@@ -1836,6 +1843,8 @@ paths:
                             folded:
                               type: boolean
                             allIn:
+                              type: boolean
+                            pending:
                               type: boolean
                             hole:
                               type: array
@@ -1857,6 +1866,7 @@ paths:
                           - canRaise
                           - minRaiseTo
                           - maxRaiseTo
+                          - mustBuy
                         properties:
                           toCall:
                             type: integer
@@ -1872,6 +1882,8 @@ paths:
                             type: integer
                           maxRaiseTo:
                             type: integer
+                          mustBuy:
+                            type: boolean
                         nullable: true
                       actingPlayerId:
                         type: string
@@ -2166,6 +2178,7 @@ paths:
                             - totalBet
                             - folded
                             - allIn
+                            - pending
                             - hole
                             - shown
                           properties:
@@ -2180,6 +2193,8 @@ paths:
                             folded:
                               type: boolean
                             allIn:
+                              type: boolean
+                            pending:
                               type: boolean
                             hole:
                               type: array
@@ -2201,6 +2216,7 @@ paths:
                           - canRaise
                           - minRaiseTo
                           - maxRaiseTo
+                          - mustBuy
                         properties:
                           toCall:
                             type: integer
@@ -2216,6 +2232,8 @@ paths:
                             type: integer
                           maxRaiseTo:
                             type: integer
+                          mustBuy:
+                            type: boolean
                         nullable: true
                       actingPlayerId:
                         type: string
@@ -2510,6 +2528,7 @@ paths:
                             - totalBet
                             - folded
                             - allIn
+                            - pending
                             - hole
                             - shown
                           properties:
@@ -2524,6 +2543,8 @@ paths:
                             folded:
                               type: boolean
                             allIn:
+                              type: boolean
+                            pending:
                               type: boolean
                             hole:
                               type: array
@@ -2545,6 +2566,7 @@ paths:
                           - canRaise
                           - minRaiseTo
                           - maxRaiseTo
+                          - mustBuy
                         properties:
                           toCall:
                             type: integer
@@ -2560,6 +2582,8 @@ paths:
                             type: integer
                           maxRaiseTo:
                             type: integer
+                          mustBuy:
+                            type: boolean
                         nullable: true
                       actingPlayerId:
                         type: string
@@ -2859,6 +2883,7 @@ paths:
                             - totalBet
                             - folded
                             - allIn
+                            - pending
                             - hole
                             - shown
                           properties:
@@ -2873,6 +2898,8 @@ paths:
                             folded:
                               type: boolean
                             allIn:
+                              type: boolean
+                            pending:
                               type: boolean
                             hole:
                               type: array
@@ -2894,6 +2921,7 @@ paths:
                           - canRaise
                           - minRaiseTo
                           - maxRaiseTo
+                          - mustBuy
                         properties:
                           toCall:
                             type: integer
@@ -2909,6 +2937,8 @@ paths:
                             type: integer
                           maxRaiseTo:
                             type: integer
+                          mustBuy:
+                            type: boolean
                         nullable: true
                       actingPlayerId:
                         type: string
@@ -3207,6 +3237,7 @@ paths:
                             - totalBet
                             - folded
                             - allIn
+                            - pending
                             - hole
                             - shown
                           properties:
@@ -3221,6 +3252,8 @@ paths:
                             folded:
                               type: boolean
                             allIn:
+                              type: boolean
+                            pending:
                               type: boolean
                             hole:
                               type: array
@@ -3242,6 +3275,7 @@ paths:
                           - canRaise
                           - minRaiseTo
                           - maxRaiseTo
+                          - mustBuy
                         properties:
                           toCall:
                             type: integer
@@ -3257,6 +3291,8 @@ paths:
                             type: integer
                           maxRaiseTo:
                             type: integer
+                          mustBuy:
+                            type: boolean
                         nullable: true
                       actingPlayerId:
                         type: string
@@ -3568,6 +3604,7 @@ paths:
                             - totalBet
                             - folded
                             - allIn
+                            - pending
                             - hole
                             - shown
                           properties:
@@ -3582,6 +3619,8 @@ paths:
                             folded:
                               type: boolean
                             allIn:
+                              type: boolean
+                            pending:
                               type: boolean
                             hole:
                               type: array
@@ -3603,6 +3642,7 @@ paths:
                           - canRaise
                           - minRaiseTo
                           - maxRaiseTo
+                          - mustBuy
                         properties:
                           toCall:
                             type: integer
@@ -3618,6 +3658,8 @@ paths:
                             type: integer
                           maxRaiseTo:
                             type: integer
+                          mustBuy:
+                            type: boolean
                         nullable: true
                       actingPlayerId:
                         type: string
@@ -3940,6 +3982,7 @@ paths:
                             - totalBet
                             - folded
                             - allIn
+                            - pending
                             - hole
                             - shown
                           properties:
@@ -3954,6 +3997,8 @@ paths:
                             folded:
                               type: boolean
                             allIn:
+                              type: boolean
+                            pending:
                               type: boolean
                             hole:
                               type: array
@@ -3975,6 +4020,7 @@ paths:
                           - canRaise
                           - minRaiseTo
                           - maxRaiseTo
+                          - mustBuy
                         properties:
                           toCall:
                             type: integer
@@ -3990,6 +4036,8 @@ paths:
                             type: integer
                           maxRaiseTo:
                             type: integer
+                          mustBuy:
+                            type: boolean
                         nullable: true
                       actingPlayerId:
                         type: string
@@ -4284,6 +4332,7 @@ paths:
                             - totalBet
                             - folded
                             - allIn
+                            - pending
                             - hole
                             - shown
                           properties:
@@ -4298,6 +4347,8 @@ paths:
                             folded:
                               type: boolean
                             allIn:
+                              type: boolean
+                            pending:
                               type: boolean
                             hole:
                               type: array
@@ -4319,6 +4370,7 @@ paths:
                           - canRaise
                           - minRaiseTo
                           - maxRaiseTo
+                          - mustBuy
                         properties:
                           toCall:
                             type: integer
@@ -4334,6 +4386,8 @@ paths:
                             type: integer
                           maxRaiseTo:
                             type: integer
+                          mustBuy:
+                            type: boolean
                         nullable: true
                       actingPlayerId:
                         type: string
@@ -4695,6 +4749,7 @@ paths:
                             - totalBet
                             - folded
                             - allIn
+                            - pending
                             - hole
                             - shown
                           properties:
@@ -4709,6 +4764,8 @@ paths:
                             folded:
                               type: boolean
                             allIn:
+                              type: boolean
+                            pending:
                               type: boolean
                             hole:
                               type: array
@@ -4730,6 +4787,7 @@ paths:
                           - canRaise
                           - minRaiseTo
                           - maxRaiseTo
+                          - mustBuy
                         properties:
                           toCall:
                             type: integer
@@ -4745,6 +4803,8 @@ paths:
                             type: integer
                           maxRaiseTo:
                             type: integer
+                          mustBuy:
+                            type: boolean
                         nullable: true
                       actingPlayerId:
                         type: string
@@ -5058,6 +5118,7 @@ paths:
                             - totalBet
                             - folded
                             - allIn
+                            - pending
                             - hole
                             - shown
                           properties:
@@ -5072,6 +5133,8 @@ paths:
                             folded:
                               type: boolean
                             allIn:
+                              type: boolean
+                            pending:
                               type: boolean
                             hole:
                               type: array
@@ -5093,6 +5156,7 @@ paths:
                           - canRaise
                           - minRaiseTo
                           - maxRaiseTo
+                          - mustBuy
                         properties:
                           toCall:
                             type: integer
@@ -5108,6 +5172,8 @@ paths:
                             type: integer
                           maxRaiseTo:
                             type: integer
+                          mustBuy:
+                            type: boolean
                         nullable: true
                       actingPlayerId:
                         type: string
@@ -5414,6 +5480,7 @@ paths:
                             - totalBet
                             - folded
                             - allIn
+                            - pending
                             - hole
                             - shown
                           properties:
@@ -5428,6 +5495,8 @@ paths:
                             folded:
                               type: boolean
                             allIn:
+                              type: boolean
+                            pending:
                               type: boolean
                             hole:
                               type: array
@@ -5449,6 +5518,7 @@ paths:
                           - canRaise
                           - minRaiseTo
                           - maxRaiseTo
+                          - mustBuy
                         properties:
                           toCall:
                             type: integer
@@ -5464,6 +5534,8 @@ paths:
                             type: integer
                           maxRaiseTo:
                             type: integer
+                          mustBuy:
+                            type: boolean
                         nullable: true
                       actingPlayerId:
                         type: string
@@ -5768,6 +5840,7 @@ paths:
                                 - totalBet
                                 - folded
                                 - allIn
+                                - pending
                                 - hole
                                 - shown
                               properties:
@@ -5782,6 +5855,8 @@ paths:
                                 folded:
                                   type: boolean
                                 allIn:
+                                  type: boolean
+                                pending:
                                   type: boolean
                                 hole:
                                   type: array
@@ -5803,6 +5878,7 @@ paths:
                               - canRaise
                               - minRaiseTo
                               - maxRaiseTo
+                              - mustBuy
                             properties:
                               toCall:
                                 type: integer
@@ -5818,6 +5894,8 @@ paths:
                                 type: integer
                               maxRaiseTo:
                                 type: integer
+                              mustBuy:
+                                type: boolean
                             nullable: true
                           actingPlayerId:
                             type: string

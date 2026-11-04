@@ -237,6 +237,8 @@ export const TableSeat = Obj({
 export const HandPlayerView = Obj({
   playerId: T.String(), stack: T.Integer(), bet: T.Integer(), totalBet: T.Integer(),
   folded: T.Boolean(), allIn: T.Boolean(),
+  /** Sin fichas: se le repartió pero no ve sus cartas ni juega hasta recomprar (solo puede retirarse). */
+  pending: T.Boolean(),
   /** Tus cartas, las mostradas en el showdown, o "??" si están ocultas. */
   hole: T.Array(T.String()),
   /** Índices de `hole` que ven todos los de la mesa: el showdown o lo que el jugador decidió mostrar. */
@@ -245,6 +247,8 @@ export const HandPlayerView = Obj({
 export const LegalActionsView = Obj({
   toCall: T.Integer(), canCheck: T.Boolean(), canCall: T.Boolean(), callAmount: T.Integer(),
   canRaise: T.Boolean(), minRaiseTo: T.Integer(), maxRaiseTo: T.Integer(),
+  /** Sin fichas: solo puede retirarse, o recomprar para jugar la mano. */
+  mustBuy: T.Boolean(),
 }, 'LegalActions');
 export const HandView = Obj({
   handNo: T.Integer(),

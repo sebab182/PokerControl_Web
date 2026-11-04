@@ -39,4 +39,9 @@ app.post('/e2e/reset', async () => {
   await reset();
   return { ok: true };
 });
+/** Deja sin fichas a un jugador sentado (para probar la recompra sin depender de las cartas). */
+app.post<{ Body: { playerId: string } }>('/e2e/bust', async req => {
+  await pool.query('update poker_seats set stack = 0 where player_id = $1', [req.body.playerId]);
+  return { ok: true };
+});
 await app.listen({ port: 3100, host: '127.0.0.1' });

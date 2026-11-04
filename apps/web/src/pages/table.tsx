@@ -439,9 +439,9 @@ function Playing({ view, updatedAt, bar, busy, onJoin, onLeave, onDeal, onClose,
   const me = view.seats.find(s => s.isYou);
   const hand = view.hand;
   const live = !!hand && hand.street !== 'done';
-  // Sin fichas se puede recomprar entre manos o si ya te retiraste de la que está en juego.
+  // Sin fichas se puede recomprar entre manos, si ya te retiraste de la que está en juego o mientras seguís pendiente de pagar.
   const myPlayer = hand?.players.find(p => p.playerId === me?.playerId);
-  const canRebuy = !!me && me.stack === 0 && (!live || !myPlayer || myPlayer.folded);
+  const canRebuy = !!me && me.stack === 0 && (!live || !myPlayer || myPlayer.folded || myPlayer.pending);
   // Vos y los jugadores sin usuario que manejás, en el orden de la mesa.
   const mine = (hand?.players ?? [])
     .map(p => view.seats.find(s => s.playerId === p.playerId))
@@ -464,7 +464,7 @@ function Playing({ view, updatedAt, bar, busy, onJoin, onLeave, onDeal, onClose,
             {hand.street === 'done' && <ShowCards hand={hand} players={mine} busy={busy} onReveal={onReveal} />}
             {canDeal && <Btn block busy={busy} onClick={onDeal}>Repartir próxima mano</Btn>}
             {hand.street === 'done' && waitingDeal}
-            {canRebuy && me && <NoChips view={view} sitting={me.status === 'sitting'} busy={busy} onLeave={onLeave} onRebuy={onRebuy} />}
+            {canRebuy && me && <NoChips view={view} sitting={me.status === 'sitting'} pending={!!myPlayer?.pending && !myPlayer.folded} busy={busy} onLeave={onLeave} onRebuy={onRebuy} />}
           </section>
         </div>
       )}
@@ -487,8 +487,8 @@ function Playing({ view, updatedAt, bar, busy, onJoin, onLeave, onDeal, onClose,
 }
 
 /** Sin saldo: levantarse o recomprar hasta la mitad de lo que tiene quien más fichas tiene. */
-function NoChips({ view, sitting, busy, onLeave, onRebuy }: {
-  view: ApiTableView; sitting: boolean; busy: boolean; onLeave: () => void; onRebuy: (amount: number) => void;
+function NoChips({ view, sitting, pending, busy, onLeave, onRebuy }: {
+  view: ApiTableView; sitting: boolean; pending: boolean; busy: boolean; onLeave: () => void; onRebuy: (amount: number) => void;
 }) {
   const { notify } = useFeedback();
   const max = view.maxRebuy;
@@ -504,6 +504,11 @@ function NoChips({ view, sitting, busy, onLeave, onRebuy }: {
   return (
     <section className="dock-box" aria-labelledby="no-chips" data-testid="no-chips">
       <h2 id="no-chips" className="dock-title">Sin saldo</h2>
+      {pending && (
+        <p className="xs" data-testid="pending-note" style={{ marginBottom: 4 }}>
+          Te repartieron cartas, pero no las ves hasta que recompres. Si no recomprás en tu turno, te retirás de la mano.
+        </p>
+      )}
       {max >= 1 ? (
         <>
           <p className="xs muted" style={{ marginBottom: 4 }}>Hasta {formatMoney(max)} (la mitad del que más tiene).</p>
@@ -514,7 +519,7 @@ function NoChips({ view, sitting, busy, onLeave, onRebuy }: {
           </div>
         </>
       ) : <p className="xs muted">No hay fichas para recomprar.</p>}
-      {sitting && <Btn variant="ghost" busy={busy} onClick={onLeave}>Levantarme</Btn>}
+      {sitting && !pending && <Btn variant="ghost" busy={busy} onClick={onLeave}>Levantarme</Btn>}
     </section>
   );
 }
@@ -789,6 +794,7 @@ function Controls({ view, hand, updatedAt, busy, onAction }: {
     if ((e.target as HTMLElement).closest?.('input, textarea, select, [role="dialog"]')) return;
     const k = e.key.toLowerCase();
     if (k === 'f') onAction({ type: 'fold' });
+    else if (legal.mustBuy) return;
     else if (k === 'c') onAction({ type: legal.canCheck ? 'check' : 'call' });
     else if (k === 'r' && legal.canRaise) setRaising(true);
     else return;
@@ -817,7 +823,7 @@ function Controls({ view, hand, updatedAt, busy, onAction }: {
       )}
       <div className="controls-row">
         <Btn variant="danger" busy={busy} aria-keyshortcuts="F" onClick={() => onAction({ type: 'fold' })}>Retirarme<Kbd>F</Kbd></Btn>
-        {legal.canCheck
+        {legal.mustBuy ? null : legal.canCheck
           ? <Btn busy={busy} aria-keyshortcuts="C" onClick={() => onAction({ type: 'check' })}>Pasar<Kbd>C</Kbd></Btn>
           : (
             <Btn busy={busy} aria-keyshortcuts="C" onClick={() => onAction({ type: 'call' })}>
@@ -828,6 +834,7 @@ function Controls({ view, hand, updatedAt, busy, onAction }: {
           <Btn variant="ghost" busy={busy} aria-keyshortcuts="R" aria-haspopup="dialog" onClick={() => setRaising(true)}>Subir<Kbd>R</Kbd></Btn>
         )}
       </div>
+      {legal.mustBuy && <p className="xs muted" style={{ marginTop: 6 }}>Recomprá para jugar esta mano, o retirate.</p>}
       {legal.canRaise && (
         <RaiseSheet view={view} hand={hand} open={raising} onClose={() => setRaising(false)} busy={busy} onAction={onAction} />
       )}
