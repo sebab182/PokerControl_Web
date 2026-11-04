@@ -28,9 +28,12 @@ async function login(page: Page, name: string, role: 'master' | 'admin' | 'reade
   return token;
 }
 
-async function checkPage(page: Page, where: string) {
+/** `exclude`: selector de lo que se deja afuera, p. ej. una capa decorativa que se desvanece (su contraste cambia con la opacidad). */
+async function checkPage(page: Page, where: string, exclude?: string) {
   await page.waitForLoadState('networkidle');
-  const { violations } = await new AxeBuilder({ page }).analyze();
+  const axe = new AxeBuilder({ page });
+  if (exclude) axe.exclude(exclude);
+  const { violations } = await axe.analyze();
   expect(violations.filter(v => ['serious', 'critical'].includes(v.impact ?? '')).map(v => `${where}: ${v.id}: ${v.nodes[0]?.html}`)).toEqual([]);
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
   expect(overflow, `${where}: scroll horizontal`).toBe(false);
@@ -908,7 +911,9 @@ test('mesa online: emojis animados desde el botón flotante, estés sentado o no
   const seat = await pablo.page.locator(`[data-player="${nico.id}"]`).boundingBox();
   const at = await floating.boundingBox();
   expect(Math.abs(at!.x + at!.width / 2 - (seat!.x + seat!.width / 2))).toBeLessThan(70);
-  await checkPage(pablo.page, 'mesa: emoji en el paño');
+  // La capa de emojis es decorativa (aria-hidden) y transitoria: el texto se anuncia por la región aria-live y su contraste
+  // varía con el fundido, así que no se mide ahí.
+  await checkPage(pablo.page, 'mesa: emoji en el paño', '.emoji-layer');
 
   // El administrador que solo mira también puede mandar, y los jugadores lo ven con su nombre.
   await expect(fab(page)).toBeEnabled({ timeout: 4000 });
