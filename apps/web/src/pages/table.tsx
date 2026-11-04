@@ -124,7 +124,7 @@ export function TablePage() {
 function TableView() {
   const { group, canEdit, path, key, invalidate } = useGroup();
   const qc = useQueryClient();
-  const { confirm } = useFeedback();
+  const { confirm, notify } = useFeedback();
   const { busy, run } = useAction();
   const queryKey = key('table');
   const [standing, setStanding] = useState(false);
@@ -162,6 +162,18 @@ function TableView() {
   useTurnAlert(myTurn, prefs);
   useWakeLock(prefs.keepAwake && view?.status === 'playing');
   const log = useHandLog(view);
+  // Las ciegas suben entre manos: al empezar la que ya las trae más altas, un aviso.
+  const lastHand = useRef<number | null>(null);
+  const lastBig = useRef<number | null>(null);
+  const handNo = view?.hand?.handNo;
+  const bigBlind = view?.bigBlind;
+  const smallBlind = view?.smallBlind;
+  useEffect(() => {
+    if (handNo === undefined || bigBlind === undefined || handNo === lastHand.current) return;
+    lastHand.current = handNo;
+    if (lastBig.current !== null && bigBlind > lastBig.current) notify(`Las ciegas subieron a ${formatMoney(smallBlind ?? 0)}/${formatMoney(bigBlind)}.`);
+    lastBig.current = bigBlind;
+  }, [handNo, bigBlind, smallBlind, notify]);
 
   useLandscapeTable(view?.status === 'playing' && !!view.hand);
   // En la compu la mesa usa más ancho que el resto de las páginas (ver styles.css).
@@ -327,8 +339,9 @@ function Waiting({ view, canEdit, standing, busy, onJoin, onLeave, onStart, onAd
         </div>
         <div className="lobby-cfg">
           <div><span className="xs muted">Entrada</span><strong className="num">{formatMoney(view.buyIn)}</strong></div>
-          <div><span className="xs muted">Ciegas</span><strong className="num">{view.smallBlind}/{view.bigBlind}</strong></div>
+          <div><span className="xs muted">Ciegas</span><strong className="num">{formatMoney(view.smallBlind)}/{formatMoney(view.bigBlind)}</strong></div>
           <div><span className="xs muted">Turno</span><strong className="num">{view.turnSeconds ? `${view.turnSeconds} s` : 'Sin límite'}</strong></div>
+          <div><span className="xs muted">Ciegas ×2</span><strong className="num">{view.blinds.minutes ? `cada ${view.blinds.minutes} min` : 'Nunca'}</strong></div>
         </div>
         <p className="xs muted">Se puede cambiar al iniciar la partida.</p>
       </section>
@@ -369,13 +382,14 @@ function Waiting({ view, canEdit, standing, busy, onJoin, onLeave, onStart, onAd
 
 function StartModal({ view, open, onClose, onStart, busy }: {
   view: ApiTableView; open: boolean; onClose: () => void; busy: boolean;
-  onStart: (cfg: { buyIn: number; smallBlind: number; bigBlind: number; turnSeconds: number }) => void;
+  onStart: (cfg: { buyIn: number; smallBlind: number; bigBlind: number; turnSeconds: number; blindMinutes: number }) => void;
 }) {
   const [error, setError] = useState('');
   const [buyIn, setBuyIn] = useState(String(view.buyIn));
   const [sb, setSb] = useState(String(view.smallBlind));
   const [bb, setBb] = useState(String(view.bigBlind));
   const [turn, setTurn] = useState(String(view.turnSeconds));
+  const [blindMin, setBlindMin] = useState(String(view.blinds.minutes));
   const submit = () => {
     const cfg = { buyIn: parseAmount(buyIn), smallBlind: parseAmount(sb), bigBlind: parseAmount(bb) };
     if ([cfg.buyIn, cfg.smallBlind, cfg.bigBlind].some(n => n === null || n <= 0 || !Number.isInteger(n))) {
@@ -385,8 +399,12 @@ function StartModal({ view, open, onClose, onStart, busy }: {
     if (turnSeconds === null || !Number.isInteger(turnSeconds) || (turnSeconds !== 0 && (turnSeconds < 10 || turnSeconds > 300))) {
       return setError('El tiempo por turno es 0 (sin límite) o entre 10 y 300 segundos.');
     }
+    const blindMinutes = parseAmount(blindMin);
+    if (blindMinutes === null || !Number.isInteger(blindMinutes) || (blindMinutes !== 0 && (blindMinutes < 5 || blindMinutes > 120))) {
+      return setError('Las ciegas se duplican cada 0 (nunca) o entre 5 y 120 minutos.');
+    }
     setError('');
-    onStart({ ...cfg, turnSeconds } as { buyIn: number; smallBlind: number; bigBlind: number; turnSeconds: number });
+    onStart({ ...cfg, turnSeconds, blindMinutes } as { buyIn: number; smallBlind: number; bigBlind: number; turnSeconds: number; blindMinutes: number });
   };
   return (
     <Modal open={open} onClose={onClose} title="Iniciar partida"
@@ -397,6 +415,10 @@ function StartModal({ view, open, onClose, onStart, busy }: {
         <TextField label="Ciega grande" value={bb} onChange={setBb} decimal />
       </div>
       <TextField label="Tiempo por turno (segundos, 0 = sin límite)" value={turn} onChange={setTurn} decimal />
+      <TextField label="Duplicar las ciegas cada (minutos, 0 = nunca)" value={blindMin} onChange={setBlindMin} decimal />
+      <p className="xs muted" style={{ marginTop: -6, marginBottom: 12 }}>
+        Suben entre manos y se frenan cuando la ciega grande llega a la mitad de la entrada.
+      </p>
       {error && <p className="notice notice-err" role="alert">{error}</p>}
       <div className="modal-actions">
         <Btn variant="ghost" onClick={onClose}>Cancelar</Btn>
@@ -434,7 +456,7 @@ function Playing({ view, updatedAt, bar, busy, onJoin, onLeave, onDeal, onClose,
       {hand && (
         <div className="table-stage">
           {bar}
-          <Felt view={view} hand={hand} />
+          <Felt view={view} hand={hand} updatedAt={updatedAt} />
           {/* Tus cartas van en tu asiento; acá solo lo que hay que decidir, siempre en el mismo lugar. */}
           <section className="hand-dock" aria-label="Tus acciones">
             <HandResult view={view} hand={hand} where="dock" />
@@ -614,7 +636,7 @@ function winnersText(view: ApiTableView, ids: string[]): string {
   return `${names.slice(0, -1).join(', ')} y ${names[names.length - 1]} ganan`;
 }
 
-function Felt({ view, hand }: { view: ApiTableView; hand: Hand }) {
+function Felt({ view, hand, updatedAt }: { view: ApiTableView; hand: Hand; updatedAt: number }) {
   const players = hand.players;
   const myIdx = Math.max(0, players.findIndex(p => p.playerId === view.myPlayerId));
   // Al terminar con showdown se resaltan las cartas de la jugada ganadora.
@@ -624,6 +646,7 @@ function Felt({ view, hand }: { view: ApiTableView; hand: Hand }) {
   const heroCards = !!heroSeat && (heroSeat.isYou || heroSeat.managed) && !!hero && hero.hole.some(c => c !== '??');
   return (
     <div className="felt-wrap">
+      <BlindsChip view={view} updatedAt={updatedAt} />
       <div className={`felt${heroCards ? ' felt-hero' : ''}`} data-testid="felt">
         <div className="felt-center">
           <HandResult view={view} hand={hand} fallback={<div className="pot num" data-testid="pot">Pozo {formatMoney(hand.pot)}</div>} />
@@ -642,6 +665,41 @@ function Felt({ view, hand }: { view: ApiTableView; hand: Hand }) {
             offset={(i - myIdx + players.length) % players.length} total={players.length} />
         ))}
       </div>
+    </div>
+  );
+}
+
+/** "8:31" a partir de milisegundos. */
+const clock = (ms: number) => {
+  const total = Math.max(0, Math.ceil(ms / 1000));
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+};
+
+/**
+ * Ciegas de la mano y cuándo suben. Se calcula contra la hora del servidor, no la del dispositivo.
+ * Con "nunca" (0 minutos) muestra solo las ciegas.
+ */
+function BlindsChip({ view, updatedAt }: { view: ApiTableView; updatedAt: number }) {
+  const b = view.blinds;
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!b.nextAt) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [b.nextAt]);
+  let note: string | null = null;
+  if (b.minutes > 0) {
+    if (view.bigBlind < b.big) note = `Próxima mano: ${formatMoney(b.small)}/${formatMoney(b.big)}`;
+    else if (b.atCap) note = 'Ciegas al máximo';
+    else if (b.nextAt) {
+      const left = Date.parse(b.nextAt) - (now + (Date.parse(view.serverTime) - updatedAt));
+      note = left > 0 ? `Suben a ${formatMoney(b.small * 2)}/${formatMoney(b.big * 2)} en ${clock(left)}` : 'Suben en la próxima mano';
+    }
+  }
+  return (
+    <div className="blinds-chip" data-testid="blinds">
+      <strong className="num">Ciegas {formatMoney(view.smallBlind)}/{formatMoney(view.bigBlind)}</strong>
+      {note && <span className="blinds-note" data-testid="blinds-note">{note}</span>}
     </div>
   );
 }

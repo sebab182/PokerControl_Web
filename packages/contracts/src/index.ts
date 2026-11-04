@@ -275,7 +275,12 @@ export const HandView = Obj({
 }, 'HandView');
 export const TableView = Obj({
   id: T.String(), status: TableStatus, sessionId: Nullable(T.String()),
+  /** Ciegas de la mano en curso (o las que se usarán en la próxima). */
   smallBlind: T.Integer(), bigBlind: T.Integer(), buyIn: T.Integer(),
+  /** Ciegas por tiempo: lo que se usará en la próxima mano, el nivel y cuándo sube (null si no hay más subidas). */
+  blinds: Obj({
+    minutes: T.Integer(), level: T.Integer(), small: T.Integer(), big: T.Integer(), atCap: T.Boolean(), nextAt: Nullable(T.String()),
+  }, 'TableBlinds'),
   /** Cambia con cada acción: se envía de vuelta en POST /table/action. */
   version: T.Integer(),
   /** Segundos por turno (0 = sin límite) y vencimiento del turno en curso. */
@@ -325,6 +330,8 @@ export const StartTableBody = Obj({
   smallBlind: T.Optional(Chips), bigBlind: T.Optional(Chips), buyIn: T.Optional(Chips),
   /** 0 = sin límite; si no, entre 10 y 300 segundos. */
   turnSeconds: T.Optional(T.Integer({ minimum: 0, maximum: 300 })),
+  /** Cada cuántos minutos se duplican las ciegas: 0 (nunca) o entre 5 y 120. */
+  blindMinutes: T.Optional(T.Integer({ minimum: 0, maximum: 120 })),
 });
 export const TableActionBody = Obj({
   version: T.Integer(),

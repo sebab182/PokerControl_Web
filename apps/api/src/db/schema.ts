@@ -230,6 +230,10 @@ export const pokerTables = pgTable('poker_tables', {
   smallBlind: integer('small_blind').notNull().default(10),
   bigBlind: integer('big_blind').notNull().default(20),
   buyIn: integer('buy_in').notNull().default(1000),
+  /** Cada cuántos minutos se duplican las ciegas (small_blind/big_blind son las base); 0 = nunca. */
+  blindMinutes: integer('blind_minutes').notNull().default(15),
+  /** Cuándo empezó la partida en curso: de acá corre el reloj de las ciegas. */
+  blindsStartedAt: ts('blinds_started_at'),
   handCount: integer('hand_count').notNull().default(0),
   /** Índice (en orden de asiento) del botón de la última mano. */
   button: integer('button').notNull().default(0),
@@ -252,6 +256,7 @@ export const pokerTables = pgTable('poker_tables', {
   check('ck_poker_tables_blinds', sql`${t.smallBlind} > 0 and ${t.bigBlind} >= ${t.smallBlind} and ${t.buyIn} > 0`),
   check('ck_poker_tables_turn', sql`${t.turnSeconds} = 0 or ${t.turnSeconds} between 10 and 300`),
   index('idx_poker_tables_deadline').on(t.turnDeadline).where(sql`turn_deadline is not null`),
+  check('ck_poker_tables_blind_minutes', sql`${t.blindMinutes} = 0 or ${t.blindMinutes} between 5 and 120`),
   check('ck_poker_tables_session', sql`(${t.status} = 'playing') = (${t.sessionId} is not null)`),
 ]);
 

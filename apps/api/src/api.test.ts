@@ -1524,6 +1524,64 @@ describe('mesa online', () => {
     });
   });
 
+  describe('ciegas por tiempo', () => {
+    const rewind = (minutes: number) => conn.pool.query(`update poker_tables set blinds_started_at = now() - make_interval(mins => $1)`, [minutes]);
+
+    async function twoAtTable(body: object = {}) {
+      const ctx = await setup();
+      await ctx.a.ok('POST', '/g/table/join');
+      await ctx.b.ok('POST', '/g/table/join');
+      const v = await ctx.a.idem('/g/table/start', body);
+      return { ...ctx, v };
+    }
+
+    it('por defecto se duplican cada 15 minutos y la vista dice cuándo sube', async () => {
+      const { v } = await twoAtTable();
+      expect(v.blinds).toMatchObject({ minutes: 15, level: 0, small: 10, big: 20, atCap: false });
+      expect([v.smallBlind, v.bigBlind]).toEqual([10, 20]);
+      const left = new Date(v.blinds.nextAt).getTime() - new Date(v.serverTime).getTime();
+      expect(left).toBeGreaterThan(14 * 60_000);
+      expect(left).toBeLessThanOrEqual(15 * 60_000);
+    });
+
+    it('la suba entra en la mano siguiente, nunca en medio de la que está en juego', async () => {
+      const { a, byPlayer, v } = await twoAtTable({ blindMinutes: 5 });
+      expect(v.hand.pot).toBe(30);
+      await rewind(6);
+      const mid = await view(a);
+      // Ya corresponde el nivel 1, pero la mano en curso conserva sus ciegas.
+      expect(mid.blinds).toMatchObject({ level: 1, small: 20, big: 40 });
+      expect([mid.smallBlind, mid.bigBlind, mid.hand.pot]).toEqual([10, 20, 30]);
+      const done = await act(byPlayer(mid.hand.toActPlayerId), mid, { type: 'fold' });
+      expect(done.hand.street).toBe('done');
+      // Sin mano en juego, se muestran las que usará la próxima.
+      expect([done.smallBlind, done.bigBlind]).toEqual([20, 40]);
+      const next = await a.ok('POST', '/g/table/deal');
+      expect([next.smallBlind, next.bigBlind, next.hand.pot]).toEqual([20, 40, 60]);
+    });
+
+    it('la ciega grande no pasa de la mitad de la entrada', async () => {
+      const { a, byPlayer, v } = await twoAtTable({ blindMinutes: 5 });
+      await rewind(5 * 60);
+      const folded = await act(byPlayer(v.hand.toActPlayerId), v, { type: 'fold' });
+      expect(folded.blinds).toMatchObject({ level: 4, small: 160, big: 320, atCap: true, nextAt: null });
+      const next = await a.ok('POST', '/g/table/deal');
+      expect([next.smallBlind, next.bigBlind]).toEqual([160, 320]);
+    });
+
+    it('con 0 nunca se duplican; el valor se valida', async () => {
+      const { a, b } = await setup();
+      await a.ok('POST', '/g/table/join');
+      await b.ok('POST', '/g/table/join');
+      expect((await a.call('POST', '/g/table/start', { blindMinutes: 3 }, 'blind-key-0001')).body.error).toBe('invalid_blind_time');
+      expect((await a.call('POST', '/g/table/start', { blindMinutes: 121 }, 'blind-key-0002')).status).toBe(400);
+      const v = await a.idem('/g/table/start', { blindMinutes: 0 });
+      expect(v.blinds).toMatchObject({ minutes: 0, level: 0, big: 20, atCap: true, nextAt: null });
+      await rewind(5 * 60);
+      expect((await view(a)).blinds).toMatchObject({ level: 0, big: 20, nextAt: null });
+    });
+  });
+
   describe('tiempo por turno', () => {
     const expire = () => conn.pool.query(`update poker_tables set turn_deadline = now() - interval '1 second'`);
     const seatsOf = async () => (await conn.pool.query('select player_id, status, timeouts from poker_seats')).rows;

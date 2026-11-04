@@ -12,7 +12,7 @@ import {
   type ApiTableView,
 } from '@pokercontrol/contracts';
 import {
-  HoldemError, applyAction, legalActions, publicView, revealCards, shownCards, startHand, winDetails, type Action, type HandState,
+  HoldemError, applyAction, blindLevel, legalActions, publicView, revealCards, shownCards, startHand, winDetails, type Action, type HandState,
 } from '@pokercontrol/core';
 import { type Static } from '@sinclair/typebox';
 import { and, asc, desc, eq, gt, isNotNull, lte, sql } from 'drizzle-orm';
@@ -72,6 +72,14 @@ async function requirePlayer(db: Conn, groupId: string, userId: string): Promise
 
 // ─── Vista ───────────────────────────────────────────────────────────────────
 
+/** Ciegas que corresponden ahora: las base, duplicadas según el tiempo que lleva la partida. */
+function currentBlinds(table: TableRow, now = Date.now()) {
+  return blindLevel({
+    smallBlind: table.smallBlind, bigBlind: table.bigBlind, buyIn: table.buyIn, minutes: table.blindMinutes,
+    elapsedMs: table.status === 'playing' && table.blindsStartedAt ? now - table.blindsStartedAt.getTime() : 0,
+  });
+}
+
 /** Quién mira: su usuario y si es administrador (puede jugar por los jugadores sin usuario). */
 interface Viewer { userId: string; canManage: boolean }
 const viewerOf = (req: { user: { sub: string }; role: Role }): Viewer => ({ userId: req.user.sub, canManage: isEditor(req.role) });
@@ -128,6 +136,7 @@ async function buildView(db: Conn, table: TableRow, viewer: Viewer): Promise<Api
   const state = row?.state as HandState | undefined;
   const live = row?.status === 'active' ? state : undefined;
   const now = Date.now();
+  const blinds = currentBlinds(table, now);
   // Jugadores sin usuario que este administrador maneja: ve sus cartas y juega sus turnos.
   const managedIds = new Set(viewer.canManage ? seats.filter(({ seat }) => seat.userId === null).map(({ seat }) => seat.playerId) : []);
   const [last] = row
@@ -178,9 +187,15 @@ async function buildView(db: Conn, table: TableRow, viewer: Viewer): Promise<Api
     id: table.id,
     status: table.status,
     sessionId: table.sessionId,
-    smallBlind: table.smallBlind,
-    bigBlind: table.bigBlind,
+    // Las de la mano en curso; sin mano, las que se usarán en la próxima.
+    smallBlind: live?.smallBlind ?? blinds.small,
+    bigBlind: live?.bigBlind ?? blinds.big,
     buyIn: table.buyIn,
+    blinds: {
+      minutes: table.blindMinutes, level: blinds.level, small: blinds.small, big: blinds.big, atCap: blinds.atCap,
+      nextAt: table.status === 'playing' && table.blindsStartedAt && blinds.nextAtMs !== null
+        ? new Date(table.blindsStartedAt.getTime() + blinds.nextAtMs).toISOString() : null,
+    },
     version: table.version,
     turnSeconds: table.turnSeconds,
     turnDeadline: live && table.turnDeadline ? table.turnDeadline.toISOString() : null,
@@ -226,8 +241,10 @@ async function dealHand(tx: Tx, table: TableRow): Promise<void> {
   const prevButton = prevState ? prevState.players[prevState.button]?.id ?? null : null;
   const button = pickButton(seats.map(s => s.playerId), eligible.map(s => s.playerId), prevButton);
 
+  const blinds = currentBlinds(table);
   const state = startHand(eligible.map(s => ({ id: s.playerId, stack: s.stack })), {
-    button, smallBlind: table.smallBlind, bigBlind: table.bigBlind, randomInt,
+    // Las ciegas se fijan al repartir: no cambian en medio de la mano.
+    button, smallBlind: blinds.small, bigBlind: blinds.big, randomInt,
   });
   const handNo = table.handCount + 1;
   const [row] = await tx.insert(schema.pokerHands).values({ tableId: table.id, handNo, state }).returning();
@@ -581,7 +598,11 @@ export async function tableRoutes(app: FastifyInstance) {
         bigBlind: req.body.bigBlind ?? table.bigBlind,
         buyIn: req.body.buyIn ?? table.buyIn,
         turnSeconds: req.body.turnSeconds ?? table.turnSeconds,
+        blindMinutes: req.body.blindMinutes ?? table.blindMinutes,
       };
+      if (cfg.blindMinutes !== 0 && cfg.blindMinutes < 5) {
+        throw new ApiError(422, 'invalid_blind_time', 'Las ciegas se duplican cada 0 (nunca) o entre 5 y 120 minutos.');
+      }
       if (cfg.turnSeconds !== 0 && cfg.turnSeconds < 10) {
         throw new ApiError(422, 'invalid_turn_time', 'El tiempo por turno es 0 (sin límite) o entre 10 y 300 segundos.');
       }
@@ -619,7 +640,7 @@ export async function tableRoutes(app: FastifyInstance) {
           .where(and(eq(schema.pokerSeats.tableId, table.id), eq(schema.pokerSeats.playerId, seat.playerId)));
       }
       await tx.update(schema.pokerSeats).set({ stack: cfg.buyIn, status: 'sitting' }).where(eq(schema.pokerSeats.tableId, table.id));
-      await tx.update(schema.pokerTables).set({ ...cfg, status: 'playing', sessionId, startedBy: req.user.sub, hostSeenAt: now, version: bump })
+      await tx.update(schema.pokerTables).set({ ...cfg, status: 'playing', sessionId, startedBy: req.user.sub, hostSeenAt: now, blindsStartedAt: now, version: bump })
         .where(eq(schema.pokerTables.id, table.id));
       const [fresh] = await tx.select().from(schema.pokerTables).where(eq(schema.pokerTables.id, table.id));
       await dealHand(tx, fresh);

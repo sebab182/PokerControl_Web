@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  type Action, applyAction, computePots, describeHand, evaluate, explainWin, HoldemError, type HandState, legalActions, newDeck,
+  blindLevel, maxBlindLevel, type Action, applyAction, computePots, describeHand, evaluate, explainWin, HoldemError, type HandState, legalActions, newDeck,
   publicView, revealCards, shownCards, shuffle, startHand, winDetails,
 } from './index';
 
@@ -290,5 +290,36 @@ describe('fuzz: conservación de fichas', () => {
       expect(view.showdown.find((e) => e.playerId === lose.id)).toMatchObject({ hole: ['??', '??'], handName: '' });
       expect(shownCards(revealCards(s, lose.id), lose.id)).toEqual([0, 1]);
     });
+  });
+});
+
+describe('ciegas por tiempo', () => {
+  const base = { smallBlind: 10, bigBlind: 20, buyIn: 1000 };
+  const min = (n: number) => n * 60_000;
+
+  it('se duplican cada intervalo, siempre sobre las ciegas base', () => {
+    expect(blindLevel({ ...base, minutes: 15, elapsedMs: 0 })).toEqual({ level: 0, small: 10, big: 20, atCap: false, nextAtMs: min(15) });
+    expect(blindLevel({ ...base, minutes: 15, elapsedMs: min(14) + 59_000 }).big).toBe(20);
+    expect(blindLevel({ ...base, minutes: 15, elapsedMs: min(15) })).toMatchObject({ level: 1, small: 20, big: 40, nextAtMs: min(30) });
+    expect(blindLevel({ ...base, minutes: 15, elapsedMs: min(47) })).toMatchObject({ level: 3, small: 80, big: 160 });
+  });
+
+  it('la ciega grande no pasa de la mitad de la entrada', () => {
+    // 20 → 40 → 80 → 160 → 320; 640 supera 500.
+    expect(maxBlindLevel(20, 1000)).toBe(4);
+    const capped = blindLevel({ ...base, minutes: 15, elapsedMs: min(15 * 50) });
+    expect(capped).toEqual({ level: 4, small: 160, big: 320, atCap: true, nextAtMs: null });
+    expect(blindLevel({ ...base, minutes: 15, elapsedMs: min(15 * 4) }).atCap).toBe(true);
+    expect(blindLevel({ ...base, minutes: 15, elapsedMs: min(15 * 3) }).atCap).toBe(false);
+  });
+
+  it('con 0 minutos nunca se duplican', () => {
+    expect(blindLevel({ ...base, minutes: 0, elapsedMs: min(10_000) })).toEqual({ level: 0, small: 10, big: 20, atCap: true, nextAtMs: null });
+  });
+
+  it('si la entrada es justa (el doble de la ciega) no hay subidas; un reloj adelantado no baja el nivel', () => {
+    expect(maxBlindLevel(500, 1000)).toBe(0);
+    expect(blindLevel({ smallBlind: 250, bigBlind: 500, buyIn: 1000, minutes: 15, elapsedMs: min(999) })).toMatchObject({ level: 0, atCap: true });
+    expect(blindLevel({ ...base, minutes: 15, elapsedMs: -5000 }).level).toBe(0);
   });
 });

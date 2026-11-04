@@ -536,6 +536,9 @@ test('mesa online: sala de espera, iniciar, jugar una mano y cerrar', async ({ p
   await expect(page.getByTestId('pot')).toHaveText('Pozo $30');
   // Cuenta regresiva del turno y conexión en vivo.
   await expect(page.getByTestId('turn-timer')).toContainText(/\d:\d\d/);
+  // Ciegas de la mano y cuándo suben (por defecto se duplican cada 15 minutos).
+  await expect(page.getByTestId('blinds')).toContainText('Ciegas $10/$20');
+  await expect(page.getByTestId('blinds-note')).toContainText(/Suben a \$20\/\$40 en 1[45]:\d\d/);
   await expect(page.getByRole('img', { name: 'En vivo' })).toBeVisible({ timeout: 10000 });
   // Mazo de 4 colores por defecto: tréboles verdes y diamantes azules, para no confundirlos con picas y corazones.
   await expect(page.locator('.table-layout')).toHaveClass(/deck-four/);
@@ -601,6 +604,10 @@ test('mesa online: al agotarse el tiempo el servidor juega por quien no responde
   await page.getByRole('dialog').getByRole('button', { name: 'Iniciar partida' }).click();
   await expect(page.getByRole('alert')).toContainText('entre 10 y 300');
   await page.getByLabel('Tiempo por turno (segundos, 0 = sin límite)').fill('10');
+  await page.getByLabel('Duplicar las ciegas cada (minutos, 0 = nunca)').fill('3');
+  await page.getByRole('dialog').getByRole('button', { name: 'Iniciar partida' }).click();
+  await expect(page.getByRole('alert')).toContainText('Las ciegas se duplican cada 0');
+  await page.getByLabel('Duplicar las ciegas cada (minutos, 0 = nunca)').fill('15');
   await page.getByRole('dialog').getByRole('button', { name: 'Iniciar partida' }).click();
 
   await expect(page.getByTestId('turn-timer')).toContainText(/0:(0\d|10)/);

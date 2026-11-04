@@ -1298,6 +1298,7 @@ paths:
                   - smallBlind
                   - bigBlind
                   - buyIn
+                  - blinds
                   - version
                   - turnSeconds
                   - turnDeadline
@@ -1329,6 +1330,31 @@ paths:
                     type: integer
                   buyIn:
                     type: integer
+                  blinds:
+                    additionalProperties: false
+                    title: TableBlinds
+                    type: object
+                    required:
+                      - minutes
+                      - level
+                      - small
+                      - big
+                      - atCap
+                      - nextAt
+                    properties:
+                      minutes:
+                        type: integer
+                      level:
+                        type: integer
+                      small:
+                        type: integer
+                      big:
+                        type: integer
+                      atCap:
+                        type: boolean
+                      nextAt:
+                        type: string
+                        nullable: true
                   version:
                     type: integer
                   turnSeconds:
@@ -1616,6 +1642,7 @@ paths:
                   - smallBlind
                   - bigBlind
                   - buyIn
+                  - blinds
                   - version
                   - turnSeconds
                   - turnDeadline
@@ -1647,6 +1674,31 @@ paths:
                     type: integer
                   buyIn:
                     type: integer
+                  blinds:
+                    additionalProperties: false
+                    title: TableBlinds
+                    type: object
+                    required:
+                      - minutes
+                      - level
+                      - small
+                      - big
+                      - atCap
+                      - nextAt
+                    properties:
+                      minutes:
+                        type: integer
+                      level:
+                        type: integer
+                      small:
+                        type: integer
+                      big:
+                        type: integer
+                      atCap:
+                        type: boolean
+                      nextAt:
+                        type: string
+                        nullable: true
                   version:
                     type: integer
                   turnSeconds:
@@ -1934,6 +1986,7 @@ paths:
                   - smallBlind
                   - bigBlind
                   - buyIn
+                  - blinds
                   - version
                   - turnSeconds
                   - turnDeadline
@@ -1965,6 +2018,31 @@ paths:
                     type: integer
                   buyIn:
                     type: integer
+                  blinds:
+                    additionalProperties: false
+                    title: TableBlinds
+                    type: object
+                    required:
+                      - minutes
+                      - level
+                      - small
+                      - big
+                      - atCap
+                      - nextAt
+                    properties:
+                      minutes:
+                        type: integer
+                      level:
+                        type: integer
+                      small:
+                        type: integer
+                      big:
+                        type: integer
+                      atCap:
+                        type: boolean
+                      nextAt:
+                        type: string
+                        nullable: true
                   version:
                     type: integer
                   turnSeconds:
@@ -2252,6 +2330,7 @@ paths:
                   - smallBlind
                   - bigBlind
                   - buyIn
+                  - blinds
                   - version
                   - turnSeconds
                   - turnDeadline
@@ -2283,6 +2362,31 @@ paths:
                     type: integer
                   buyIn:
                     type: integer
+                  blinds:
+                    additionalProperties: false
+                    title: TableBlinds
+                    type: object
+                    required:
+                      - minutes
+                      - level
+                      - small
+                      - big
+                      - atCap
+                      - nextAt
+                    properties:
+                      minutes:
+                        type: integer
+                      level:
+                        type: integer
+                      small:
+                        type: integer
+                      big:
+                        type: integer
+                      atCap:
+                        type: boolean
+                      nextAt:
+                        type: string
+                        nullable: true
                   version:
                     type: integer
                   turnSeconds:
@@ -2575,6 +2679,7 @@ paths:
                   - smallBlind
                   - bigBlind
                   - buyIn
+                  - blinds
                   - version
                   - turnSeconds
                   - turnDeadline
@@ -2606,6 +2711,31 @@ paths:
                     type: integer
                   buyIn:
                     type: integer
+                  blinds:
+                    additionalProperties: false
+                    title: TableBlinds
+                    type: object
+                    required:
+                      - minutes
+                      - level
+                      - small
+                      - big
+                      - atCap
+                      - nextAt
+                    properties:
+                      minutes:
+                        type: integer
+                      level:
+                        type: integer
+                      small:
+                        type: integer
+                      big:
+                        type: integer
+                      atCap:
+                        type: boolean
+                      nextAt:
+                        type: string
+                        nullable: true
                   version:
                     type: integer
                   turnSeconds:
@@ -2897,6 +3027,7 @@ paths:
                   - smallBlind
                   - bigBlind
                   - buyIn
+                  - blinds
                   - version
                   - turnSeconds
                   - turnDeadline
@@ -2928,6 +3059,31 @@ paths:
                     type: integer
                   buyIn:
                     type: integer
+                  blinds:
+                    additionalProperties: false
+                    title: TableBlinds
+                    type: object
+                    required:
+                      - minutes
+                      - level
+                      - small
+                      - big
+                      - atCap
+                      - nextAt
+                    properties:
+                      minutes:
+                        type: integer
+                      level:
+                        type: integer
+                      small:
+                        type: integer
+                      big:
+                        type: integer
+                      atCap:
+                        type: boolean
+                      nextAt:
+                        type: string
+                        nullable: true
                   version:
                     type: integer
                   turnSeconds:
@@ -3232,6 +3388,7 @@ paths:
                   - smallBlind
                   - bigBlind
                   - buyIn
+                  - blinds
                   - version
                   - turnSeconds
                   - turnDeadline
@@ -3263,6 +3420,31 @@ paths:
                     type: integer
                   buyIn:
                     type: integer
+                  blinds:
+                    additionalProperties: false
+                    title: TableBlinds
+                    type: object
+                    required:
+                      - minutes
+                      - level
+                      - small
+                      - big
+                      - atCap
+                      - nextAt
+                    properties:
+                      minutes:
+                        type: integer
+                      level:
+                        type: integer
+                      small:
+                        type: integer
+                      big:
+                        type: integer
+                      atCap:
+                        type: boolean
+                      nextAt:
+                        type: string
+                        nullable: true
                   version:
                     type: integer
                   turnSeconds:
@@ -3552,6 +3734,10 @@ paths:
                   minimum: 0
                   maximum: 300
                   type: integer
+                blindMinutes:
+                  minimum: 0
+                  maximum: 120
+                  type: integer
       parameters:
         - schema:
             type: string
@@ -3574,6 +3760,7 @@ paths:
                   - smallBlind
                   - bigBlind
                   - buyIn
+                  - blinds
                   - version
                   - turnSeconds
                   - turnDeadline
@@ -3605,6 +3792,31 @@ paths:
                     type: integer
                   buyIn:
                     type: integer
+                  blinds:
+                    additionalProperties: false
+                    title: TableBlinds
+                    type: object
+                    required:
+                      - minutes
+                      - level
+                      - small
+                      - big
+                      - atCap
+                      - nextAt
+                    properties:
+                      minutes:
+                        type: integer
+                      level:
+                        type: integer
+                      small:
+                        type: integer
+                      big:
+                        type: integer
+                      atCap:
+                        type: boolean
+                      nextAt:
+                        type: string
+                        nullable: true
                   version:
                     type: integer
                   turnSeconds:
@@ -3892,6 +4104,7 @@ paths:
                   - smallBlind
                   - bigBlind
                   - buyIn
+                  - blinds
                   - version
                   - turnSeconds
                   - turnDeadline
@@ -3923,6 +4136,31 @@ paths:
                     type: integer
                   buyIn:
                     type: integer
+                  blinds:
+                    additionalProperties: false
+                    title: TableBlinds
+                    type: object
+                    required:
+                      - minutes
+                      - level
+                      - small
+                      - big
+                      - atCap
+                      - nextAt
+                    properties:
+                      minutes:
+                        type: integer
+                      level:
+                        type: integer
+                      small:
+                        type: integer
+                      big:
+                        type: integer
+                      atCap:
+                        type: boolean
+                      nextAt:
+                        type: string
+                        nullable: true
                   version:
                     type: integer
                   turnSeconds:
@@ -4277,6 +4515,7 @@ paths:
                   - smallBlind
                   - bigBlind
                   - buyIn
+                  - blinds
                   - version
                   - turnSeconds
                   - turnDeadline
@@ -4308,6 +4547,31 @@ paths:
                     type: integer
                   buyIn:
                     type: integer
+                  blinds:
+                    additionalProperties: false
+                    title: TableBlinds
+                    type: object
+                    required:
+                      - minutes
+                      - level
+                      - small
+                      - big
+                      - atCap
+                      - nextAt
+                    properties:
+                      minutes:
+                        type: integer
+                      level:
+                        type: integer
+                      small:
+                        type: integer
+                      big:
+                        type: integer
+                      atCap:
+                        type: boolean
+                      nextAt:
+                        type: string
+                        nullable: true
                   version:
                     type: integer
                   turnSeconds:
@@ -4614,6 +4878,7 @@ paths:
                   - smallBlind
                   - bigBlind
                   - buyIn
+                  - blinds
                   - version
                   - turnSeconds
                   - turnDeadline
@@ -4645,6 +4910,31 @@ paths:
                     type: integer
                   buyIn:
                     type: integer
+                  blinds:
+                    additionalProperties: false
+                    title: TableBlinds
+                    type: object
+                    required:
+                      - minutes
+                      - level
+                      - small
+                      - big
+                      - atCap
+                      - nextAt
+                    properties:
+                      minutes:
+                        type: integer
+                      level:
+                        type: integer
+                      small:
+                        type: integer
+                      big:
+                        type: integer
+                      atCap:
+                        type: boolean
+                      nextAt:
+                        type: string
+                        nullable: true
                   version:
                     type: integer
                   turnSeconds:
@@ -4944,6 +5234,7 @@ paths:
                   - smallBlind
                   - bigBlind
                   - buyIn
+                  - blinds
                   - version
                   - turnSeconds
                   - turnDeadline
@@ -4975,6 +5266,31 @@ paths:
                     type: integer
                   buyIn:
                     type: integer
+                  blinds:
+                    additionalProperties: false
+                    title: TableBlinds
+                    type: object
+                    required:
+                      - minutes
+                      - level
+                      - small
+                      - big
+                      - atCap
+                      - nextAt
+                    properties:
+                      minutes:
+                        type: integer
+                      level:
+                        type: integer
+                      small:
+                        type: integer
+                      big:
+                        type: integer
+                      atCap:
+                        type: boolean
+                      nextAt:
+                        type: string
+                        nullable: true
                   version:
                     type: integer
                   turnSeconds:
@@ -5272,6 +5588,7 @@ paths:
                       - smallBlind
                       - bigBlind
                       - buyIn
+                      - blinds
                       - version
                       - turnSeconds
                       - turnDeadline
@@ -5303,6 +5620,31 @@ paths:
                         type: integer
                       buyIn:
                         type: integer
+                      blinds:
+                        additionalProperties: false
+                        title: TableBlinds
+                        type: object
+                        required:
+                          - minutes
+                          - level
+                          - small
+                          - big
+                          - atCap
+                          - nextAt
+                        properties:
+                          minutes:
+                            type: integer
+                          level:
+                            type: integer
+                          small:
+                            type: integer
+                          big:
+                            type: integer
+                          atCap:
+                            type: boolean
+                          nextAt:
+                            type: string
+                            nullable: true
                       version:
                         type: integer
                       turnSeconds:
