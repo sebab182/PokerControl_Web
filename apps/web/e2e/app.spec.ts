@@ -833,3 +833,95 @@ test('mesa online: sin fichas te reparten pero ves tus cartas solo si recomprás
   await expect(pablo.page.getByRole('button', { name: /^Igualar/ })).toBeVisible();
   await expect(pablo.page.getByTestId('seat-Pablo')).not.toContainText('Sin fichas');
 });
+
+/** Animación Lottie mínima (un círculo): el e2e no depende del CDN de Google. */
+const TINY_LOTTIE = JSON.stringify({
+  v: '5.7.0', fr: 30, ip: 0, op: 60, w: 100, h: 100, nm: 't', ddd: 0, assets: [],
+  layers: [{
+    ddd: 0, ind: 1, ty: 4, nm: 's', sr: 1, ao: 0, ip: 0, op: 60, st: 0,
+    ks: { o: { a: 0, k: 100 }, r: { a: 0, k: 0 }, p: { a: 0, k: [50, 50, 0] }, a: { a: 0, k: [0, 0, 0] }, s: { a: 0, k: [100, 100, 100] } },
+    shapes: [{ ty: 'gr', nm: 'g', it: [
+      { ty: 'el', nm: 'e', d: 1, p: { a: 0, k: [0, 0] }, s: { a: 0, k: [60, 60] } },
+      { ty: 'fl', nm: 'f', c: { a: 0, k: [1, 0.8, 0.2, 1] }, o: { a: 0, k: 100 }, r: 1 },
+      { ty: 'tr', p: { a: 0, k: [0, 0] }, a: { a: 0, k: [0, 0] }, s: { a: 0, k: [100, 100] }, r: { a: 0, k: 0 }, o: { a: 0, k: 100 } },
+    ] }],
+  }],
+});
+
+test('mesa online: emojis animados desde el botón flotante, estés sentado o no', async ({ page, browser }) => {
+  test.setTimeout(90000);
+  const fakeCdn = (ctx: import('@playwright/test').BrowserContext) => ctx.route('https://fonts.gstatic.com/**', route => route.fulfill({
+    status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: TINY_LOTTIE,
+  }));
+  await fakeCdn(page.context());
+  await login(page, 'Seba');
+  const code = await createGroup(page);
+  const master = await apiLogin(page, MASTER_TOKEN);
+  const gid = (await (await page.request.get(`${API}/groups`, { headers: { authorization: `Bearer ${master}` } })).json())[0].id as string;
+
+  // Dos jugadores (por API, para ir rápido); Seba es administrador y solo mira.
+  const players: { name: string; page: Page; id: string }[] = [];
+  for (const name of ['Nico', 'Pablo']) {
+    const ctx = await browser.newContext();
+    await fakeCdn(ctx);
+    const p = await ctx.newPage();
+    const token = await login(p, name, 'reader');
+    const auth = { authorization: `Bearer ${token}` };
+    await p.request.post(`${API}/groups/join`, { headers: auth, data: { inviteCode: code } });
+    const claimed = await p.request.post(`${API}/groups/${gid}/me/player`, { headers: auth, data: { name } });
+    players.push({ name, page: p, id: (await claimed.json()).id });
+    await p.goto('/table');
+    await expect(p.getByText(`${name} (vos)`)).toBeVisible();
+  }
+  const [nico, pablo] = players;
+  await page.goto('/table');
+  await expect(page.getByText('Pablo', { exact: true }).first()).toBeVisible({ timeout: 15000 });
+
+  const fab = (p: Page) => p.getByRole('button', { name: 'Enviar un emoji' });
+  const send = async (p: Page, label: string) => {
+    await fab(p).click();
+    await p.getByRole('group', { name: 'Emojis' }).getByRole('button', { name: label }).click();
+  };
+
+  // Sala de espera (nadie está en la mano): el botón flota sobre la página y cualquiera lo ve, sentado o no.
+  await fab(nico.page).click();
+  await checkPage(nico.page, 'mesa: paleta de emojis');
+  await nico.page.getByRole('group', { name: 'Emojis' }).getByRole('button', { name: 'Risa' }).click();
+  for (const p of [nico.page, pablo.page, page]) {
+    await expect(p.getByTestId('emoji-float')).toContainText('Nico');
+    await expect(p.getByTestId('emoji-said')).toHaveText('Nico envió Risa');
+  }
+  // La animación se descarga y reemplaza al emoji común.
+  await expect(page.locator('.emoji-lottie svg').first()).toBeAttached({ timeout: 10000 });
+  // El botón descansa lo que el servidor deja pasar.
+  await expect(fab(nico.page)).toBeDisabled();
+  await expect(fab(nico.page)).toBeEnabled({ timeout: 4000 });
+
+  // Ya en la mesa, el botón está en el paño y el emoji sale desde el asiento de quien lo manda.
+  await page.getByRole('button', { name: /Iniciar partida \(2 jugadores\)/ }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Iniciar partida' }).click();
+  await expect(pablo.page.getByTestId('felt')).toBeVisible();
+  await expect(pablo.page.locator('.emoji-fab-felt')).toBeVisible();
+  await send(nico.page, 'Fuego');
+  const floating = pablo.page.getByTestId('emoji-float').last();
+  await expect(floating).toContainText('Nico');
+  const seat = await pablo.page.locator(`[data-player="${nico.id}"]`).boundingBox();
+  const at = await floating.boundingBox();
+  expect(Math.abs(at!.x + at!.width / 2 - (seat!.x + seat!.width / 2))).toBeLessThan(70);
+  await checkPage(pablo.page, 'mesa: emoji en el paño');
+
+  // El administrador que solo mira también puede mandar, y los jugadores lo ven con su nombre.
+  await expect(fab(page)).toBeEnabled({ timeout: 4000 });
+  await send(page, 'Aplausos');
+  await expect(pablo.page.getByTestId('emoji-said')).toHaveText('Seba envió Aplausos');
+
+  // Silenciar: se oculta el botón y no se ven los de los demás.
+  await pablo.page.getByRole('button', { name: 'Preferencias de la mesa' }).first().click();
+  await pablo.page.getByRole('switch', { name: /Emojis/ }).uncheck();
+  await pablo.page.getByRole('button', { name: 'Listo' }).click();
+  await expect(fab(pablo.page)).toHaveCount(0);
+  await expect(fab(nico.page)).toBeEnabled({ timeout: 4000 });
+  await send(nico.page, 'Bien');
+  await expect(page.getByTestId('emoji-said')).toHaveText('Nico envió Bien');
+  await expect(pablo.page.getByTestId('emoji-float')).toHaveCount(0);
+});

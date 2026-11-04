@@ -1927,6 +1927,90 @@ describe('mesa online', () => {
       });
     });
 
+    /** Conecta y autentica un socket; devuelve también los mensajes que va recibiendo. */
+    async function connect(c: Client, groupId = c.groupId) {
+      const ws = await app.injectWS(`/api/v1/groups/${groupId}/table/ws`);
+      const received: { type: string; [k: string]: unknown }[] = [];
+      const ready = nextMessage(ws);
+      ws.send(JSON.stringify({ type: 'auth', token: c.token }));
+      expect(await ready).toEqual({ type: 'ready' });
+      ws.on('message', (d: Buffer) => received.push(JSON.parse(d.toString())));
+      return { ws, received };
+    }
+    const emojis = (r: { type: string; [k: string]: unknown }[]) => r.filter(m => m.type === 'emoji');
+    const settle = (ms = 250) => new Promise(r => setTimeout(r, ms));
+
+    it('un emoji llega a todos los conectados, incluido quien lo mandó, con su nombre y sin guardarse', async () => {
+      const { a, b, pid } = await setup();
+      const sa = await connect(a);
+      const sb = await connect(b);
+      sa.ws.send(JSON.stringify({ type: 'emoji', id: '1f602' }));
+      await settle();
+      const expected = { type: 'emoji', id: '1f602', playerId: pid[0], name: 'J0' };
+      expect(emojis(sa.received)).toEqual([expected]);
+      expect(emojis(sb.received)).toEqual([expected]);
+      // Nada queda en la base: es efímero.
+      expect((await conn.pool.query('select count(*)::int as n from poker_actions')).rows[0].n).toBe(0);
+      sa.ws.close();
+      sb.ws.close();
+    });
+
+    it('quien mira sin jugador (administrador) también puede mandar: va con el nombre de su usuario', async () => {
+      const { c: admin, group } = await withGroup('master');
+      const reader = await login('lector');
+      await reader.ok('POST', '/groups/join', { inviteCode: group.inviteCode });
+      reader.groupId = group.id;
+      const sr = await connect(reader);
+      const sa = await connect(admin);
+      sa.ws.send(JSON.stringify({ type: 'emoji', id: '1f44f' }));
+      await settle();
+      expect(emojis(sr.received)).toEqual([{ type: 'emoji', id: '1f44f', playerId: null, name: 'master' }]);
+      sa.ws.close();
+      sr.ws.close();
+    });
+
+    it('solo acepta la paleta fija, y a uno por conexión cada ~1,5 s', async () => {
+      const { a, b } = await setup();
+      const sa = await connect(a);
+      const sb = await connect(b);
+      // Fuera de la paleta o mal formados: se ignoran (y no gastan el turno del límite).
+      for (const bad of [{ id: '1f4a9' }, { id: '<script>' }, { id: 5 }, {}, { id: '1f602', extra: true }]) {
+        sa.ws.send(JSON.stringify({ type: 'emoji', ...bad }));
+      }
+      sa.ws.send('no es json');
+      await settle();
+      expect(emojis(sb.received)).toEqual([]);
+      // Dos seguidos: pasa el primero.
+      sa.ws.send(JSON.stringify({ type: 'emoji', id: '1f525' }));
+      sa.ws.send(JSON.stringify({ type: 'emoji', id: '1f62d' }));
+      await settle();
+      expect(emojis(sb.received).map(m => m.id)).toEqual(['1f525']);
+      await settle(1500);
+      sa.ws.send(JSON.stringify({ type: 'emoji', id: '1f62d' }));
+      await settle();
+      expect(emojis(sb.received).map(m => m.id)).toEqual(['1f525', '1f62d']);
+      sa.ws.close();
+      sb.ws.close();
+    });
+
+    it('no cruza de grupo, y sin autenticar no se puede mandar', async () => {
+      const { a } = await setup();
+      const { c: other } = await withGroup('ajeno-admin');
+      const sa = await connect(a);
+      const so = await connect(other);
+      sa.ws.send(JSON.stringify({ type: 'emoji', id: '1f60e' }));
+      await settle();
+      expect(emojis(sa.received)).toHaveLength(1);
+      expect(emojis(so.received)).toEqual([]);
+      sa.ws.close();
+      so.ws.close();
+
+      const anon = await app.injectWS(wsUrl(a));
+      const anonClosed = closeCode(anon);
+      anon.send(JSON.stringify({ type: 'emoji', id: '1f602' }));
+      expect(await anonClosed).toBe(4401);
+    });
+
     it('rechaza token inválido, mensaje sin auth y a quien no es del grupo', async () => {
       const { a } = await setup();
       const bad = await app.injectWS(wsUrl(a));

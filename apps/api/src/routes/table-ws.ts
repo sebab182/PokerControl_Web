@@ -4,10 +4,11 @@
  * El navegador no puede mandar headers en un WebSocket y poner el JWT en la URL lo deja en
  * los logs, así que el primer mensaje es { type: "auth", token }. Sin él en 5 s se cierra.
  * Los avisos son { type: "changed", version }; los datos se piden por HTTP. Lo único que un cliente
- * autenticado puede mandar es señalización del video ({ type: "rtc", ... }), que el hub reenvía.
+ * autenticado puede mandar es señalización del video ({ type: "rtc", ... }), que el hub reenvía, y emojis
+ * de una paleta fija ({ type: "emoji", id }), que se reparten a todos los conectados sin guardarse.
  */
 
-import { RtcClientMessage } from '@pokercontrol/contracts';
+import { EmojiClientMessage, RtcClientMessage } from '@pokercontrol/contracts';
 import { Value } from '@sinclair/typebox/value';
 import { and, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
@@ -23,6 +24,8 @@ const MAX_AUTH_BYTES = 2048;
 /** Negociar con 5 pares genera unas decenas de candidatos ICE: el tope solo frena abusos. */
 const SIGNAL_WINDOW_MS = 10_000;
 const SIGNAL_MAX_PER_WINDOW = 300;
+/** Un emoji por conexión cada tanto: son para festejar, no para inundar la mesa. */
+const EMOJI_MIN_MS = 1500;
 export const WS_CLOSE = { unauthorized: 4401, forbidden: 4403 } as const;
 
 export async function tableSocketRoutes(app: FastifyInstance) {
@@ -53,7 +56,27 @@ export async function tableSocketRoutes(app: FastifyInstance) {
       return player?.id ?? null;
     };
 
-    /** Mensajes de video; todo lo demás que mande un cliente ya autenticado se ignora. */
+    /** Quién manda un emoji: su jugador en el grupo o, si no tiene (administrador que mira), su usuario. */
+    const whoIs = async (): Promise<{ playerId: string | null; name: string }> => {
+      const [player] = await app.db.select({ id: schema.players.id, name: schema.players.name }).from(schema.players)
+        .where(and(eq(schema.players.groupId, groupId), eq(schema.players.userId, userId)));
+      if (player) return { playerId: player.id, name: player.name };
+      const [user] = await app.db.select({ name: schema.users.name }).from(schema.users).where(eq(schema.users.id, userId));
+      return { playerId: null, name: user?.name ?? 'Alguien' };
+    };
+    let lastEmoji = 0;
+    const handleEmoji = async (msg: unknown) => {
+      if (!Value.Check(EmojiClientMessage, msg)) return;
+      const now = Date.now();
+      if (now - lastEmoji < EMOJI_MIN_MS) return;
+      lastEmoji = now; // antes del await: dos mensajes seguidos no se cuelan juntos
+      try {
+        const who = await whoIs();
+        app.tableHub.broadcast(groupId, JSON.stringify({ type: 'emoji', id: msg.id, playerId: who.playerId, name: who.name.slice(0, 60) }));
+      } catch { /* sin respuesta: se ignora */ }
+    };
+
+    /** Mensajes de video y emojis; todo lo demás que mande un cliente ya autenticado se ignora. */
     const handleSignal = async (raw: Buffer) => {
       if (raw.length > MAX_SIGNAL_BYTES) return;
       const now = Date.now();
@@ -61,6 +84,7 @@ export async function tableSocketRoutes(app: FastifyInstance) {
       if (++signals > SIGNAL_MAX_PER_WINDOW) return socket.close(1008, 'rate limit');
       let msg: unknown;
       try { msg = JSON.parse(raw.toString()); } catch { return; }
+      if (typeof msg === 'object' && msg !== null && (msg as { type?: unknown }).type === 'emoji') return handleEmoji(msg);
       if (!Value.Check(RtcClientMessage, msg)) return;
       // Todo menos start/stop va dirigido a una conexión concreta.
       const targeted = msg.kind !== 'start' && msg.kind !== 'stop';

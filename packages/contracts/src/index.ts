@@ -4,6 +4,7 @@
  */
 
 import { Type as T, type Static, type TSchema } from '@sinclair/typebox';
+import { TABLE_EMOJIS } from './emojis';
 
 const Nullable = <S extends TSchema>(s: S) => T.Union([s, T.Null()]);
 const Obj = <P extends Parameters<typeof T.Object>[0]>(p: P, id?: string) =>
@@ -330,6 +331,20 @@ export const RtcServerMessage = Obj({
   data: T.Optional(T.Unknown()),
 }, 'RtcServerMessage');
 
+/**
+ * Paleta fija de emojis animados que se pueden mandar a la mesa. `id` es el código Unicode: así se llama su animación
+ * en Noto Emoji Animation (Google). Solo viajan estos ids: nunca texto libre.
+ */
+export { TABLE_EMOJIS, type TableEmojiId } from './emojis';
+const EmojiId = T.Union(TABLE_EMOJIS.map(e => T.Literal(e.id)));
+export const EmojiClientMessage = Obj({ type: T.Literal('emoji'), id: EmojiId }, 'EmojiClientMessage');
+export const EmojiServerMessage = Obj({
+  type: T.Literal('emoji'), id: EmojiId,
+  /** Jugador del que lo manda; null si no tiene (p. ej. un administrador que mira). */
+  playerId: Nullable(T.String()),
+  name: T.String({ maxLength: 60 }),
+}, 'EmojiServerMessage');
+
 export const StartTableBody = Obj({
   smallBlind: T.Optional(Chips), bigBlind: T.Optional(Chips), buyIn: T.Optional(Chips),
   /** 0 = sin límite; si no, entre 10 y 300 segundos. */
@@ -389,3 +404,4 @@ export type ApiTableAction = Static<typeof TableActionBody>['action'];
 export type ApiRtcKind = Static<typeof RtcKind>;
 export type ApiRtcClientMessage = Static<typeof RtcClientMessage>;
 export type ApiRtcServerMessage = Static<typeof RtcServerMessage>;
+export type ApiEmojiServerMessage = Static<typeof EmojiServerMessage>;

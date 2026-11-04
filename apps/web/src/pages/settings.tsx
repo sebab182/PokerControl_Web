@@ -307,6 +307,10 @@ export function SettingsPage() {
           Agrupá tus partidas en temporadas: cada temporada arranca podio y estadísticas en cero.
           Las deudas pendientes siempre quedan visibles, sin importar la temporada.
         </p>
+        <p className="small muted" style={{ margin: '4px 0' }}>
+          Créditos: los emojis animados de la mesa son de{' '}
+          <a href="https://googlefonts.github.io/noto-emoji-animation/" target="_blank" rel="noreferrer">Noto Emoji Animation</a> (Google).
+        </p>
         <p className="small muted" style={{ marginBottom: 12 }}>Sesión iniciada como {me?.user.email}.</p>
         <Btn variant="ghost" onClick={signOut}>Cerrar sesión</Btn>
       </div>

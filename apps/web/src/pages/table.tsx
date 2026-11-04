@@ -1,4 +1,4 @@
-import type { ApiGroup, ApiPlayer, ApiRtcServerMessage, ApiTableAction, ApiTableView } from '@pokercontrol/contracts';
+import type { ApiEmojiServerMessage, ApiGroup, ApiPlayer, ApiRtcServerMessage, ApiTableAction, ApiTableView } from '@pokercontrol/contracts';
 import { formatMoney, parseAmount } from '@pokercontrol/core';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
@@ -11,6 +11,7 @@ import {
 import { useGroup } from '../context';
 import { DECKS, type Deck, type TablePrefs, useTablePrefs, useTurnAlert, useWakeLock } from '../tablePrefs';
 import { shareInvite } from '../share';
+import { EmojiFab, EmojiLayer } from '../components/emoji';
 import { useTableSocket } from '../useTableSocket';
 import { VideoControls, VideoMenu, VideoProvider, useTableVideo } from '../video';
 import { NickChooser } from './auth';
@@ -138,7 +139,8 @@ function TableView() {
   // se ve sin cambiar la versión de la mano (que solo protege las jugadas). Un GET repetido sale barato.
   // El socket necesita el manejador de video y el video necesita el socket: se une por ref.
   const signal = useRef<(msg: ApiRtcServerMessage) => void>(() => {});
-  const socket = useTableSocket(group.id, () => { void qc.invalidateQueries({ queryKey }); }, msg => signal.current(msg));
+  const emojiHandler = useRef<(m: ApiEmojiServerMessage) => void>(() => {});
+  const socket = useTableSocket(group.id, () => { void qc.invalidateQueries({ queryKey }); }, msg => signal.current(msg), msg => emojiHandler.current(msg));
   const { live } = socket;
   const video = useTableVideo(socket, group.playerId);
   signal.current = video.onSignal;
@@ -254,6 +256,9 @@ function TableView() {
 
   return (
     <VideoProvider state={video.state}>
+      <EmojiLayer handler={emojiHandler} enabled={prefs.emojis} />
+      {/* En el paño el botón va en la esquina del propio paño; en la sala de espera, flotando sobre la página. */}
+      {prefs.emojis && !(view.status === 'playing' && view.hand) && <EmojiFab placement="page" live={live} onSend={socket.sendEmoji} />}
       {/* Con una mano en juego, la barra de la mesa reemplaza al encabezado. */}
       {!(view.status === 'playing' && view.hand) && (
         <div className="page-head">
@@ -273,7 +278,8 @@ function TableView() {
           )}
           {view.status === 'waiting'
             ? <Waiting view={view} canEdit={canEdit} standing={standing} busy={busy} onJoin={join} onLeave={leave} onStart={() => setStartOpen(true)} onAddOpen={() => setAddOpen(true)} />
-            : <Playing view={view} updatedAt={query.dataUpdatedAt} busy={busy} onJoin={join} onLeave={leave} onDeal={deal} onClose={close}
+            : <Playing view={view} updatedAt={query.dataUpdatedAt} busy={busy}
+              fab={prefs.emojis ? <EmojiFab placement="felt" live={live} onSend={socket.sendEmoji} /> : null} onJoin={join} onLeave={leave} onDeal={deal} onClose={close}
               bar={view.hand && <TableBar view={view} hand={view.hand} updatedAt={query.dataUpdatedAt} live={live} onPrefs={() => setPrefsOpen(true)} />}
               onReveal={(playerIds, cards) => run(async () => {
                 // Varios a la vez (los jugadores que manejás): uno por vez, cada uno con la mesa ya actualizada.
@@ -431,8 +437,8 @@ function StartModal({ view, open, onClose, onStart, busy }: {
 // ─── Partida en curso ────────────────────────────────────────────────────────
 type Seat = ApiTableView['seats'][number];
 
-function Playing({ view, updatedAt, bar, busy, onJoin, onLeave, onDeal, onClose, onAction, onRebuy, onReveal }: {
-  view: ApiTableView; updatedAt: number; bar: ReactNode; busy: boolean; onJoin: () => void; onLeave: () => void; onDeal: () => void;
+function Playing({ view, updatedAt, bar, fab, busy, onJoin, onLeave, onDeal, onClose, onAction, onRebuy, onReveal }: {
+  view: ApiTableView; updatedAt: number; bar: ReactNode; fab: ReactNode; busy: boolean; onJoin: () => void; onLeave: () => void; onDeal: () => void;
   onClose: () => void; onAction: (a: ApiTableAction) => void; onRebuy: (amount: number) => void;
   onReveal: (playerIds: string[], cards?: number[]) => void;
 }) {
@@ -456,7 +462,7 @@ function Playing({ view, updatedAt, bar, busy, onJoin, onLeave, onDeal, onClose,
       {hand && (
         <div className="table-stage">
           {bar}
-          <Felt view={view} hand={hand} updatedAt={updatedAt} />
+          <Felt view={view} hand={hand} updatedAt={updatedAt} fab={fab} />
           {/* Tus cartas van en tu asiento; acá solo lo que hay que decidir, siempre en el mismo lugar. */}
           <section className="hand-dock" aria-label="Tus acciones">
             <HandResult view={view} hand={hand} where="dock" />
@@ -641,7 +647,7 @@ function winnersText(view: ApiTableView, ids: string[]): string {
   return `${names.slice(0, -1).join(', ')} y ${names[names.length - 1]} ganan`;
 }
 
-function Felt({ view, hand, updatedAt }: { view: ApiTableView; hand: Hand; updatedAt: number }) {
+function Felt({ view, hand, updatedAt, fab }: { view: ApiTableView; hand: Hand; updatedAt: number; fab: ReactNode }) {
   const players = hand.players;
   const myIdx = Math.max(0, players.findIndex(p => p.playerId === view.myPlayerId));
   // Al terminar con showdown se resaltan las cartas de la jugada ganadora.
@@ -652,6 +658,7 @@ function Felt({ view, hand, updatedAt }: { view: ApiTableView; hand: Hand; updat
   return (
     <div className="felt-wrap">
       <BlindsChip view={view} updatedAt={updatedAt} />
+      {fab}
       <div className={`felt${heroCards ? ' felt-hero' : ''}`} data-testid="felt">
         <div className="felt-center">
           <HandResult view={view} hand={hand} fallback={<div className="pot num" data-testid="pot">Pozo {formatMoney(hand.pot)}</div>} />
@@ -955,11 +962,12 @@ const DECK_HINT: Record<Deck, string> = {
 function PrefsModal({ open, onClose, prefs, onChange }: {
   open: boolean; onClose: () => void; prefs: TablePrefs; onChange: (patch: Partial<TablePrefs>) => void;
 }) {
-  const items: { key: 'sound' | 'vibrate' | 'animations' | 'keepAwake'; label: string; hint: string }[] = [
+  const items: { key: 'sound' | 'vibrate' | 'animations' | 'keepAwake' | 'emojis'; label: string; hint: string }[] = [
     { key: 'sound', label: 'Sonidos', hint: 'Un tono cuando te toca jugar' },
     { key: 'vibrate', label: 'Vibrar en mi turno', hint: 'Solo en celulares que lo permiten' },
     { key: 'animations', label: 'Animaciones', hint: 'Reparto de cartas y fichas' },
     { key: 'keepAwake', label: 'Mantener la pantalla encendida', hint: 'Mientras haya una partida en juego' },
+    { key: 'emojis', label: 'Emojis', hint: 'Ver los de los demás y poder mandar los tuyos' },
   ];
   return (
     <Modal open={open} onClose={onClose} title="Preferencias de la mesa" description="Se guardan en este dispositivo.">

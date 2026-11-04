@@ -106,7 +106,7 @@ export function PlayerSeat({ view, hand, playerId, offset, total }: {
   const holeCards = cards.map(x => <PokerCard key={x.i} card={x.c} size={hero ? 'lg' : 'sm'} mark={markOf(win, x.c)} own={x.own} />);
   return (
     <div className={`pseat ${hero ? 'pseat-hero' : ''} ${turn ? 'pseat-turn' : ''} ${turn && !mine ? 'pseat-thinking' : ''} ${p.folded ? 'pseat-folded' : ''} ${won ? 'pseat-won' : ''}`}
-      style={{ ...seatPosition(offset, total), ...(turn && !mine ? seatInward(offset, total) : {}) }} data-testid={`seat-${seat.name}`}>
+      style={{ ...seatPosition(offset, total), ...(turn && !mine ? seatInward(offset, total) : {}) }} data-testid={`seat-${seat.name}`} data-player={playerId}>
       {hero ? (
         <>
           <div className="pseat-hole" data-testid="my-hand">{holeCards}</div>
