@@ -926,7 +926,7 @@ test('mesa online: emojis animados desde el botón flotante, estés sentado o no
   await pablo.page.getByRole('button', { name: 'Listo' }).click();
   await expect(fab(pablo.page)).toHaveCount(0);
   await expect(fab(nico.page)).toBeEnabled({ timeout: 4000 });
-  await send(nico.page, 'Bien');
-  await expect(page.getByTestId('emoji-said')).toHaveText('Nico envió Bien');
+  await send(nico.page, 'Pescador');
+  await expect(page.getByTestId('emoji-said')).toHaveText('Nico envió Pescador');
   await expect(pablo.page.getByTestId('emoji-float')).toHaveCount(0);
 });
