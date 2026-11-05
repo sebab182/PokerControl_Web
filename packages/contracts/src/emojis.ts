@@ -16,7 +16,7 @@ export const TABLE_EMOJIS = [
   { id: '1f62d', char: '😭', label: 'Llanto' },
   { id: '1f389', char: '🎉', label: 'Festejo' },
   { id: '1f44d', char: '👍', label: 'Bien' },
-  { id: '1f648', char: '🙈', label: 'Mono' },
+  { id: '1f412', char: '🐒', label: 'Mono' },
   { id: '1f3a3', char: '🎣', label: 'Pescador' },
   { id: '1f44a', char: '👊', label: 'Puño' },
 ] as const;

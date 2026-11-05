@@ -1997,7 +1997,7 @@ describe('mesa online', () => {
 
     it('la paleta incluye mono, pescador y puño, y rechaza lo que no está', async () => {
       const ids = TABLE_EMOJIS.map(e => e.id);
-      expect(TABLE_EMOJIS.filter(e => ['Mono', 'Pescador', 'Puño'].includes(e.label)).map(e => e.id)).toEqual(['1f648', '1f3a3', '1f44a']);
+      expect(TABLE_EMOJIS.filter(e => ['Mono', 'Pescador', 'Puño'].includes(e.label)).map(e => e.id)).toEqual(['1f412', '1f3a3', '1f44a']);
       expect(new Set(ids).size).toBe(ids.length);
       for (const id of ids) expect(Value.Check(EmojiClientMessage, { type: 'emoji', id })).toBe(true);
       for (const id of ['1f4a9', '1f435', '', '1F602']) expect(Value.Check(EmojiClientMessage, { type: 'emoji', id })).toBe(false);
