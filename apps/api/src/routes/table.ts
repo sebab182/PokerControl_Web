@@ -144,6 +144,18 @@ async function buildView(db: Conn, table: TableRow, viewer: Viewer): Promise<Api
       .orderBy(desc(schema.pokerActions.seq)).limit(1)
     : [];
 
+  // Lo comprado por cada uno en esta partida: la primera compra es la entrada; las demás, recompras.
+  const purchases = new Map<string, { count: number; total: number }>();
+  if (table.sessionId) {
+    const rows = await db.select({ playerId: schema.sessionParticipants.playerId, amount: schema.buys.amount }).from(schema.buys)
+      .innerJoin(schema.sessionParticipants, eq(schema.sessionParticipants.id, schema.buys.participantId))
+      .where(eq(schema.sessionParticipants.sessionId, table.sessionId));
+    for (const r of rows) {
+      const cur = purchases.get(r.playerId) ?? { count: 0, total: 0 };
+      purchases.set(r.playerId, { count: cur.count + 1, total: cur.total + r.amount });
+    }
+  }
+
   let hand: ApiTableView['hand'] = null;
   if (row && state) {
     const v = publicView(state, [...(myId ? [myId] : []), ...managedIds]);
@@ -215,6 +227,10 @@ async function buildView(db: Conn, table: TableRow, viewer: Viewer): Promise<Api
       online: isPresent(seat, now),
       isYou: seat.playerId === myId,
       managed: managedIds.has(seat.playerId),
+      rebuys: Math.max(0, (purchases.get(seat.playerId)?.count ?? 0) - 1),
+      bought: purchases.get(seat.playerId)?.total ?? 0,
+      // Con las fichas de la mesa (sin contar lo que está en juego en la mano) menos lo comprado.
+      net: purchases.has(seat.playerId) ? seat.stack - (purchases.get(seat.playerId)?.total ?? 0) : 0,
     })),
   };
 }

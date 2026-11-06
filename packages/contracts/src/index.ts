@@ -234,6 +234,8 @@ export const TableSeat = Obj({
   online: T.Boolean(), isYou: T.Boolean(),
   /** Un administrador puede jugar por él: es un jugador sin usuario. */
   managed: T.Boolean(),
+  /** En esta partida: recompras (compras después de la entrada), fichas compradas en total y neto (fichas ahora menos compradas). */
+  rebuys: T.Integer(), bought: T.Integer(), net: T.Integer(),
 }, 'TableSeat');
 export const HandPlayerView = Obj({
   playerId: T.String(), stack: T.Integer(), bet: T.Integer(), totalBet: T.Integer(),

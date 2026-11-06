@@ -1378,6 +1378,9 @@ paths:
                         - online
                         - isYou
                         - managed
+                        - rebuys
+                        - bought
+                        - net
                       properties:
                         playerId:
                           type: string
@@ -1399,6 +1402,12 @@ paths:
                           type: boolean
                         managed:
                           type: boolean
+                        rebuys:
+                          type: integer
+                        bought:
+                          type: integer
+                        net:
+                          type: integer
                   maxRebuy:
                     type: integer
                   myPlayerId:
@@ -1728,6 +1737,9 @@ paths:
                         - online
                         - isYou
                         - managed
+                        - rebuys
+                        - bought
+                        - net
                       properties:
                         playerId:
                           type: string
@@ -1749,6 +1761,12 @@ paths:
                           type: boolean
                         managed:
                           type: boolean
+                        rebuys:
+                          type: integer
+                        bought:
+                          type: integer
+                        net:
+                          type: integer
                   maxRebuy:
                     type: integer
                   myPlayerId:
@@ -2078,6 +2096,9 @@ paths:
                         - online
                         - isYou
                         - managed
+                        - rebuys
+                        - bought
+                        - net
                       properties:
                         playerId:
                           type: string
@@ -2099,6 +2120,12 @@ paths:
                           type: boolean
                         managed:
                           type: boolean
+                        rebuys:
+                          type: integer
+                        bought:
+                          type: integer
+                        net:
+                          type: integer
                   maxRebuy:
                     type: integer
                   myPlayerId:
@@ -2428,6 +2455,9 @@ paths:
                         - online
                         - isYou
                         - managed
+                        - rebuys
+                        - bought
+                        - net
                       properties:
                         playerId:
                           type: string
@@ -2449,6 +2479,12 @@ paths:
                           type: boolean
                         managed:
                           type: boolean
+                        rebuys:
+                          type: integer
+                        bought:
+                          type: integer
+                        net:
+                          type: integer
                   maxRebuy:
                     type: integer
                   myPlayerId:
@@ -2783,6 +2819,9 @@ paths:
                         - online
                         - isYou
                         - managed
+                        - rebuys
+                        - bought
+                        - net
                       properties:
                         playerId:
                           type: string
@@ -2804,6 +2843,12 @@ paths:
                           type: boolean
                         managed:
                           type: boolean
+                        rebuys:
+                          type: integer
+                        bought:
+                          type: integer
+                        net:
+                          type: integer
                   maxRebuy:
                     type: integer
                   myPlayerId:
@@ -3137,6 +3182,9 @@ paths:
                         - online
                         - isYou
                         - managed
+                        - rebuys
+                        - bought
+                        - net
                       properties:
                         playerId:
                           type: string
@@ -3158,6 +3206,12 @@ paths:
                           type: boolean
                         managed:
                           type: boolean
+                        rebuys:
+                          type: integer
+                        bought:
+                          type: integer
+                        net:
+                          type: integer
                   maxRebuy:
                     type: integer
                   myPlayerId:
@@ -3504,6 +3558,9 @@ paths:
                         - online
                         - isYou
                         - managed
+                        - rebuys
+                        - bought
+                        - net
                       properties:
                         playerId:
                           type: string
@@ -3525,6 +3582,12 @@ paths:
                           type: boolean
                         managed:
                           type: boolean
+                        rebuys:
+                          type: integer
+                        bought:
+                          type: integer
+                        net:
+                          type: integer
                   maxRebuy:
                     type: integer
                   myPlayerId:
@@ -3882,6 +3945,9 @@ paths:
                         - online
                         - isYou
                         - managed
+                        - rebuys
+                        - bought
+                        - net
                       properties:
                         playerId:
                           type: string
@@ -3903,6 +3969,12 @@ paths:
                           type: boolean
                         managed:
                           type: boolean
+                        rebuys:
+                          type: integer
+                        bought:
+                          type: integer
+                        net:
+                          type: integer
                   maxRebuy:
                     type: integer
                   myPlayerId:
@@ -4232,6 +4304,9 @@ paths:
                         - online
                         - isYou
                         - managed
+                        - rebuys
+                        - bought
+                        - net
                       properties:
                         playerId:
                           type: string
@@ -4253,6 +4328,12 @@ paths:
                           type: boolean
                         managed:
                           type: boolean
+                        rebuys:
+                          type: integer
+                        bought:
+                          type: integer
+                        net:
+                          type: integer
                   maxRebuy:
                     type: integer
                   myPlayerId:
@@ -4649,6 +4730,9 @@ paths:
                         - online
                         - isYou
                         - managed
+                        - rebuys
+                        - bought
+                        - net
                       properties:
                         playerId:
                           type: string
@@ -4670,6 +4754,12 @@ paths:
                           type: boolean
                         managed:
                           type: boolean
+                        rebuys:
+                          type: integer
+                        bought:
+                          type: integer
+                        net:
+                          type: integer
                   maxRebuy:
                     type: integer
                   myPlayerId:
@@ -5018,6 +5108,9 @@ paths:
                         - online
                         - isYou
                         - managed
+                        - rebuys
+                        - bought
+                        - net
                       properties:
                         playerId:
                           type: string
@@ -5039,6 +5132,12 @@ paths:
                           type: boolean
                         managed:
                           type: boolean
+                        rebuys:
+                          type: integer
+                        bought:
+                          type: integer
+                        net:
+                          type: integer
                   maxRebuy:
                     type: integer
                   myPlayerId:
@@ -5380,6 +5479,9 @@ paths:
                         - online
                         - isYou
                         - managed
+                        - rebuys
+                        - bought
+                        - net
                       properties:
                         playerId:
                           type: string
@@ -5401,6 +5503,12 @@ paths:
                           type: boolean
                         managed:
                           type: boolean
+                        rebuys:
+                          type: integer
+                        bought:
+                          type: integer
+                        net:
+                          type: integer
                   maxRebuy:
                     type: integer
                   myPlayerId:
@@ -5740,6 +5848,9 @@ paths:
                             - online
                             - isYou
                             - managed
+                            - rebuys
+                            - bought
+                            - net
                           properties:
                             playerId:
                               type: string
@@ -5761,6 +5872,12 @@ paths:
                               type: boolean
                             managed:
                               type: boolean
+                            rebuys:
+                              type: integer
+                            bought:
+                              type: integer
+                            net:
+                              type: integer
                       maxRebuy:
                         type: integer
                       myPlayerId:

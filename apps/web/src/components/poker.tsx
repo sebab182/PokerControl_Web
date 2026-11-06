@@ -69,6 +69,22 @@ export function seatInward(offset: number, total: number): CSSProperties {
 }
 
 /**
+ * Contador de recompras y neto de esta partida (fichas ahora menos compradas), en una línea: "↻2 · +$340".
+ * El signo acompaña siempre al color; para lectores de pantalla va escrito completo.
+ */
+export function SeatScore({ seat }: { seat: { rebuys: number; net: number } }) {
+  const { rebuys, net } = seat;
+  const tone = net > 0 ? 'pos' : net < 0 ? 'neg' : '';
+  const spoken = `${rebuys} ${rebuys === 1 ? 'recompra' : 'recompras'}, ${net > 0 ? `ganó ${formatMoney(net)}` : net < 0 ? `perdió ${formatMoney(-net)}` : 'sin ganancia ni pérdida'}`;
+  return (
+    <span className="seat-score num" data-testid="seat-score">
+      <span aria-hidden="true">↻{rebuys} · <span className={tone}>{net === 0 ? '$0' : `${net > 0 ? '+' : '−'}${formatMoney(Math.abs(net))}`}</span></span>
+      <span className="sr-only">{spoken}</span>
+    </span>
+  );
+}
+
+/**
  * Un asiento del paño. Las cartas propias (las tuyas y las de los jugadores sin usuario que manejás) van en el asiento:
  * en el tuyo, abajo y grandes, con el nombre de tu jugada; en los demás, chicas en abanico sobre el avatar.
  */
@@ -117,6 +133,7 @@ export function PlayerSeat({ view, hand, playerId, offset, total }: {
               <span className="pseat-hero-info">
                 <span className="pseat-name"><span className="ellipsis">{name}</span>{dealer && <span className="dealer" title="Botón">D</span>}</span>
                 <span className="pseat-stack num">{formatMoney(p.stack)}</span>
+                <SeatScore seat={seat} />
                 {handName && <span className="pseat-handname">{handName}</span>}
               </span>
             </div>
@@ -132,6 +149,7 @@ export function PlayerSeat({ view, hand, playerId, offset, total }: {
             {/* El botón (D) va aparte del nombre: si el nombre no entra se corta con "…", pero la D siempre se ve. */}
             <span className="pseat-name"><span className="ellipsis">{name}</span>{dealer && <span className="dealer" title="Botón">D</span>}</span>
             <span className="pseat-stack num">{formatMoney(p.stack)}</span>
+            <SeatScore seat={seat} />
           </div>
         </>
       )}

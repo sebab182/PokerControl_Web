@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { ApiRequestError, api } from '../api';
-import { EmptyCard, PlayerSeat, PokerCard, cardText, markOf, winningCards } from '../components/poker';
+import { EmptyCard, PlayerSeat, PokerCard, SeatScore, cardText, markOf, winningCards } from '../components/poker';
 import {
   Avatar, Btn, Emoji, Loading, Modal, QueryError, TextField, useAction, useFeedback,
 } from '../components/ui';
@@ -1023,6 +1023,7 @@ function AdminSeats({ view, busy, onAddOpen, add, remove, rebuy }: {
             <strong className="ellipsis">{s.name}</strong>
             <div className="xs muted">
               {playing ? formatMoney(s.stack) : 'En la mesa'}{s.managed ? ' · lo jugás vos' : ''}{s.status === 'out' ? ' · afuera' : ''}
+              {playing && <> · <SeatScore seat={s} /></>}
             </div>
           </div>
           <div className="row-wrap">

@@ -1232,6 +1232,32 @@ describe('mesa online', () => {
     expect(sess.status).toBe('closed');
   });
 
+  it('cada asiento informa sus recompras y su neto en la partida', async () => {
+    const { a, b, pid, byPlayer } = await setup();
+    await a.ok('POST', '/g/table/join');
+    await b.ok('POST', '/g/table/join');
+    // Sin partida no hay compras que contar.
+    expect((await view(a)).seats.map((x: { bought: number; net: number }) => [x.bought, x.net])).toEqual([[0, 0], [0, 0]]);
+
+    let v = await a.idem('/g/table/start', {});
+    const at = (view_: { seats: { playerId: string }[] }, id: string) => view_.seats.find(x => x.playerId === id) as unknown as { rebuys: number; bought: number; net: number };
+    // La entrada no es una recompra.
+    expect([at(v, pid[0]), at(v, pid[1])]).toEqual([{ rebuys: 0, bought: 1000, net: 0 }, { rebuys: 0, bought: 1000, net: 0 }].map(x => expect.objectContaining(x)));
+
+    // Se retira quien tiene el turno (ciega chica): pierde 10 y el otro gana 10; el neto se actualiza al terminar la mano.
+    const loser = v.hand.toActPlayerId as string;
+    const winner = loser === pid[0] ? pid[1] : pid[0];
+    v = await act(byPlayer(loser), v, { type: 'fold' });
+    expect(at(v, loser).net).toBe(-10);
+    expect(at(v, winner).net).toBe(10);
+
+    // Recompra: suma una recompra y lo comprado; el neto sigue siendo fichas menos compradas.
+    await conn.pool.query('update poker_seats set stack = 0 where player_id = $1', [loser]);
+    const rebuy = await byPlayer(loser).idem('/g/table/rebuy', { amount: 200 });
+    expect(at(rebuy, loser)).toMatchObject({ rebuys: 1, bought: 1200, net: 200 - 1200 });
+    expect(at(rebuy, winner)).toMatchObject({ rebuys: 0, bought: 1000, net: 10 });
+  });
+
   it('informa la última jugada, con el monto de subidas y all-in', async () => {
     const { a, b, byPlayer } = await setup();
     await a.ok('POST', '/g/table/join');
