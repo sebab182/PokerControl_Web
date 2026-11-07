@@ -9442,6 +9442,698 @@ paths:
                     type: string
                   message:
                     type: string
+  /api/v1/groups/{groupId}/sessions/{id}/analysis:
+    get:
+      tags: *a6
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+        - schema:
+            type: string
+          in: path
+          name: id
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: SessionAnalysis
+                type: object
+                required:
+                  - names
+                  - hands
+                  - handsWithRunout
+                  - players
+                  - handRows
+                  - series
+                  - whatIf
+                properties:
+                  names:
+                    type: object
+                    additionalProperties:
+                      type: string
+                  hands:
+                    type: integer
+                  handsWithRunout:
+                    type: integer
+                  players:
+                    type: array
+                    items:
+                      additionalProperties: false
+                      title: PlayerInsights
+                      type: object
+                      required:
+                        - playerId
+                        - hands
+                        - net
+                        - bb100
+                        - vpip
+                        - pfr
+                        - threeBet
+                        - foldToThreeBet
+                        - cbet
+                        - foldToCbet
+                        - steal
+                        - bbDefend
+                        - aggression
+                        - aggressionFreq
+                        - wtsd
+                        - wsd
+                        - wwsf
+                        - avgPot
+                        - avgThinkMs
+                        - avgCardScore
+                        - byPosition
+                        - allIn
+                      properties:
+                        playerId:
+                          type: string
+                        hands:
+                          type: integer
+                        net:
+                          type: number
+                        bb100:
+                          type: number
+                        vpip:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - n
+                            - d
+                          properties:
+                            n:
+                              type: integer
+                            d:
+                              type: integer
+                        pfr:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - n
+                            - d
+                          properties:
+                            n:
+                              type: integer
+                            d:
+                              type: integer
+                        threeBet:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - n
+                            - d
+                          properties:
+                            n:
+                              type: integer
+                            d:
+                              type: integer
+                        foldToThreeBet:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - n
+                            - d
+                          properties:
+                            n:
+                              type: integer
+                            d:
+                              type: integer
+                        cbet:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - n
+                            - d
+                          properties:
+                            n:
+                              type: integer
+                            d:
+                              type: integer
+                        foldToCbet:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - n
+                            - d
+                          properties:
+                            n:
+                              type: integer
+                            d:
+                              type: integer
+                        steal:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - n
+                            - d
+                          properties:
+                            n:
+                              type: integer
+                            d:
+                              type: integer
+                        bbDefend:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - n
+                            - d
+                          properties:
+                            n:
+                              type: integer
+                            d:
+                              type: integer
+                        aggression:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - raises
+                            - calls
+                          properties:
+                            raises:
+                              type: integer
+                            calls:
+                              type: integer
+                        aggressionFreq:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - n
+                            - d
+                          properties:
+                            n:
+                              type: integer
+                            d:
+                              type: integer
+                        wtsd:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - n
+                            - d
+                          properties:
+                            n:
+                              type: integer
+                            d:
+                              type: integer
+                        wsd:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - n
+                            - d
+                          properties:
+                            n:
+                              type: integer
+                            d:
+                              type: integer
+                        wwsf:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - n
+                            - d
+                          properties:
+                            n:
+                              type: integer
+                            d:
+                              type: integer
+                        avgPot:
+                          type: number
+                        avgThinkMs:
+                          type: number
+                          nullable: true
+                        avgCardScore:
+                          type: number
+                          nullable: true
+                        byPosition:
+                          type: array
+                          items:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - position
+                              - hands
+                              - net
+                              - netBB
+                            properties:
+                              position:
+                                type: string
+                              hands:
+                                type: integer
+                              net:
+                                type: number
+                              netBB:
+                                type: number
+                        allIn:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - hands
+                            - net
+                            - evNet
+                          properties:
+                            hands:
+                              type: integer
+                            net:
+                              type: number
+                            evNet:
+                              type: number
+                  handRows:
+                    type: array
+                    items:
+                      additionalProperties: false
+                      title: HandRow
+                      type: object
+                      required:
+                        - id
+                        - handNo
+                        - pot
+                        - board
+                        - endedOn
+                        - wentToShowdown
+                        - bigBlind
+                        - players
+                        - actions
+                      properties:
+                        id:
+                          type: integer
+                        handNo:
+                          type: integer
+                        pot:
+                          type: number
+                        board:
+                          type: array
+                          items:
+                            type: string
+                        endedOn:
+                          anyOf:
+                            - type: string
+                              enum:
+                                - preflop
+                            - type: string
+                              enum:
+                                - flop
+                            - type: string
+                              enum:
+                                - turn
+                            - type: string
+                              enum:
+                                - river
+                        wentToShowdown:
+                          type: boolean
+                        bigBlind:
+                          type: number
+                        players:
+                          type: array
+                          items:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - position
+                              - hole
+                              - net
+                              - foldedStreet
+                              - showdown
+                              - pending
+                            properties:
+                              playerId:
+                                type: string
+                              position:
+                                type: string
+                                nullable: true
+                              hole:
+                                type: array
+                                items:
+                                  type: string
+                              net:
+                                type: number
+                              foldedStreet:
+                                anyOf:
+                                  - anyOf:
+                                      - type: string
+                                        enum:
+                                          - preflop
+                                      - type: string
+                                        enum:
+                                          - flop
+                                      - type: string
+                                        enum:
+                                          - turn
+                                      - type: string
+                                        enum:
+                                          - river
+                                  - type: object
+                                    nullable: true
+                                    enum:
+                                      - null
+                              showdown:
+                                type: boolean
+                              pending:
+                                type: boolean
+                        actions:
+                          type: array
+                          items:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - street
+                              - kind
+                              - amount
+                              - auto
+                              - allIn
+                            properties:
+                              playerId:
+                                type: string
+                              street:
+                                anyOf:
+                                  - anyOf:
+                                      - type: string
+                                        enum:
+                                          - preflop
+                                      - type: string
+                                        enum:
+                                          - flop
+                                      - type: string
+                                        enum:
+                                          - turn
+                                      - type: string
+                                        enum:
+                                          - river
+                                  - type: object
+                                    nullable: true
+                                    enum:
+                                      - null
+                              kind:
+                                anyOf:
+                                  - anyOf:
+                                      - type: string
+                                        enum:
+                                          - fold
+                                      - type: string
+                                        enum:
+                                          - check
+                                      - type: string
+                                        enum:
+                                          - call
+                                      - type: string
+                                        enum:
+                                          - raise
+                                  - type: object
+                                    nullable: true
+                                    enum:
+                                      - null
+                              amount:
+                                type: number
+                                nullable: true
+                              auto:
+                                type: boolean
+                              allIn:
+                                type: boolean
+                  series:
+                    additionalProperties: false
+                    type: object
+                    required:
+                      - net
+                      - evNet
+                      - pot
+                      - endedOn
+                    properties:
+                      net:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - handNo
+                            - values
+                          properties:
+                            handNo:
+                              type: integer
+                            values:
+                              type: object
+                              additionalProperties:
+                                type: number
+                      evNet:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - handNo
+                            - values
+                          properties:
+                            handNo:
+                              type: integer
+                            values:
+                              type: object
+                              additionalProperties:
+                                type: number
+                      pot:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - handNo
+                            - pot
+                            - endedOn
+                            - showdown
+                          properties:
+                            handNo:
+                              type: integer
+                            pot:
+                              type: number
+                            endedOn:
+                              anyOf:
+                                - type: string
+                                  enum:
+                                    - preflop
+                                - type: string
+                                  enum:
+                                    - flop
+                                - type: string
+                                  enum:
+                                    - turn
+                                - type: string
+                                  enum:
+                                    - river
+                            showdown:
+                              type: boolean
+                      endedOn:
+                        additionalProperties: false
+                        type: object
+                        required:
+                          - preflop
+                          - flop
+                          - turn
+                          - river
+                        properties:
+                          preflop:
+                            type: integer
+                          flop:
+                            type: integer
+                          turn:
+                            type: integer
+                          river:
+                            type: integer
+                  whatIf:
+                    additionalProperties: false
+                    type: object
+                    required:
+                      - allIns
+                      - folds
+                      - calls
+                      - luck
+                    properties:
+                      allIns:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - handNo
+                            - playerId
+                            - equity
+                            - net
+                            - evNet
+                            - hole
+                            - board
+                          properties:
+                            handNo:
+                              type: integer
+                            playerId:
+                              type: string
+                            equity:
+                              type: number
+                            net:
+                              type: number
+                            evNet:
+                              type: number
+                            hole:
+                              type: array
+                              items:
+                                type: string
+                            board:
+                              type: array
+                              items:
+                                type: string
+                      folds:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - handNo
+                            - playerId
+                            - street
+                            - toCall
+                            - hole
+                            - board
+                            - result
+                            - delta
+                            - auto
+                          properties:
+                            handNo:
+                              type: integer
+                            playerId:
+                              type: string
+                            street:
+                              anyOf:
+                                - type: string
+                                  enum:
+                                    - preflop
+                                - type: string
+                                  enum:
+                                    - flop
+                                - type: string
+                                  enum:
+                                    - turn
+                                - type: string
+                                  enum:
+                                    - river
+                            toCall:
+                              type: number
+                            hole:
+                              type: array
+                              items:
+                                type: string
+                            board:
+                              type: array
+                              items:
+                                type: string
+                            result:
+                              anyOf:
+                                - type: string
+                                  enum:
+                                    - win
+                                - type: string
+                                  enum:
+                                    - tie
+                                - type: string
+                                  enum:
+                                    - lose
+                            delta:
+                              type: number
+                            auto:
+                              type: boolean
+                      calls:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - handNo
+                            - playerId
+                            - street
+                            - toCall
+                            - committed
+                            - net
+                            - won
+                          properties:
+                            handNo:
+                              type: integer
+                            playerId:
+                              type: string
+                            street:
+                              anyOf:
+                                - type: string
+                                  enum:
+                                    - preflop
+                                - type: string
+                                  enum:
+                                    - flop
+                                - type: string
+                                  enum:
+                                    - turn
+                                - type: string
+                                  enum:
+                                    - river
+                            toCall:
+                              type: number
+                            committed:
+                              type: number
+                            net:
+                              type: number
+                            won:
+                              type: boolean
+                      luck:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - playerId
+                            - allInHands
+                            - net
+                            - evNet
+                            - luck
+                            - avgCardScore
+                            - cardScoreVsTable
+                            - vpipRate
+                          properties:
+                            playerId:
+                              type: string
+                            allInHands:
+                              type: integer
+                            net:
+                              type: number
+                            evNet:
+                              type: number
+                            luck:
+                              type: number
+                            avgCardScore:
+                              type: number
+                              nullable: true
+                            cardScoreVsTable:
+                              type: number
+                              nullable: true
+                            vpipRate:
+                              type: number
+                              nullable: true
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
   /api/v1/groups/{groupId}/debts:
     get:
       tags: &a7

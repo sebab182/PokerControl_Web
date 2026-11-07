@@ -10,6 +10,7 @@ import { JoinPage, LoginPage, NickPage, OnboardingPage } from './pages/auth';
 import { PendingDebtsPage } from './pages/debts';
 import { PlayersPage, RankingPage, StatsPage } from './pages/players';
 import { SeasonSessionsPage, SeasonsPage } from './pages/seasons';
+import { SessionAnalysisPage } from './pages/analysis';
 import { SessionDebtsPage, SessionPage } from './pages/session';
 import { SettingsPage } from './pages/settings';
 import { TablePage } from './pages/table';
@@ -113,6 +114,7 @@ function App() {
           <Route path="/seasons/:seasonId" element={<SeasonSessionsPage />} />
           <Route path="/sessions/:sessionId" element={<SessionPage />} />
           <Route path="/sessions/:sessionId/debts" element={<SessionDebtsPage />} />
+          <Route path="/sessions/:sessionId/analysis" element={<SessionAnalysisPage />} />
           <Route path="/table" element={<TablePage />} />
           <Route path="/players" element={<PlayersPage />} />
           <Route path="/players/:playerId/stats" element={<StatsPage />} />

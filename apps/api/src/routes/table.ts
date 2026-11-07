@@ -291,7 +291,11 @@ async function finishHand(tx: Tx, handId: number, state: HandState): Promise<voi
       .where(and(eq(schema.pokerSeats.tableId, hand.tableId), eq(schema.pokerSeats.playerId, p.id)));
   }
   await tx.update(schema.pokerHands)
-    .set({ status: 'done', finishedAt: new Date(), state: { ...state, deck: [] } })
+    .set({
+      status: 'done', finishedAt: new Date(), state: { ...state, deck: [] },
+      // Las cartas que habrían salido, para el análisis "y si no te retirabas" (solo se muestran con la partida cerrada).
+      fullBoard: [...state.board, ...state.deck.slice(0, 5 - state.board.length)],
+    })
     .where(eq(schema.pokerHands.id, handId));
   await recordHandResult(tx, hand.groupId, handId, state);
 }
@@ -378,10 +382,15 @@ async function playAction(tx: Tx, table: TableRow, hand: HandRow, playerId: stri
     .where(eq(schema.pokerActions.handId, hand.id));
   // La situación en que se jugó, para analizar el juego después (calle, pozo, fichas, rivales).
   const spot = describeAction(state, action);
+  const mine = state.players.findIndex(x => x.id === playerId);
+  const wentAllIn = mine >= 0 && next.players[mine].allIn && !state.players[mine].allIn;
+  // Cuánto tardó en decidir: desde que le tocó (el vencimiento menos el tiempo por turno), si la mesa tiene límite.
+  const thinkMs = table.turnDeadline && table.turnSeconds > 0
+    ? Math.max(0, Date.now() - (table.turnDeadline.getTime() - table.turnSeconds * 1000)) : null;
   await tx.insert(schema.pokerActions).values({
     handId: hand.id, seq: n + 1, playerId, action: auto ? { ...logged, auto: true } : logged,
     street: spot?.street, kind: spot?.kind, amount: spot?.amount, potBefore: spot?.potBefore, toCall: spot?.toCall,
-    stackBefore: spot?.stackBefore, playersLeft: spot?.playersLeft, auto,
+    stackBefore: spot?.stackBefore, playersLeft: spot?.playersLeft, auto, allIn: wentAllIn, thinkMs,
   });
   await tx.update(schema.pokerHands).set({ state: next }).where(eq(schema.pokerHands.id, hand.id));
   if (next.street === 'done') await finishHand(tx, hand.id, next);

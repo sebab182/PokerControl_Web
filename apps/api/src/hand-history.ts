@@ -7,9 +7,9 @@
  */
 
 import {
-  handPositions, summarizeHand, type ActionKind, type HandState, type PlayerHandSummary, type RecordedAction, type StreetName,
+  allInSpot, analyzeSession, cardScore, handClass, handPositions, summarizeHand, type ActionKind, type HandState, type InsightHand, type PlayerHandSummary, type RecordedAction, type StreetName,
 } from '@pokercontrol/core';
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import * as schema from './db/schema';
 import type { Conn, Db, Tx } from './repo';
 
@@ -27,6 +27,8 @@ export async function recordHandStart(tx: Tx, groupId: string, handId: number, s
     startStack: p.stack + p.totalBet,
     pending: !!p.pending,
     hole: p.hole,
+    handClass: handClass(p.hole),
+    cardScore: cardScore(p.hole),
   })));
 }
 
@@ -65,6 +67,31 @@ export async function recordHandResult(tx: Tx, groupId: string, handId: number, 
     await tx.update(schema.pokerHandPlayers).set(detail(p))
       .where(and(eq(schema.pokerHandPlayers.handId, handId), eq(schema.pokerHandPlayers.playerId, p.playerId)));
   }
+  await recordAllIn(tx, handId, state, actions);
+}
+
+/** Calle en que quedó todo el dinero adentro, o null si no hubo all-in con showdown. */
+function allInStreet(state: HandState, actions: { playerId: string; street: string | null; kind: string | null; allIn: boolean }[]): StreetName | null {
+  if (state.showdown.length < 2) return null;
+  const flagged = [...actions].reverse().find(a => a.allIn && a.street);
+  if (flagged) return flagged.street as StreetName;
+  // Jugadas anteriores a la marca all_in: la última igualada o subida de quien terminó all-in.
+  const allInIds = new Set(state.players.filter(p => p.allIn).map(p => p.id));
+  const legacy = [...actions].reverse().find(a => a.street && allInIds.has(a.playerId) && (a.kind === 'call' || a.kind === 'raise'));
+  if (legacy) return legacy.street as StreetName;
+  // Todos quedaron all-in por las ciegas: no hubo jugadas.
+  return actions.length === 0 && allInIds.size > 0 ? 'preflop' : null;
+}
+
+/** Guarda la probabilidad de ganar y el neto esperado de los jugadores del showdown si hubo all-in. */
+async function recordAllIn(tx: Conn, handId: number, state: HandState, actions: Parameters<typeof allInStreet>[1]): Promise<void> {
+  const street = allInStreet(state, actions);
+  const spot = street ? allInSpot(state, street) : null;
+  if (!spot) return;
+  for (const [playerId, chance] of Object.entries(spot.equity)) {
+    await tx.update(schema.pokerHandPlayers).set({ allInEquity: chance, evNet: spot.evNet[playerId] })
+      .where(and(eq(schema.pokerHandPlayers.handId, handId), eq(schema.pokerHandPlayers.playerId, playerId)));
+  }
 }
 
 /**
@@ -85,7 +112,7 @@ async function rebuildHand(tx: Tx, groupId: string, handId: number, state: HandS
       position: positions[p.id]?.position ?? null, positionIndex: positions[p.id]?.index ?? null,
       // Con el estado final: fichas al terminar menos lo cobrado más lo aportado.
       startStack: Math.max(0, p.stack - s.won + p.totalBet),
-      pending: !!p.pending, hole: p.hole,
+      pending: !!p.pending, hole: p.hole, handClass: handClass(p.hole), cardScore: cardScore(p.hole),
       invested: s.invested, won: s.won, net: s.net, allIn: s.allIn, showdown: s.showdown, wonShowdown: s.wonShowdown,
       hasStreetData: false,
     };
@@ -112,6 +139,72 @@ export async function backfillHandHistory(db: Db): Promise<number> {
     });
     done += batch.length;
   }
+}
+
+/**
+ * Completa lo que agregó el análisis (clase y fuerza de las cartas, probabilidad de ganar en los all-in) en las manos
+ * que ya estaban en el historial. Es idempotente: solo mira las manos con jugadores sin clase de mano. Devuelve cuántas completó.
+ */
+export async function backfillHandInsights(db: Db): Promise<number> {
+  let done = 0;
+  for (;;) {
+    const batch = await db.select({ id: schema.pokerHands.id, state: schema.pokerHands.state })
+      .from(schema.pokerHands)
+      .where(and(
+        eq(schema.pokerHands.status, 'done'),
+        sql`exists (select 1 from poker_hand_players hp where hp.hand_id = ${schema.pokerHands.id} and hp.hand_class is null)`,
+      ))
+      .orderBy(asc(schema.pokerHands.id)).limit(200);
+    if (batch.length === 0) return done;
+    await db.transaction(async tx => {
+      for (const h of batch) {
+        const state = h.state as HandState;
+        for (const p of state.players) {
+          await tx.update(schema.pokerHandPlayers).set({ handClass: handClass(p.hole) ?? '--', cardScore: cardScore(p.hole) })
+            .where(and(eq(schema.pokerHandPlayers.handId, h.id), eq(schema.pokerHandPlayers.playerId, p.id)));
+        }
+        const actions = await tx.select().from(schema.pokerActions).where(eq(schema.pokerActions.handId, h.id))
+          .orderBy(asc(schema.pokerActions.seq));
+        // Solo las manos con el detalle por calle: sin él no se sabe en qué calle quedó el dinero adentro.
+        const [row] = await tx.select({ s: schema.pokerHandPlayers.hasStreetData }).from(schema.pokerHandPlayers)
+          .where(eq(schema.pokerHandPlayers.handId, h.id)).limit(1);
+        if (row?.s) await recordAllIn(tx, h.id, state, actions);
+      }
+    });
+    done += batch.length;
+  }
+}
+
+/** Las manos terminadas de una partida, como las lee el análisis. */
+export async function loadInsightHands(db: Conn, sessionId: string): Promise<InsightHand[]> {
+  const hands = await db.select().from(schema.pokerHands)
+    .where(and(eq(schema.pokerHands.sessionId, sessionId), eq(schema.pokerHands.status, 'done')))
+    .orderBy(asc(schema.pokerHands.handNo));
+  if (hands.length === 0) return [];
+  const ids = hands.map(h => h.id);
+  const players = await db.select().from(schema.pokerHandPlayers).where(inArray(schema.pokerHandPlayers.handId, ids))
+    .orderBy(asc(schema.pokerHandPlayers.seatOrder));
+  const actions = await db.select().from(schema.pokerActions).where(inArray(schema.pokerActions.handId, ids))
+    .orderBy(asc(schema.pokerActions.seq));
+  return hands.map(h => ({
+    id: h.id, handNo: h.handNo, smallBlind: h.smallBlind ?? 0, bigBlind: h.bigBlind ?? 0, pot: h.pot ?? 0,
+    board: h.board ?? [], fullBoard: h.fullBoard, endedOn: (h.endedOn ?? 'preflop') as StreetName, wentToShowdown: !!h.wentToShowdown,
+    players: players.filter(p => p.handId === h.id).map(p => ({
+      playerId: p.playerId, position: p.position, startStack: p.startStack, pending: p.pending, hole: p.hole,
+      invested: p.invested ?? 0, won: p.won ?? 0, net: p.net ?? 0, foldedStreet: p.foldedStreet as StreetName | null,
+      sawFlop: !!p.sawFlop, vpip: !!p.vpip, pfr: !!p.pfr, allIn: !!p.allIn, showdown: !!p.showdown, wonShowdown: !!p.wonShowdown,
+      cardScore: p.cardScore, handClass: p.handClass, allInEquity: p.allInEquity, evNet: p.evNet, hasStreetData: p.hasStreetData,
+    })),
+    actions: actions.filter(a => a.handId === h.id).map(a => ({
+      seq: a.seq, playerId: a.playerId, street: a.street as StreetName | null, kind: a.kind as ActionKind | null, amount: a.amount,
+      potBefore: a.potBefore, toCall: a.toCall, stackBefore: a.stackBefore, auto: a.auto, allIn: a.allIn, thinkMs: a.thinkMs,
+    })),
+  }));
+}
+
+/** Indicadores de una partida a partir de su historial de manos. */
+export async function sessionInsights(db: Conn, sessionId: string) {
+  return analyzeSession(await loadInsightHands(db, sessionId));
 }
 
 export type { Conn };

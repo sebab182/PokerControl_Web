@@ -166,6 +166,7 @@ export function SessionPage() {
         <div className="row" style={{ marginBottom: 12 }}>
           <Btn variant="ghost" className="grow" onClick={() => { void share(); }}><Emoji>📤</Emoji> WhatsApp</Btn>
           <Link className="btn btn-ghost grow" to={`/sessions/${sessionId}/debts`}><Emoji>💳</Emoji> Saldos</Link>
+          <Link className="btn btn-ghost grow" to={`/sessions/${sessionId}/analysis`}><Emoji>📊</Emoji> Análisis</Link>
         </div>
       )}
 
