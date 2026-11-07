@@ -12,7 +12,7 @@ import {
   type ApiTableView,
 } from '@pokercontrol/contracts';
 import {
-  HoldemError, applyAction, blindLevel, buyInHand, legalActions, publicView, revealCards, shownCards, startHand, winDetails, type Action, type HandState,
+  HoldemError, applyAction, blindLevel, buyInHand, describeAction, legalActions, publicView, revealCards, shownCards, startHand, winDetails, type Action, type HandState,
 } from '@pokercontrol/core';
 import { type Static } from '@sinclair/typebox';
 import { and, asc, desc, eq, isNotNull, lte, sql } from 'drizzle-orm';
@@ -20,6 +20,7 @@ import type { FastifyInstance } from 'fastify';
 import * as schema from '../db/schema';
 import type { LoggedAction } from '../db/schema';
 import { ApiError, notFound } from '../errors';
+import { recordBoughtInHand, recordHandResult, recordHandStart } from '../hand-history';
 import { idempotent } from '../idempotency';
 import type { Conn, Tx } from '../repo';
 import type { Role } from './auth';
@@ -144,6 +145,18 @@ async function buildView(db: Conn, table: TableRow, viewer: Viewer): Promise<Api
       .orderBy(desc(schema.pokerActions.seq)).limit(1)
     : [];
 
+  // Lo comprado por cada uno en esta partida: la primera compra es la entrada; las demás, recompras.
+  const purchases = new Map<string, { count: number; total: number }>();
+  if (table.sessionId) {
+    const rows = await db.select({ playerId: schema.sessionParticipants.playerId, amount: schema.buys.amount }).from(schema.buys)
+      .innerJoin(schema.sessionParticipants, eq(schema.sessionParticipants.id, schema.buys.participantId))
+      .where(eq(schema.sessionParticipants.sessionId, table.sessionId));
+    for (const r of rows) {
+      const cur = purchases.get(r.playerId) ?? { count: 0, total: 0 };
+      purchases.set(r.playerId, { count: cur.count + 1, total: cur.total + r.amount });
+    }
+  }
+
   let hand: ApiTableView['hand'] = null;
   if (row && state) {
     const v = publicView(state, [...(myId ? [myId] : []), ...managedIds]);
@@ -215,6 +228,10 @@ async function buildView(db: Conn, table: TableRow, viewer: Viewer): Promise<Api
       online: isPresent(seat, now),
       isYou: seat.playerId === myId,
       managed: managedIds.has(seat.playerId),
+      rebuys: Math.max(0, (purchases.get(seat.playerId)?.count ?? 0) - 1),
+      bought: purchases.get(seat.playerId)?.total ?? 0,
+      // Con las fichas de la mesa (sin contar lo que está en juego en la mano) menos lo comprado.
+      net: purchases.has(seat.playerId) ? seat.stack - (purchases.get(seat.playerId)?.total ?? 0) : 0,
     })),
   };
 }
@@ -253,7 +270,10 @@ async function dealHand(tx: Tx, table: TableRow): Promise<void> {
     button, smallBlind: blinds.small, bigBlind: blinds.big, randomInt,
   });
   const handNo = table.handCount + 1;
-  const [row] = await tx.insert(schema.pokerHands).values({ tableId: table.id, handNo, state }).returning();
+  const [row] = await tx.insert(schema.pokerHands).values({
+    tableId: table.id, handNo, state, sessionId: table.sessionId, smallBlind: state.smallBlind, bigBlind: state.bigBlind,
+  }).returning();
+  await recordHandStart(tx, table.groupId, row.id, state);
   await tx.update(schema.pokerTables)
     .set({ handCount: handNo, button, version: bump, turnDeadline: await armDeadline(tx, table, state) })
     .where(eq(schema.pokerTables.id, table.id));
@@ -263,7 +283,8 @@ async function dealHand(tx: Tx, table: TableRow): Promise<void> {
 
 /** Cierra la mano: devuelve los stacks a los asientos y borra el mazo guardado. */
 async function finishHand(tx: Tx, handId: number, state: HandState): Promise<void> {
-  const [hand] = await tx.select({ tableId: schema.pokerHands.tableId }).from(schema.pokerHands)
+  const [hand] = await tx.select({ tableId: schema.pokerHands.tableId, groupId: schema.pokerTables.groupId }).from(schema.pokerHands)
+    .innerJoin(schema.pokerTables, eq(schema.pokerTables.id, schema.pokerHands.tableId))
     .where(eq(schema.pokerHands.id, handId));
   for (const p of state.players) {
     await tx.update(schema.pokerSeats).set({ stack: p.stack })
@@ -272,6 +293,7 @@ async function finishHand(tx: Tx, handId: number, state: HandState): Promise<voi
   await tx.update(schema.pokerHands)
     .set({ status: 'done', finishedAt: new Date(), state: { ...state, deck: [] } })
     .where(eq(schema.pokerHands.id, handId));
+  await recordHandResult(tx, hand.groupId, handId, state);
 }
 
 const bump = sql`${schema.pokerTables.version} + 1`;
@@ -354,8 +376,12 @@ async function playAction(tx: Tx, table: TableRow, hand: HandRow, playerId: stri
   }
   const [{ n }] = await tx.select({ n: sql<number>`count(*)::int` }).from(schema.pokerActions)
     .where(eq(schema.pokerActions.handId, hand.id));
+  // La situación en que se jugó, para analizar el juego después (calle, pozo, fichas, rivales).
+  const spot = describeAction(state, action);
   await tx.insert(schema.pokerActions).values({
     handId: hand.id, seq: n + 1, playerId, action: auto ? { ...logged, auto: true } : logged,
+    street: spot?.street, kind: spot?.kind, amount: spot?.amount, potBefore: spot?.potBefore, toCall: spot?.toCall,
+    stackBefore: spot?.stackBefore, playersLeft: spot?.playersLeft, auto,
   });
   await tx.update(schema.pokerHands).set({ state: next }).where(eq(schema.pokerHands.id, hand.id));
   if (next.street === 'done') await finishHand(tx, hand.id, next);
@@ -493,8 +519,12 @@ async function rebuyPlayer(tx: Tx, table: TableRow, playerId: string, amount?: n
     // Las fichas nuevas viajan en el estado de la mano, que se vuelca a la mesa al terminar. Si estaba pendiente
     // (sin retirarse) pasa a jugar y ve sus cartas; si ya se había retirado, juega la próxima.
     let next = state;
-    if (inHand.pending && !inHand.folded) next = buyInHand(state, playerId, chips);
-    else inHand.stack = chips;
+    if (inHand.pending && !inHand.folded) {
+      next = buyInHand(state, playerId, chips);
+      await recordBoughtInHand(tx, hand.id, playerId, chips);
+    } else {
+      inHand.stack = chips;
+    }
     await tx.update(schema.pokerHands).set({ state: next }).where(eq(schema.pokerHands.id, hand.id));
   }
   await tx.update(schema.pokerTables).set({ version: bump }).where(eq(schema.pokerTables.id, table.id));

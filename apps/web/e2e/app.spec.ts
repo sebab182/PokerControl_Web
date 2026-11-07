@@ -537,6 +537,8 @@ test('mesa online: sala de espera, iniciar, jugar una mano y cerrar', async ({ p
   // Los dos ven la mano; solo cada uno ve sus cartas.
   await expect(page.getByTestId('felt')).toBeVisible();
   await expect(page.getByTestId('pot')).toHaveText('Pozo $30');
+  // Cada jugador muestra sus recompras y su neto: al empezar, 0 recompras y $0.
+  await expect(page.getByTestId('seat-score').first()).toContainText('↻0 · $0');
   // Cuenta regresiva del turno y conexión en vivo.
   await expect(page.getByTestId('turn-timer')).toContainText(/\d:\d\d/);
   // Ciegas de la mano y cuándo suben (por defecto se duplican cada 15 minutos).
@@ -835,6 +837,8 @@ test('mesa online: sin fichas te reparten pero ves tus cartas solo si recomprás
   await expect(pablo.page.getByTestId('pending-note')).toHaveCount(0);
   await expect(pablo.page.getByRole('button', { name: /^Igualar/ })).toBeVisible();
   await expect(pablo.page.getByTestId('seat-Pablo')).not.toContainText('Sin fichas');
+  // La recompra se suma al contador de Pablo (y su neto queda en negativo, con signo).
+  await expect(pablo.page.getByTestId('seat-Pablo').getByTestId('seat-score')).toContainText('↻1 ·');
 });
 
 /** Animación Lottie mínima (un círculo): el e2e no depende del CDN de Google. */
