@@ -10,7 +10,7 @@ import type { Action, HandState } from '@pokercontrol/core';
 export type LoggedAction = Action & { amount?: number; auto?: boolean };
 import { sql } from 'drizzle-orm';
 import {
-  bigint, boolean, check, customType, foreignKey, index, integer, jsonb, pgTable, primaryKey, text,
+  bigint, boolean, check, customType, foreignKey, index, integer, jsonb, pgTable, primaryKey, real, text,
   timestamp, unique, uniqueIndex,
 } from 'drizzle-orm/pg-core';
 
@@ -304,6 +304,8 @@ export const pokerHands = pgTable('poker_hands', {
   /** Calle en la que terminó la mano: preflop, flop, turn o river. */
   endedOn: text('ended_on'),
   wentToShowdown: boolean('went_to_showdown'),
+  /** Board completo: el que salió más las cartas que no llegaron a salir (para "y si no te retirabas"). Null en manos viejas. */
+  fullBoard: jsonb('full_board').$type<string[]>(),
 }, t => [
   unique('uq_poker_hands_table_no').on(t.tableId, t.handNo),
   index('idx_poker_hands_session').on(t.sessionId),
@@ -330,6 +332,10 @@ export const pokerActions = pgTable('poker_actions', {
   playersLeft: integer('players_left'),
   /** La jugó el servidor por tiempo agotado. */
   auto: boolean('auto').notNull().default(false),
+  /** Con esta jugada el jugador quedó con todas sus fichas adentro. */
+  allIn: boolean('all_in').notNull().default(false),
+  /** Milisegundos que tardó en decidir (desde que le tocó); null si la mesa no tiene límite de tiempo. */
+  thinkMs: integer('think_ms'),
 }, t => [unique('uq_poker_actions_hand_seq').on(t.handId, t.seq)]);
 
 /**
@@ -371,6 +377,14 @@ export const pokerHandPlayers = pgTable('poker_hand_players', {
   allIn: boolean('all_in'),
   showdown: boolean('showdown'),
   wonShowdown: boolean('won_showdown'),
+  /** Clase de las dos cartas iniciales ("AKs", "QTo", "88"). */
+  handClass: text('hand_class'),
+  /** Fuerza de las cartas iniciales, de 0 a 1 (Chen normalizado). */
+  cardScore: real('card_score'),
+  /** Probabilidad de ganar cuando quedó todo el dinero adentro (solo en manos con all-in y showdown). */
+  allInEquity: real('all_in_equity'),
+  /** Neto esperado según esa probabilidad (real si no hubo all-in). */
+  evNet: real('ev_net'),
   /** false si se reconstruyó de una mano vieja, sin el detalle por calle (vpip, pfr, jugadas…). */
   hasStreetData: boolean('has_street_data').notNull().default(true),
 }, t => [

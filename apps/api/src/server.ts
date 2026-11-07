@@ -1,6 +1,6 @@
 import { buildApp } from './app';
 import { connect } from './db/client';
-import { backfillHandHistory } from './hand-history';
+import { backfillHandHistory, backfillHandInsights } from './hand-history';
 
 function required(name: string): string {
   const value = process.env[name];
@@ -27,4 +27,7 @@ const app = await buildApp({
 await backfillHandHistory(db)
   .then(n => { if (n > 0) app.log.info(`Historial de manos reconstruido: ${n} manos`); })
   .catch(e => app.log.error(e, 'No se pudo reconstruir el historial de manos'));
+await backfillHandInsights(db)
+  .then(n => { if (n > 0) app.log.info(`Análisis de manos completado: ${n} manos`); })
+  .catch(e => app.log.error(e, 'No se pudo completar el análisis de las manos'));
 await app.listen({ port: Number(process.env.PORT ?? 3000), host: '0.0.0.0' });

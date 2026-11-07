@@ -191,6 +191,75 @@ export const SessionDebtsView = Obj({
   sessionStatus: Status,
 }, 'SessionDebtsView');
 
+// ─── Análisis de la partida (historial de manos) ────────────────────────────
+const Street = T.Union([T.Literal('preflop'), T.Literal('flop'), T.Literal('turn'), T.Literal('river')]);
+const ActionKindSchema = T.Union([T.Literal('fold'), T.Literal('check'), T.Literal('call'), T.Literal('raise')]);
+const Cards = T.Array(T.String());
+/** n de d oportunidades (d = 0: sin datos). */
+const Rate = Obj({ n: T.Integer(), d: T.Integer() });
+
+export const PlayerInsights = Obj({
+  playerId: T.String(),
+  hands: T.Integer(),
+  net: T.Number(),
+  bb100: T.Number(),
+  vpip: Rate, pfr: Rate, threeBet: Rate, foldToThreeBet: Rate, cbet: Rate, foldToCbet: Rate, steal: Rate, bbDefend: Rate,
+  aggression: Obj({ raises: T.Integer(), calls: T.Integer() }),
+  aggressionFreq: Rate,
+  wtsd: Rate, wsd: Rate, wwsf: Rate,
+  avgPot: T.Number(),
+  avgThinkMs: Nullable(T.Number()),
+  avgCardScore: Nullable(T.Number()),
+  byPosition: T.Array(Obj({ position: T.String(), hands: T.Integer(), net: T.Number(), netBB: T.Number() })),
+  allIn: Obj({ hands: T.Integer(), net: T.Number(), evNet: T.Number() }),
+}, 'PlayerInsights');
+
+const SeriesPoint = Obj({ handNo: T.Integer(), values: T.Record(T.String(), T.Number()) });
+
+export const HandRow = Obj({
+  id: T.Integer(), handNo: T.Integer(), pot: T.Number(), board: Cards, endedOn: Street, wentToShowdown: T.Boolean(), bigBlind: T.Number(),
+  players: T.Array(Obj({
+    playerId: T.String(), position: Nullable(T.String()), hole: Cards, net: T.Number(), foldedStreet: Nullable(Street),
+    showdown: T.Boolean(), pending: T.Boolean(),
+  })),
+  actions: T.Array(Obj({
+    playerId: T.String(), street: Nullable(Street), kind: Nullable(ActionKindSchema), amount: Nullable(T.Number()),
+    auto: T.Boolean(), allIn: T.Boolean(),
+  })),
+}, 'HandRow');
+
+export const SessionAnalysis = Obj({
+  /** Nombre de cada jugador por id. */
+  names: T.Record(T.String(), T.String()),
+  hands: T.Integer(),
+  handsWithRunout: T.Integer(),
+  players: T.Array(PlayerInsights),
+  handRows: T.Array(HandRow),
+  series: Obj({
+    net: T.Array(SeriesPoint),
+    evNet: T.Array(SeriesPoint),
+    pot: T.Array(Obj({ handNo: T.Integer(), pot: T.Number(), endedOn: Street, showdown: T.Boolean() })),
+    endedOn: Obj({ preflop: T.Integer(), flop: T.Integer(), turn: T.Integer(), river: T.Integer() }),
+  }),
+  whatIf: Obj({
+    allIns: T.Array(Obj({
+      handNo: T.Integer(), playerId: T.String(), equity: T.Number(), net: T.Number(), evNet: T.Number(), hole: Cards, board: Cards,
+    })),
+    folds: T.Array(Obj({
+      handNo: T.Integer(), playerId: T.String(), street: Street, toCall: T.Number(), hole: Cards, board: Cards,
+      result: T.Union([T.Literal('win'), T.Literal('tie'), T.Literal('lose')]), delta: T.Number(), auto: T.Boolean(),
+    })),
+    calls: T.Array(Obj({
+      handNo: T.Integer(), playerId: T.String(), street: Street, toCall: T.Number(), committed: T.Number(), net: T.Number(), won: T.Boolean(),
+    })),
+    luck: T.Array(Obj({
+      playerId: T.String(), allInHands: T.Integer(), net: T.Number(), evNet: T.Number(), luck: T.Number(),
+      avgCardScore: Nullable(T.Number()), cardScoreVsTable: Nullable(T.Number()), vpipRate: Nullable(T.Number()),
+    })),
+  }),
+}, 'SessionAnalysis');
+
+
 // ─── Backup ──────────────────────────────────────────────────────────────────
 /** Formato del backup de la APK. Los datos legacy se validan en la API. */
 export const BackupFile = T.Object({
@@ -398,6 +467,9 @@ export type ApiDebtorGroup = Static<typeof DebtorGroup>;
 export type ApiPlayerDebts = Static<typeof PlayerDebts>;
 export type ApiReorganizeStatus = Static<typeof ReorganizeStatus>;
 export type ApiSessionDebtsView = Static<typeof SessionDebtsView>;
+export type ApiSessionAnalysis = Static<typeof SessionAnalysis>;
+export type ApiPlayerInsights = Static<typeof PlayerInsights>;
+export type ApiHandRow = Static<typeof HandRow>;
 export type ApiImportResult = Static<typeof ImportResult>;
 export type ApiCloseSessionResponse = Static<typeof CloseSessionResponse>;
 export type ApiTableView = Static<typeof TableView>;

@@ -484,6 +484,11 @@ test('accesibilidad y responsive en cada vista, en ambos temas', async ({ page }
     await page.locator('main').getByRole('link', { name: /Saldos$/ }).click();
     await expect(page.getByRole('heading', { name: 'Saldos de la partida' })).toBeVisible();
     await check('saldos de partida');
+    // Una partida cargada a mano no tiene manos de la mesa online.
+    await page.getByRole('link', { name: '← Partida' }).click();
+    await page.locator('main').getByRole('link', { name: /Análisis$/ }).click();
+    await expect(page.getByText('Esta partida no tiene manos registradas')).toBeVisible();
+    await check('análisis sin manos');
     await page.goto('/players');
     await expect(page.getByText('Ana')).toBeVisible();
     await check('jugadores');
@@ -579,6 +584,23 @@ test('mesa online: sala de espera, iniciar, jugar una mano y cerrar', async ({ p
   await expect(page.getByRole('link', { name: 'Ver resultados y saldos' })).toBeVisible();
   await page.getByRole('link', { name: 'Ver resultados y saldos' }).click();
   await expect(page.getByText('✓ Partida cerrada')).toBeVisible();
+
+  // Análisis de la partida: con la mano jugada ya hay indicadores, manos y "qué hubiese pasado".
+  await page.locator('main').getByRole('link', { name: /Análisis$/ }).click();
+  await expect(page.getByRole('heading', { name: /^Análisis · / })).toBeVisible();
+  await expect(page.getByText('jugadas en la partida')).toBeVisible();
+  await checkPage(page, 'análisis: resumen');
+  await page.getByRole('button', { name: 'Jugadores', exact: true }).click();
+  await expect(page.getByText('Entra al pozo por voluntad propia')).toBeVisible();
+  await checkPage(page, 'análisis: jugadores');
+  await page.getByRole('button', { name: 'Manos', exact: true }).click();
+  await page.getByText('Mano #1').click();
+  await expect(page.getByRole('img', { name: /de (corazones|picas|diamantes|tréboles)/ }).first()).toBeVisible();
+  await checkPage(page, 'análisis: manos');
+  await page.getByRole('button', { name: 'Qué hubiese pasado' }).click();
+  await expect(page.getByText('Y si no te retirabas')).toBeVisible();
+  await expect(page.getByText('No hubo all-in con showdown en esta partida.')).toBeVisible();
+  await checkPage(page, 'análisis: qué hubiese pasado');
   await context2.close();
 });
 

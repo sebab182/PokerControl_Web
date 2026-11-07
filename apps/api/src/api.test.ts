@@ -9,7 +9,7 @@ import { generateOpenApi, openapiPath } from './openapi';
 import { planImport } from './backup';
 import { EmojiClientMessage, TABLE_EMOJIS } from '@pokercontrol/contracts';
 import { Value } from '@sinclair/typebox/value';
-import { backfillHandHistory } from './hand-history';
+import { backfillHandHistory, backfillHandInsights } from './hand-history';
 import { sweepTurns } from './routes/table';
 
 // En CI no hay .env: TEST_DATABASE_URL llega por el entorno.
@@ -1841,6 +1841,76 @@ describe('mesa online', () => {
       expect(hand).toMatchObject({ small_blind: 10, big_blind: 20, pot: 180, ended_on: 'river', went_to_showdown: true });
       // Idempotente: una segunda vez no hay nada que completar.
       expect(await backfillHandHistory(conn.db)).toBe(0);
+    });
+  });
+
+  describe('análisis de la partida', () => {
+    const rows = async (sql: string, params: unknown[] = []) => (await conn.pool.query(sql, params)).rows;
+
+    /** Los tres van all-in preflop: el dinero queda adentro con el board por salir. */
+    async function allInHand() {
+      const ctx = await setup(1);
+      const [a, b, c] = ctx.clients;
+      for (const x of [a, b, c]) await x.ok('POST', '/g/table/join');
+      let v = await a.idem('/g/table/start', { turnSeconds: 30 });
+      for (let i = 0; v.hand.street !== 'done'; i++) {
+        if (i > 10) throw new Error('mano infinita');
+        const who = ctx.byPlayer(v.hand.toActPlayerId);
+        v = await act(who, await view(who), { type: 'allin' });
+      }
+      return { ...ctx, v, a };
+    }
+
+    it('guarda el board completo, la clase de las cartas, el all-in y el tiempo de decisión', async () => {
+      await allInHand();
+      const [hand] = await rows('select * from poker_hands');
+      expect(hand.full_board).toHaveLength(5);
+      expect(hand.full_board.slice(0, hand.board.length)).toEqual(hand.board);
+      const players = await rows('select * from poker_hand_players');
+      for (const p of players) {
+        expect(p.hand_class).toMatch(/^[2-9TJQKA]{2}[so]?$/);
+        expect(p.card_score).toBeGreaterThan(0);
+        expect(p.all_in_equity).not.toBeNull();
+      }
+      expect(players.reduce((x, p) => x + p.all_in_equity, 0)).toBeCloseTo(1, 5);
+      expect(Math.abs(players.reduce((x, p) => x + p.ev_net, 0))).toBeLessThan(0.5);
+      const actions = await rows('select * from poker_actions order by seq');
+      expect(actions.some(a => a.all_in)).toBe(true);
+      for (const a of actions) expect(a.think_ms).toBeGreaterThanOrEqual(0);
+    });
+
+    it('se bloquea mientras la partida está en juego y se abre al cerrarla', async () => {
+      const { v, a } = await allInHand();
+      const locked = await a.call('GET', `/g/sessions/${v.sessionId}/analysis`);
+      expect([locked.status, locked.body.error]).toEqual([409, 'analysis_locked']);
+      await a.idem('/g/table/close');
+      const out = await a.ok('GET', `/g/sessions/${v.sessionId}/analysis`);
+      expect(out).toMatchObject({ hands: 1, handsWithRunout: 1 });
+      expect(out.players).toHaveLength(3);
+      expect(out.players.reduce((x: number, p: { net: number }) => x + p.net, 0)).toBe(0);
+      expect(out.handRows[0].players.every((p: { hole: string[] }) => p.hole.length === 2)).toBe(true);
+      expect(Object.keys(out.names)).toHaveLength(3);
+      expect(out.whatIf.allIns).toHaveLength(3);
+      expect(out.series.endedOn.river).toBe(1);
+    });
+
+    it('no muestra la partida de otro grupo', async () => {
+      const { v } = await allInHand();
+      const { c: stranger, group } = await withGroup('intruso');
+      const res = await stranger.call('GET', `/groups/${group.id}/sessions/${v.sessionId}/analysis`);
+      expect(res.status).toBe(404);
+    });
+
+    it('completa el análisis de manos que ya estaban en el historial, una sola vez', async () => {
+      await allInHand();
+      const [before] = await rows('select hand_class, card_score, all_in_equity, ev_net from poker_hand_players order by seat_order limit 1');
+      await conn.pool.query('update poker_hand_players set hand_class = null, card_score = null, all_in_equity = null, ev_net = null');
+      expect(await backfillHandInsights(conn.db)).toBe(1);
+      const [after] = await rows('select hand_class, card_score, all_in_equity, ev_net from poker_hand_players order by seat_order limit 1');
+      expect(after.hand_class).toBe(before.hand_class);
+      expect(after.card_score).toBe(before.card_score);
+      expect(after.all_in_equity).not.toBeNull();
+      expect(await backfillHandInsights(conn.db)).toBe(0);
     });
   });
 

@@ -21,6 +21,20 @@ expone todavía.
 - `pending`: se le repartió estando sin fichas y no veía sus cartas hasta recomprar; `bought_in_hand` son las fichas que compró para jugarla.
 - `auto`/`auto_actions`: jugadas que hizo el servidor por tiempo agotado. Conviene excluirlas al estudiar el estilo de juego.
 
+## Datos para el análisis de la partida
+
+La pantalla «Análisis» (`GET /sessions/:id/analysis`, solo con la partida cerrada) usa además:
+
+- `poker_hands.full_board`: el board completo, con las cartas que **no llegaron a salir** (se guardan al terminar la mano, antes de
+  vaciar el mazo). Permite responder «¿y si no me retiraba?». Es `NULL` en manos anteriores.
+- `poker_hand_players.hand_class` (`AKs`, `QTo`, `88`) y `card_score` (0–1, fuerza de las cartas iniciales, fórmula de Chen).
+- `poker_hand_players.all_in_equity` y `ev_net`: probabilidad de ganar cuando quedó todo el dinero adentro y neto esperado según esa
+  probabilidad (solo manos con all-in y showdown; los pozos laterales se reparten entre quienes pueden cobrarlos).
+- `poker_actions.all_in` (la jugada dejó al jugador sin fichas) y `think_ms` (cuánto tardó en decidir, si la mesa tiene límite de tiempo).
+
+Los indicadores (VPIP, PFR, 3-bet, c-bet, agresión, WTSD…) y el «qué hubiese pasado» se calculan en `packages/core/src/holdem/insights.ts`;
+la equity, en `equity.ts` y `allin.ts`. `backfillHandInsights` completa `hand_class`, `card_score` y la equity de las manos ya guardadas.
+
 ## Manos anteriores
 
 Las manos jugadas antes de que existiera este detalle se reconstruyen al arrancar la API (`backfillHandHistory`): quedan el

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import {
   AddBuyBody, AddParticipantBody, BuyParams, CloseSessionBody, CloseSessionResponse, CreateSessionBody, Deleted,
-  ErrorResponse, IdParams, ParticipantParams, SeasonParams, Session, SessionDebtsView, SessionSummary,
+  ErrorResponse, IdParams, ParticipantParams, SeasonParams, Session, SessionAnalysis, SessionDebtsView, SessionSummary,
   SetFinalAmountBody,
 } from '@pokercontrol/contracts';
 import {
@@ -13,6 +13,7 @@ import { and, asc, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import * as schema from '../db/schema';
 import { ApiError, notFound, sessionClosed } from '../errors';
+import { sessionInsights } from '../hand-history';
 import { idempotent } from '../idempotency';
 import {
   insertEntries, loadSessions, lockGroup, lockSession, setBalances, toApiSession, type Conn, type Tx,
@@ -253,5 +254,19 @@ export async function sessionRoutes(app: FastifyInstance) {
       allHaveResult: session.participants.length > 0 && missingResults(session).length === 0,
       balances: balances.sort((a, b) => (b.after ?? b.result ?? -1e12) - (a.after ?? a.result ?? -1e12)),
     };
+  });
+
+  // Indicadores y "qué hubiese pasado" de las manos jugadas en la mesa online. Muestra las cartas de todos, así que
+  // solo se habilita con la partida cerrada.
+  app.get<I>('/sessions/:id/analysis', {
+    schema: { tags, params: IdParams, response: { 200: SessionAnalysis, ...err } },
+  }, async req => {
+    const session = await findSession(app.db, req.group.id, req.params.id);
+    if (session.status !== 'closed') {
+      throw new ApiError(409, 'analysis_locked', 'El análisis se habilita al cerrar la partida: muestra las cartas de todos.');
+    }
+    const rows = await app.db.select({ id: schema.players.id, name: schema.players.name }).from(schema.players)
+      .where(eq(schema.players.groupId, req.group.id));
+    return { names: Object.fromEntries(rows.map(r => [r.id, r.name])), ...(await sessionInsights(app.db, session.id)) };
   });
 }
