@@ -71,6 +71,13 @@
       "when": 1793829768243,
       "tag": "0009_poker_blind_timer",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1794009601629,
+      "tag": "0010_poker_hand_history",
+      "breakpoints": true
     }
   ]
 }

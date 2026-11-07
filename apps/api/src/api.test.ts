@@ -9,6 +9,7 @@ import { generateOpenApi, openapiPath } from './openapi';
 import { planImport } from './backup';
 import { EmojiClientMessage, TABLE_EMOJIS } from '@pokercontrol/contracts';
 import { Value } from '@sinclair/typebox/value';
+import { backfillHandHistory } from './hand-history';
 import { sweepTurns } from './routes/table';
 
 // En CI no hay .env: TEST_DATABASE_URL llega por el entorno.
@@ -1682,6 +1683,164 @@ describe('mesa online', () => {
       expect(left).toBeLessThanOrEqual(45_000);
       await expire();
       expect(await sweepTurns(app)).toEqual([a.groupId]);
+    });
+  });
+
+  describe('historial de manos', () => {
+    const rows = async (sql: string, params: unknown[] = []) => (await conn.pool.query(sql, params)).rows;
+
+    /** Juega una mano entre tres: el primero sube, los demás igualan y se llega al showdown. */
+    async function playedHand() {
+      const ctx = await setup(1);
+      const [a, b, c] = ctx.clients;
+      for (const x of [a, b, c]) await x.ok('POST', '/g/table/join');
+      let v = await a.idem('/g/table/start', {});
+      const first = ctx.byPlayer(v.hand.toActPlayerId);
+      v = await act(first, v, { type: 'raise', to: 60 });
+      for (let i = 0; v.hand.street !== 'done'; i++) {
+        if (i > 30) throw new Error('mano infinita');
+        const who = ctx.byPlayer(v.hand.toActPlayerId);
+        const cur = await view(who);
+        v = await act(who, cur, cur.hand.legal.canCheck ? { type: 'check' } : { type: 'call' });
+      }
+      return { ...ctx, v };
+    }
+
+    it('cada mano queda con su partida, ciegas, pozo, board y cómo terminó', async () => {
+      const { v } = await playedHand();
+      const [hand] = await rows('select * from poker_hands');
+      expect(hand).toMatchObject({
+        status: 'done', session_id: v.sessionId, small_blind: 10, big_blind: 20, pot: 180, ended_on: 'river', went_to_showdown: true,
+      });
+      expect(hand.board).toHaveLength(5);
+      // El mazo no se guarda; las cartas de la mano sí (solo del servidor).
+      expect(hand.state.deck).toEqual([]);
+    });
+
+    it('guarda una fila por jugador: posición, fichas y cartas con que empezó, y su resultado', async () => {
+      const { pid } = await playedHand();
+      const [hand] = await rows('select * from poker_hands');
+      const players = await rows('select * from poker_hand_players order by seat_order');
+      expect(players).toHaveLength(3);
+      expect(players.map(p => p.position).sort()).toEqual(['BB', 'BTN', 'SB']);
+      expect(players.map(p => p.position_index).sort()).toEqual([0, 1, 2]);
+      for (const p of players) {
+        expect([p.start_stack, p.pending, p.bought_in_hand, p.has_street_data]).toEqual([1000, false, 0, true]);
+        // Las cartas guardadas son las de la mano.
+        expect(p.hole).toEqual(hand.state.players.find((x: { id: string }) => x.id === p.player_id).hole);
+        expect(p.hole).toHaveLength(2);
+        expect([p.invested, p.showdown]).toEqual([60, true]);
+        expect(Object.values(pid)).toContain(p.player_id);
+      }
+      // El pozo se reparte tal cual: lo ganado menos lo aportado suma cero.
+      expect(players.reduce((x, p) => x + p.invested, 0)).toBe(hand.pot);
+      expect(players.reduce((x, p) => x + p.won, 0)).toBe(hand.pot);
+      expect(players.reduce((x, p) => x + p.net, 0)).toBe(0);
+      expect(players.filter(p => p.won_showdown).length).toBeGreaterThanOrEqual(1);
+      // Todos entraron voluntariamente al pozo antes del flop (uno subió, los demás igualaron); el que subió es el único con pfr.
+      expect(players.every(p => p.vpip && p.saw_flop)).toBe(true);
+      expect(players.filter(p => p.pfr)).toHaveLength(1);
+      expect(players.find(p => p.pfr)).toMatchObject({ raises: 1 });
+    });
+
+    it('cada jugada guarda la situación en que se jugó', async () => {
+      await playedHand();
+      const actions = await rows('select * from poker_actions order by seq');
+      expect(actions.length).toBeGreaterThan(3);
+      for (const a of actions) {
+        expect(['preflop', 'flop', 'turn', 'river']).toContain(a.street);
+        expect(['fold', 'check', 'call', 'raise']).toContain(a.kind);
+        expect(a.pot_before).toBeGreaterThanOrEqual(30);
+        expect(a.stack_before).toBeGreaterThanOrEqual(0);
+        expect(a.players_left).toBe(3);
+        expect(a.auto).toBe(false);
+      }
+      // La primera: el que habla primero antes del flop sube a 60 frente a la ciega grande, con el pozo de las ciegas.
+      expect(actions[0]).toMatchObject({ street: 'preflop', kind: 'raise', amount: 60, pot_before: 30, to_call: 20, stack_before: 1000 });
+      expect(actions.slice(1, 3).map(a => [a.kind, a.amount])).toEqual([['call', 50], ['call', 40]]);
+      expect(actions.filter(a => a.street === 'flop').map(a => a.kind)).toEqual(['check', 'check', 'check']);
+    });
+
+    it('un jugador pendiente que recompra a mitad de la mano queda registrado', async () => {
+      const ctx = await setup(1);
+      const [a, b, c] = ctx.clients;
+      for (const x of [a, b, c]) await x.ok('POST', '/g/table/join');
+      let v = await a.idem('/g/table/start', { turnSeconds: 10 });
+      while (v.hand.street !== 'done') {
+        const who = ctx.byPlayer(v.hand.toActPlayerId);
+        v = await act(who, await view(who), { type: 'fold' });
+      }
+      await conn.pool.query('update poker_seats set stack = 0 where player_id = $1', [ctx.pid[2]]);
+      v = await a.ok('POST', '/g/table/deal');
+      // Hasta que le toca al pendiente.
+      for (let i = 0; v.hand.toActPlayerId !== ctx.pid[2]; i++) {
+        if (i > 10) throw new Error('no le llegó el turno');
+        const who = ctx.byPlayer(v.hand.toActPlayerId);
+        const cur = await view(who);
+        v = await act(who, cur, cur.hand.legal.canCheck ? { type: 'check' } : { type: 'call' });
+      }
+      await c.idem('/g/table/rebuy', { amount: 200 });
+      const [row] = await rows('select hp.* from poker_hand_players hp join poker_hands h on h.id = hp.hand_id where h.hand_no = 2 and hp.player_id = $1', [ctx.pid[2]]);
+      expect(row).toMatchObject({ pending: true, start_stack: 0, bought_in_hand: 200, position: null });
+      // Termina la mano y se completa su resultado.
+      v = await view(c);
+      while (v.hand.street !== 'done') {
+        const who = ctx.byPlayer(v.hand.toActPlayerId);
+        v = await act(who, await view(who), { type: 'fold' });
+      }
+      const [done] = await rows('select hp.* from poker_hand_players hp join poker_hands h on h.id = hp.hand_id where h.hand_no = 2 and hp.player_id = $1', [ctx.pid[2]]);
+      expect(done).toMatchObject({ bought_in_hand: 200, has_street_data: true });
+      expect((await rows('select sum(net)::int as n from poker_hand_players hp join poker_hands h on h.id = hp.hand_id where h.hand_no = 2'))[0].n).toBe(0);
+    });
+
+    it('el pendiente que se retira por tiempo agotado queda con jugada automática y sin ver el flop', async () => {
+      const ctx = await setup(1);
+      const [a, b, c] = ctx.clients;
+      for (const x of [a, b, c]) await x.ok('POST', '/g/table/join');
+      let v = await a.idem('/g/table/start', { turnSeconds: 10 });
+      while (v.hand.street !== 'done') {
+        const who = ctx.byPlayer(v.hand.toActPlayerId);
+        v = await act(who, await view(who), { type: 'fold' });
+      }
+      await conn.pool.query('update poker_seats set stack = 0 where player_id = $1', [ctx.pid[2]]);
+      v = await a.ok('POST', '/g/table/deal');
+      for (let i = 0; v.hand.toActPlayerId !== ctx.pid[2]; i++) {
+        const who = ctx.byPlayer(v.hand.toActPlayerId);
+        const cur = await view(who);
+        v = await act(who, cur, cur.hand.legal.canCheck ? { type: 'check' } : { type: 'call' });
+      }
+      await conn.pool.query(`update poker_tables set turn_deadline = now() - interval '1 second'`);
+      await sweepTurns(app);
+      // Se retiró solo el pendiente: la mano sigue entre los otros dos hasta que termina.
+      v = await view(a);
+      while (v.hand.street !== 'done') {
+        const who = ctx.byPlayer(v.hand.toActPlayerId);
+        v = await act(who, await view(who), { type: 'fold' });
+      }
+      const [row] = await rows('select hp.* from poker_hand_players hp join poker_hands h on h.id = hp.hand_id where h.hand_no = 2 and hp.player_id = $1', [ctx.pid[2]]);
+      expect(row).toMatchObject({ pending: true, folded_street: 'preflop', auto_actions: 1, folds: 1, saw_flop: false, vpip: false, invested: 0, won: 0, net: 0 });
+    });
+
+    it('reconstruye las manos viejas con lo que tienen: resultado y cartas, sin el detalle por calle', async () => {
+      await playedHand();
+      const [before] = await rows('select * from poker_hand_players order by seat_order limit 1');
+      // Se simula una mano guardada antes de que existiera el historial.
+      await conn.pool.query('delete from poker_hand_players');
+      await conn.pool.query('update poker_hands set session_id = null, small_blind = null, big_blind = null, pot = null, board = null, ended_on = null, went_to_showdown = null');
+      expect(await backfillHandHistory(conn.db)).toBe(1);
+      const players = await rows('select * from poker_hand_players order by seat_order');
+      expect(players).toHaveLength(3);
+      for (const p of players) {
+        expect(p).toMatchObject({ has_street_data: false, vpip: null, pfr: null, saw_flop: null, raises: null, folded_street: null, invested: 60 });
+        expect(p.hole).toHaveLength(2);
+      }
+      expect(players.reduce((x, p) => x + p.net, 0)).toBe(0);
+      expect(players.map(p => p.position).sort()).toEqual(['BB', 'BTN', 'SB']);
+      expect(players.find(p => p.player_id === before.player_id)!.hole).toEqual(before.hole);
+      const [hand] = await rows('select * from poker_hands');
+      expect(hand).toMatchObject({ small_blind: 10, big_blind: 20, pot: 180, ended_on: 'river', went_to_showdown: true });
+      // Idempotente: una segunda vez no hay nada que completar.
+      expect(await backfillHandHistory(conn.db)).toBe(0);
     });
   });
 

@@ -1,5 +1,6 @@
 import { buildApp } from './app';
 import { connect } from './db/client';
+import { backfillHandHistory } from './hand-history';
 
 function required(name: string): string {
   const value = process.env[name];
@@ -22,4 +23,8 @@ const app = await buildApp({
   // Vence los turnos de la mesa online (lee los vencimientos de la base).
   turnSweepMs: 1000,
 });
+// Completa el historial de las manos anteriores a este detalle (idempotente; si falla, la API arranca igual).
+await backfillHandHistory(db)
+  .then(n => { if (n > 0) app.log.info(`Historial de manos reconstruido: ${n} manos`); })
+  .catch(e => app.log.error(e, 'No se pudo reconstruir el historial de manos'));
 await app.listen({ port: Number(process.env.PORT ?? 3000), host: '0.0.0.0' });

@@ -293,8 +293,20 @@ export const pokerHands = pgTable('poker_hands', {
   state: jsonb('state').notNull().$type<HandState>(),
   startedAt: ts('started_at').notNull().defaultNow(),
   finishedAt: ts('finished_at'),
+  // Historial para analizar el juego (ver docs/hand-history.md). Null en las manos anteriores a este detalle.
+  /** Partida (sessions) en la que se jugó; null si la partida se borró. */
+  sessionId: text('session_id').references(() => sessions.id, { onDelete: 'set null' }),
+  smallBlind: integer('small_blind'),
+  bigBlind: integer('big_blind'),
+  /** Pozo total y cartas comunitarias al terminar. */
+  pot: integer('pot'),
+  board: jsonb('board').$type<string[]>(),
+  /** Calle en la que terminó la mano: preflop, flop, turn o river. */
+  endedOn: text('ended_on'),
+  wentToShowdown: boolean('went_to_showdown'),
 }, t => [
   unique('uq_poker_hands_table_no').on(t.tableId, t.handNo),
+  index('idx_poker_hands_session').on(t.sessionId),
   check('ck_poker_hands_status', sql`${t.status} in ('active', 'done')`),
 ]);
 
@@ -305,4 +317,64 @@ export const pokerActions = pgTable('poker_actions', {
   playerId: text('player_id').notNull(),
   action: jsonb('action').notNull().$type<LoggedAction>(),
   createdAt: ts('created_at').notNull().defaultNow(),
+  // La situación en que se jugó (ver docs/hand-history.md). Null en las jugadas anteriores a este detalle.
+  street: text('street'),
+  /** fold, check, call o raise (un all-in cuenta como raise si subía la apuesta, y como call si no). */
+  kind: text('kind'),
+  /** call: lo igualado; raise: el total al que subió. */
+  amount: integer('amount'),
+  potBefore: integer('pot_before'),
+  toCall: integer('to_call'),
+  stackBefore: integer('stack_before'),
+  /** Jugadores que seguían en la mano al jugar. */
+  playersLeft: integer('players_left'),
+  /** La jugó el servidor por tiempo agotado. */
+  auto: boolean('auto').notNull().default(false),
 }, t => [unique('uq_poker_actions_hand_seq').on(t.handId, t.seq)]);
+
+/**
+ * Una fila por jugador y mano: dónde estaba sentado, con qué fichas y cartas empezó, y cómo le fue. Se crea al repartir y
+ * se completa al terminar la mano. Las filas reconstruidas de manos viejas no tienen el detalle por calle (has_street_data).
+ */
+export const pokerHandPlayers = pgTable('poker_hand_players', {
+  handId: bigint('hand_id', { mode: 'number' }).notNull().references(() => pokerHands.id, { onDelete: 'cascade' }),
+  playerId: text('player_id').notNull(),
+  groupId: text('group_id').notNull(),
+  /** Orden de turnos en la mano, empezando por el primer asiento. */
+  seatOrder: integer('seat_order').notNull(),
+  /** BTN, SB, BB, UTG…, CO (BTN/SB y BB con dos jugadores); null si no tenía fichas. */
+  position: text('position'),
+  /** 0 = botón, 1 = ciega chica, 2 = ciega grande, 3 en adelante = primeros en hablar. */
+  positionIndex: integer('position_index'),
+  startStack: integer('start_stack').notNull(),
+  /** Empezó la mano sin fichas (se le repartió pero no veía sus cartas hasta recomprar). */
+  pending: boolean('pending').notNull().default(false),
+  /** Fichas que recompró durante la mano para jugarla. */
+  boughtInHand: integer('bought_in_hand').notNull().default(0),
+  hole: jsonb('hole').notNull().$type<string[]>(),
+  // Resultado: se completa al terminar la mano.
+  invested: integer('invested'),
+  won: integer('won'),
+  /** won − invested. */
+  net: integer('net'),
+  foldedStreet: text('folded_street'),
+  sawFlop: boolean('saw_flop'),
+  /** Puso fichas voluntariamente antes del flop. */
+  vpip: boolean('vpip'),
+  /** Subió antes del flop. */
+  pfr: boolean('pfr'),
+  raises: integer('raises'),
+  calls: integer('calls'),
+  checks: integer('checks'),
+  folds: integer('folds'),
+  autoActions: integer('auto_actions'),
+  allIn: boolean('all_in'),
+  showdown: boolean('showdown'),
+  wonShowdown: boolean('won_showdown'),
+  /** false si se reconstruyó de una mano vieja, sin el detalle por calle (vpip, pfr, jugadas…). */
+  hasStreetData: boolean('has_street_data').notNull().default(true),
+}, t => [
+  primaryKey({ columns: [t.handId, t.playerId] }),
+  foreignKey({ columns: [t.groupId, t.playerId], foreignColumns: [players.groupId, players.id], name: 'fk_poker_hand_players_player' }).onDelete('cascade'),
+  index('idx_poker_hand_players_player').on(t.playerId),
+]);
