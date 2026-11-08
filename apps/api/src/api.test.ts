@@ -900,7 +900,7 @@ describe('sala remota', () => {
     await admin.ok('POST', `/g/live/${code}/photos`, { kind: 'board', image: b64(jpeg()) });
     expect((await r1.c.ok('GET', `/g/live/${code}`)).board).toEqual([]);
     const joined = await r1.c.ok('POST', `/g/live/${code}/join`);
-    expect(joined.me).toMatchObject({ playerId: r1.player.id, operator: false });
+    expect(joined.me).toMatchObject({ playerId: r1.player.id, operator: true });
     expect(joined.board).toHaveLength(1);
     expect(joined.members.map((m: { name: string }) => m.name)).toContain('Remoto Uno');
     const outsider = await login('sinjugador');
@@ -938,33 +938,48 @@ describe('sala remota', () => {
     expect((await admin.ok('GET', `/g/live/${code}`)).sent).toEqual({ [r1.player.id]: 1 });
   });
 
-  it('valida las fotos y quién las manda', async () => {
-    const { admin, r1, code } = await room();
-    await r1.c.ok('POST', `/g/live/${code}/join`);
+  it('valida las fotos; cualquiera de la sala las manda y pasa de mano, quien no entró no', async () => {
+    const { admin, r1, r2, code } = await room();
     const post = (c: Client, body: object) => c.call('POST', `/g/live/${code}/photos`, body, undefined);
-    expect((await post(r1.c, { kind: 'board', image: b64(jpeg()) })).body.error).toBe('not_operator');
+    const img = (n = 1) => ({ kind: 'board', image: b64(jpeg(n)) });
+    // Sin haber entrado a la sala no se puede mandar nada.
+    expect((await post(r1.c, img())).body.error).toBe('not_in_room');
+    expect((await r1.c.call('POST', `/g/live/${code}/new-hand`, {}, 'nm-sin-entrar')).body.error).toBe('not_in_room');
+    await r1.c.ok('POST', `/g/live/${code}/join`);
+    await r2.c.ok('POST', `/g/live/${code}/join`);
+
     expect((await post(admin, { kind: 'board', image: Buffer.alloc(300, 7).toString('base64') })).body.error).toBe('invalid_photo');
     expect((await post(admin, { kind: 'board', image: b64(Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47]), Buffer.alloc(300)])) })).body.error).toBe('invalid_photo');
     expect((await post(admin, { kind: 'board', image: b64(jpeg(1, 420_000)) })).body.error).toBe('photo_too_large');
     expect((await post(admin, { kind: 'hole', image: b64(jpeg()) })).body.error).toBe('invalid_photo');
     expect((await post(admin, { kind: 'board', playerId: r1.player.id, image: b64(jpeg()) })).body.error).toBe('invalid_photo');
     expect((await post(admin, { kind: 'hole', playerId: 'nadie', image: b64(jpeg()) })).body.error).toBe('not_in_room');
-    // El host habilita a r1 para sacar fotos.
-    await admin.ok('POST', `/g/live/${code}/operators/${(await r1.c.ok('GET', '/me')).user.id}`, { operator: true });
-    expect((await post(r1.c, { kind: 'board', image: b64(jpeg()) })).status).toBe(200);
+
+    // Un remoto manda la foto de la mesa y las cartas del otro remoto; solo el dueño las recibe.
+    expect((await post(r1.c, img())).status).toBe(200);
+    const hole = await r1.c.ok('POST', `/g/live/${code}/photos`, { kind: 'hole', playerId: r2.player.id, image: b64(jpeg(5)) });
+    expect((await r2.c.ok('GET', `/g/live/${code}`)).myCards.map((p: { id: string }) => p.id)).toEqual([hole.id]);
+    expect((await r1.c.ok('GET', `/g/live/${code}`)).myCards).toEqual([]);
+    const status = async (c: Client, id: string) => (await app.inject({
+      method: 'GET', url: `/api/v1/groups/${c.groupId}/live/${code}/photos/${id}`, headers: { authorization: `Bearer ${c.token}` },
+    })).statusCode;
+    expect(await status(r1.c, hole.id)).toBe(200); // quien la sacó
+    expect(await status(r2.c, hole.id)).toBe(200); // el dueño
+    // Y cualquiera pasa de mano.
+    expect((await r2.c.ok('POST', `/g/live/${code}/new-hand`)).handNo).toBe(2);
+
     // Ritmo y tope por mano.
     process.env.LIVE_PHOTO_MIN_MS = '60000';
-    expect((await post(r1.c, { kind: 'board', image: b64(jpeg()) })).body.error).toBe('too_fast');
+    expect((await post(r1.c, img())).body.error).toBe('too_fast');
     process.env.LIVE_PHOTO_MIN_MS = '0';
-    for (let i = 0; i < 11; i++) expect((await post(admin, { kind: 'board', image: b64(jpeg(i)) })).status).toBe(200);
-    expect((await post(admin, { kind: 'board', image: b64(jpeg(9)) })).body.error).toBe('too_many_photos');
+    for (let i = 0; i < 12; i++) expect((await post(admin, img(i))).status).toBe(200);
+    expect((await post(admin, img(9))).body.error).toBe('too_many_photos');
   });
 
   it('nueva mano borra las fotos; cerrar la partida cierra la sala y borra todo', async () => {
     const { admin, r1, session, code, roomId } = await room();
     await r1.c.ok('POST', `/g/live/${code}/join`);
     const photo = await admin.ok('POST', `/g/live/${code}/photos`, { kind: 'board', image: b64(jpeg()) });
-    expect((await r1.c.call('POST', `/g/live/${code}/new-hand`, {}, 'nm-remoto')).body.error).toBe('not_operator');
     const next = await admin.ok('POST', `/g/live/${code}/new-hand`);
     expect([next.handNo, next.board]).toEqual([2, []]);
     expect((await app.inject({ method: 'GET', url: `/api/v1/groups/${r1.c.groupId}/live/${code}/photos/${photo.id}`, headers: { authorization: `Bearer ${r1.c.token}` } })).statusCode).toBe(404);

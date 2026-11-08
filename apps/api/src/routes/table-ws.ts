@@ -96,7 +96,7 @@ export async function tableSocketRoutes(app: FastifyInstance) {
       if (targeted !== (msg.to !== undefined)) return;
       // Quien se sienta o elige su nick con la mesa abierta no estaba como jugador al conectarse.
       if (msg.kind === 'start') {
-        // La cámara de la mesa solo la transmite un operador de la sala.
+        // La cámara de la mesa solo se transmite dentro de una sala remota.
         if (msg.source === 'table' && !canBroadcastTable) return;
         try { app.tableHub.setPlayer(channel, socket, await playerOf()); } catch { return; }
         if (socket.readyState !== socket.OPEN) return;
@@ -126,7 +126,8 @@ export async function tableSocketRoutes(app: FastifyInstance) {
             .where(and(eq(schema.liveMembers.roomId, roomId), eq(schema.liveMembers.userId, userId)));
           const editor = isEditor(role?.role ?? null);
           if (!member && !editor) return socket.close(WS_CLOSE.forbidden, 'not in room');
-          canBroadcastTable = editor || member?.role === 'operator';
+          // Todos los de la sala pueden transmitir el video de la mesa.
+          canBroadcastTable = editor || !!member;
           channel = roomChannel(roomId);
         }
         const playerId = await playerOf();

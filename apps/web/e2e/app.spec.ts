@@ -901,6 +901,13 @@ test.describe('sala remota', () => {
     await expect(page2.getByRole('img', { name: 'Tus cartas' })).toBeVisible();
     await checkPage(page2, 'sala remota: con fotos');
 
+    // Cualquiera de la sala puede mandar fotos: el remoto le manda al host la foto de la mesa y sus cartas.
+    await page2.waitForTimeout(1200);
+    await page2.getByTestId('photo-input').nth(0).setInputFiles(photo);
+    await expect(page.getByRole('img', { name: 'Cartas de la mesa' })).toBeVisible({ timeout: 15000 });
+    // Y transmite la cámara de la mesa (todos pueden).
+    await expect(page2.getByRole('button', { name: /Transmitir la mesa/ })).toBeVisible();
+
     // Mano nueva: se borran las fotos.
     await page.getByRole('button', { name: 'Nueva mano' }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Nueva mano' }).click();

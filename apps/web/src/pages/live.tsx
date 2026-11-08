@@ -163,11 +163,12 @@ export function LivePage() {
   }
 
   const me = view.me;
-  const operator = !!me?.operator;
+  // Todos los que entraron a la sala pueden mandar fotos, pasar de mano y transmitir la mesa.
+  const canSend = !!me;
   const state = video.state;
   const tableStream = state.remote.get(TABLE_KEY) ?? (state.source === 'table' ? state.local : null);
   const others = view.members.filter(m => m.userId !== me?.userId);
-  const remotes = view.members.filter(m => !m.operator && m.userId !== me?.userId);
+  const remotes = others;
   const link = `${window.location.origin}/live/${view.code}`;
 
   const post = (suffix: string, body?: unknown) => run(async () => {
@@ -186,11 +187,6 @@ export function LivePage() {
     const ok = await confirm({ title: 'Cerrar la sala', message: 'Los remotos se desconectan y se borran todas las fotos. La partida sigue abierta.', danger: true, confirmLabel: 'Cerrar sala' });
     if (ok) void post('close');
   };
-  const setOperator = (m: Member, on: boolean) => run(async () => {
-    const next = await api<ApiLiveView>(path(`/live/${view.code}/operators/${m.userId}`), { method: 'POST', body: { operator: on } });
-    qc.setQueryData(queryKey, next);
-  });
-
   const face = (m: Member) => {
     const stream = state.remote.get(m.playerId);
     return (
@@ -233,7 +229,7 @@ export function LivePage() {
           {others.length > 0 && <section aria-label="Jugadores conectados" className="live-faces">{others.map(face)}</section>}
           <h2 className="section-title">Mesa</h2>
           <div className="card"><Board code={view.code} photos={view.board} /></div>
-          {me?.playerId && !operator && (
+          {me?.playerId && (
             <>
               <h2 className="section-title">Tus cartas</h2>
               <div className="card"><MyCards code={view.code} photo={view.myCards[view.myCards.length - 1]} /></div>
@@ -249,13 +245,13 @@ export function LivePage() {
         </>
       )}
 
-      {operator && (
+      {canSend && (
         <>
-          <h2 className="section-title">Armar la mano</h2>
+          <h2 className="section-title">Compartir fotos y video</h2>
           <div className="card stack" aria-label="Operador">
-            <p className="small muted">Sacá las fotos con las cartas boca arriba y bien a la vista. Las cartas de cada remoto las recibe solo él.</p>
+            <p className="small muted">Cualquiera puede mandar la foto de la mesa, la de las cartas de un jugador (la recibe solo él) o la cámara de la mesa. Sacá las fotos con las cartas bien a la vista.</p>
             <PhotoButton primary label="Foto de la mesa" busy={busy} onPhoto={image => sendPhoto({ kind: 'board', image })} />
-            {remotes.length === 0 && <p className="muted small">Cuando entre un remoto vas a poder mandarle sus cartas.</p>}
+            {remotes.length === 0 && <p className="muted small">Cuando entre otro jugador vas a poder mandarle sus cartas.</p>}
             {remotes.map(m => (
               <div key={m.userId} className="row-between">
                 <PhotoButton label={`Cartas de ${m.name}${view.sent[m.playerId] ? ' ✓' : ''}`} busy={busy} onPhoto={image => sendPhoto({ kind: 'hole', playerId: m.playerId, image })} />
@@ -281,14 +277,6 @@ export function LivePage() {
               <Btn variant="ghost" className="grow" onClick={() => { void navigator.clipboard?.writeText(link).then(() => notify('Link copiado.')).catch(() => notify(link)); }}>Copiar</Btn>
             </div>
             <p className="xs muted">Pantalla para la mesa (tablet o celular fijo): <a href={`${link}?mesa`}>{`${link}?mesa`}</a></p>
-            {others.filter(m => m.userId !== me?.userId).map(m => (
-              <label key={m.userId} className="check-row">
-                <span className="grow">{m.name}</span>
-                <span className="xs muted">Puede sacar fotos</span>
-                <input type="checkbox" role="switch" aria-label={`${m.name} puede sacar fotos`} checked={m.operator} disabled={busy}
-                  onChange={e => { void setOperator(m, e.target.checked); }} />
-              </label>
-            ))}
             <Btn variant="danger" busy={busy} onClick={() => { void closeRoom(); }}>Cerrar la sala</Btn>
           </div>
         </>

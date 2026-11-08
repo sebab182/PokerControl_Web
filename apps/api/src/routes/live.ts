@@ -11,7 +11,7 @@ import {
   LiveRoomRef, LiveRoomRefResponse, LiveView, type ApiLiveView,
 } from '@pokercontrol/contracts';
 import { type Static } from '@sinclair/typebox';
-import { and, asc, eq, inArray, lt, ne, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, lt, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import * as schema from '../db/schema';
 import { ApiError, notFound } from '../errors';
@@ -84,9 +84,9 @@ export async function liveRoutes(app: FastifyInstance) {
     (await db.select().from(schema.liveMembers)
       .where(and(eq(schema.liveMembers.roomId, roomId), eq(schema.liveMembers.userId, userId))))[0] ?? null;
 
-  /** Quien arma las fotos: administradores y los miembros que el host habilitó. */
+  /** Mandar fotos, pasar de mano y transmitir la mesa: cualquiera que entró a la sala (o un administrador). */
   const canOperate = (req: { role: Parameters<typeof isEditor>[0] }, member: MemberRow | null) =>
-    isEditor(req.role) || member?.role === 'operator';
+    isEditor(req.role) || member !== null;
 
   const bump = async (db: Conn, room: RoomRow) => {
     const [fresh] = await db.update(schema.liveRooms).set({ version: sql`${schema.liveRooms.version} + 1` })
@@ -212,7 +212,7 @@ export async function liveRoutes(app: FastifyInstance) {
     const room = await roomByCode(app.db, req.group.id, req.params.code);
     if (room.status !== 'open') throw new ApiError(409, 'room_closed', 'La sala ya se cerró.');
     const me = await memberOf(app.db, room.id, req.user.sub);
-    if (!canOperate(req, me)) throw new ApiError(403, 'not_operator', 'Solo quien arma las fotos de la mesa puede mandarlas.');
+    if (!canOperate(req, me)) throw new ApiError(403, 'not_in_room', 'Entrá a la sala para mandar fotos.');
     const now = Date.now();
     if (now - (lastPhoto.get(req.user.sub) ?? 0) < photoMinMs()) throw new ApiError(429, 'too_fast', 'Esperá un segundo entre fotos.');
     lastPhoto.set(req.user.sub, now);
@@ -224,7 +224,7 @@ export async function liveRoutes(app: FastifyInstance) {
     return app.db.transaction(async tx => {
       if (kind === 'hole') {
         const [owner] = await tx.select().from(schema.liveMembers)
-          .where(and(eq(schema.liveMembers.roomId, room.id), eq(schema.liveMembers.playerId, playerId as string), ne(schema.liveMembers.role, 'operator')));
+          .where(and(eq(schema.liveMembers.roomId, room.id), eq(schema.liveMembers.playerId, playerId as string)));
         if (!owner) throw new ApiError(422, 'not_in_room', 'Ese jugador no está conectado a la sala.');
         // Las cartas de un jugador se reemplazan: queda la última foto de la mano.
         await tx.delete(schema.livePhotos).where(and(
@@ -265,7 +265,7 @@ export async function liveRoutes(app: FastifyInstance) {
   }, async req => {
     const room = await roomByCode(app.db, req.group.id, req.params.code);
     if (room.status !== 'open') throw new ApiError(409, 'room_closed', 'La sala ya se cerró.');
-    if (!canOperate(req, await memberOf(app.db, room.id, req.user.sub))) throw new ApiError(403, 'not_operator', 'Solo quien arma las fotos puede pasar de mano.');
+    if (!canOperate(req, await memberOf(app.db, room.id, req.user.sub))) throw new ApiError(403, 'not_in_room', 'Entrá a la sala para pasar de mano.');
     await app.db.transaction(async tx => {
       await tx.delete(schema.livePhotos).where(eq(schema.livePhotos.roomId, room.id));
       await tx.update(schema.liveRooms).set({ handNo: sql`${schema.liveRooms.handNo} + 1` }).where(eq(schema.liveRooms.id, room.id));
