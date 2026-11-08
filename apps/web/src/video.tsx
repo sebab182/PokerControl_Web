@@ -12,6 +12,10 @@ import type { TableSocket } from './useTableSocket';
  */
 
 const MAX_BITRATE = 150_000;
+/** La cámara de la mesa de una sala remota: más resolución y bitrate para que se lean las cartas y el tapete. */
+const TABLE_BITRATE = 600_000;
+/** Clave del video de la mesa entre los demás streams (no choca con un id de jugador). */
+export const TABLE_KEY = 'table';
 const ICE_SERVERS: RTCIceServer[] = (() => {
   try {
     const custom = import.meta.env.VITE_ICE_SERVERS as string | undefined; // JSON, p. ej. para sumar un TURN
@@ -20,6 +24,7 @@ const ICE_SERVERS: RTCIceServer[] = (() => {
   return [{ urls: 'stun:stun.l.google.com:19302' }];
 })();
 
+const TABLE_CAMERA: MediaTrackConstraints = { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 15, max: 20 }, facingMode: { ideal: 'environment' } };
 const CAMERA: MediaTrackConstraints = { width: { ideal: 240 }, height: { ideal: 180 }, frameRate: { ideal: 12, max: 15 }, facingMode: 'user' };
 
 /** Se puede transmitir si el navegador tiene WebRTC y acceso a cámara o micrófono; el contexto seguro (https/localhost) lo exige. */
@@ -78,6 +83,10 @@ interface VideoState {
   setMuteOthers: (v: boolean) => void;
   /** Con cámara, micrófono o los dos (al menos uno). Si ya transmitía, reinicia la transmisión con la nueva opción. */
   start: (want: MediaWanted) => Promise<void>;
+  /** Qué estoy transmitiendo: mi cara, o la cámara de la mesa (solo en una sala remota). */
+  source: 'face' | 'table';
+  /** Transmite la cámara trasera como «video de la mesa» (sala remota; no hace falta tener jugador). */
+  startTable: () => Promise<void>;
   stop: () => void;
   /** Quién puede transmitir: solo quien tiene jugador. */
   canBroadcast: boolean;
@@ -107,6 +116,7 @@ export function useTableVideo(socket: TableSocket, myPlayerId: string | null) {
   const { live, send } = socket;
   const [local, setLocal] = useState<MediaStream | null>(null);
   const [camOn, setCamOn] = useState(false);
+  const [source, setSource] = useState<'face' | 'table'>('face');
   const [micOn, setMicOn] = useState(false);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -114,6 +124,7 @@ export function useTableVideo(socket: TableSocket, myPlayerId: string | null) {
   const [muteOthers, setMuteOthers] = useState(false);
 
   const localRef = useRef<MediaStream | null>(null);
+  const sourceRef = useRef<'face' | 'table'>('face');
   /** Conexiones donde yo transmito (una por espectador) y donde yo miro (una por quien transmite), por id de conexión. */
   const outgoing = useRef(new Map<string, Link>());
   const incoming = useRef(new Map<string, Link>());
@@ -187,15 +198,17 @@ export function useTableVideo(socket: TableSocket, myPlayerId: string | null) {
               if (sender.track?.kind !== 'video') continue;
               const params = sender.getParameters();
               params.encodings = params.encodings?.length ? params.encodings : [{}];
-              params.encodings[0]!.maxBitrate = MAX_BITRATE;
+              params.encodings[0]!.maxBitrate = sourceRef.current === 'table' ? TABLE_BITRATE : MAX_BITRATE;
               await sender.setParameters(params).catch(() => {});
             }
             break;
           }
           case 'offer': {
-            const link = newLink(incoming.current, from, playerId);
+            // El video de la mesa (sala remota) no es de ningún jugador: va con su propia clave.
+            const key = msg.source === 'table' ? TABLE_KEY : playerId;
+            const link = newLink(incoming.current, from, key);
             link.pc.ontrack = e => {
-              if (playerId) setRemoteStream(playerId, e.streams[0] ?? new MediaStream([e.track]));
+              if (key) setRemoteStream(key, e.streams[0] ?? new MediaStream([e.track]));
             };
             await link.pc.setRemoteDescription(msg.data as RTCSessionDescriptionInit);
             for (const c of link.pending.splice(0)) await link.pc.addIceCandidate(c).catch(() => {});
@@ -239,6 +252,8 @@ export function useTableVideo(socket: TableSocket, myPlayerId: string | null) {
     setLocal(null);
     setCamOn(false);
     setMicOn(false);
+    setSource('face');
+    sourceRef.current = 'face';
   }, [closeLink]);
 
   const start = useCallback(async (want: MediaWanted) => {
@@ -260,6 +275,8 @@ export function useTableVideo(socket: TableSocket, myPlayerId: string | null) {
       }
       if (localRef.current) stop(); // cambio de cámara o micrófono: se reinicia la transmisión
       localRef.current = stream;
+      sourceRef.current = 'face';
+      setSource('face');
       // Si el usuario corta desde el navegador (el indicador de cámara o micrófono), se refleja acá.
       (stream.getVideoTracks()[0] ?? stream.getAudioTracks()[0])?.addEventListener('ended', () => { if (localRef.current === stream) stop(); });
       setLocal(stream);
@@ -273,12 +290,34 @@ export function useTableVideo(socket: TableSocket, myPlayerId: string | null) {
     }
   }, [stop]);
 
+  /** Cámara de la mesa de una sala remota: cámara trasera en mejor calidad, sin audio, y no hace falta tener jugador. */
+  const startTable = useCallback(async () => {
+    setError(null);
+    setStarting(true);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: TABLE_CAMERA, audio: false });
+      if (localRef.current) stop();
+      localRef.current = stream;
+      sourceRef.current = 'table';
+      setSource('table');
+      stream.getVideoTracks()[0]?.addEventListener('ended', () => { if (localRef.current === stream) stop(); });
+      setLocal(stream);
+      setCamOn(true);
+      setMicOn(false);
+      sendRef.current({ kind: 'start', source: 'table' });
+    } catch (e) {
+      setError(await describeMediaError(e, { camera: true, mic: false }));
+    } finally {
+      setStarting(false);
+    }
+  }, [stop]);
+
   // Si se corta el WebSocket, el servidor ya avisó que dejé de transmitir y las conexiones quedaron huérfanas:
   // se descartan, y al volver se anuncia otra vez (el servidor informa a su vez quién transmite).
   const wasLive = useRef(false);
   useEffect(() => {
     if (live) {
-      if (localRef.current) sendRef.current({ kind: 'start' });
+      if (localRef.current) sendRef.current({ kind: 'start', source: sourceRef.current });
     } else if (wasLive.current) {
       closeAll();
     }
@@ -294,7 +333,7 @@ export function useTableVideo(socket: TableSocket, myPlayerId: string | null) {
 
   const state: VideoState = {
     supported: videoSupported(), local, camOn, micOn, starting, error, remote, muteOthers, setMuteOthers,
-    start, stop, canBroadcast: !!myPlayerId, myPlayerId,
+    start, source, startTable, stop, canBroadcast: !!myPlayerId, myPlayerId,
   };
   return { state, onSignal };
 }

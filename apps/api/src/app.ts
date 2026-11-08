@@ -20,6 +20,7 @@ import { groupRoutes, requireEditor, requireMembership } from './routes/groups';
 import { claimPlayerRoutes, playerRoutes } from './routes/players';
 import { seasonRoutes } from './routes/seasons';
 import { sessionRoutes } from './routes/sessions';
+import { liveRoutes } from './routes/live';
 import { sweepTurns, tableRoutes } from './routes/table';
 import { MAX_SIGNAL_BYTES, tableSocketRoutes } from './routes/table-ws';
 import { TableHub } from './table-hub';
@@ -138,6 +139,8 @@ export async function buildApp(options: AppOptions) {
         await scoped.register(paymentRoutes);
         // La mesa online la juega cualquier miembro (incluido solo lectura): no exige editor.
         await scoped.register(tableRoutes);
+        // La sala remota de una partida presencial: la ve cualquier miembro; armarla exige administrador (ver live.ts).
+        await scoped.register(liveRoutes);
         await scoped.register(async guarded => {
           guarded.addHook('preValidation', async req => {
             if (req.method !== 'GET') await requireEditor(req);

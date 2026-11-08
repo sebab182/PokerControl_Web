@@ -739,3 +739,24 @@ input[type="text"], input[type="search"], select {
 .pseat-audio { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .pseat-mic { position: absolute; right: -4px; bottom: -4px; font-size: 14px; line-height: 1; background: var(--surface); border-radius: 50%; padding: 2px; }
 .pseat-face { position: relative; display: inline-flex; }
+
+/* Sala remota (partidas presenciales) */
+.live-banner { display: block; text-decoration: none; margin-bottom: 12px; }
+.live-stage { padding: 0; overflow: hidden; background: #0B3B26; }
+.live-table-video { display: block; width: 100%; max-height: 62vh; object-fit: contain; background: #000; }
+.live-table-empty { min-height: 180px; display: grid; place-items: center; text-align: center; color: #fff; padding: 16px; }
+.live-table-empty .muted { color: rgba(255, 255, 255, .75); }
+.live-faces { display: flex; gap: 10px; flex-wrap: wrap; margin: 12px 0; }
+.live-faces-big { gap: 14px; }
+.live-face { position: relative; width: 112px; text-align: center; font-size: 12px; }
+.live-face-big { width: min(44vw, 260px); font-size: 15px; }
+.live-face-video { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 12px; background: #000; }
+.live-face-avatar { display: grid; place-items: center; aspect-ratio: 4 / 3; border-radius: 12px; background: var(--surface-alt); }
+.live-face-name { display: block; margin-top: 4px; }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; }
+.dot-on { background: var(--green); } .dot-off { background: var(--text-muted); }
+.live-photo { display: block; width: 100%; max-height: 60vh; object-fit: contain; border-radius: 12px; background: #000; }
+.live-photo-hidden { min-height: 150px; display: grid; place-items: center; font-size: 56px; background: repeating-linear-gradient(45deg, #1f3a8a, #1f3a8a 10px, #27479f 10px, #27479f 20px); color: #fff; }
+.live-photo-loading { min-height: 150px; background: var(--surface-alt); border-radius: 12px; }
+.live-mycards { display: grid; gap: 8px; }
+.live-thumbs { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }

@@ -14,6 +14,7 @@ import type { FastifyInstance } from 'fastify';
 import * as schema from '../db/schema';
 import { ApiError, notFound, sessionClosed } from '../errors';
 import { sessionInsights } from '../hand-history';
+import { closeRoomForSession } from './live';
 import { idempotent } from '../idempotency';
 import {
   insertEntries, loadSessions, lockGroup, lockSession, setBalances, toApiSession, type Conn, type Tx,
@@ -81,6 +82,7 @@ export async function closeSessionTx(
   }
 
   await tx.update(schema.sessions).set({ status: 'closed', closedAt: new Date() }).where(eq(schema.sessions.id, id));
+  await closeRoomForSession(tx, id); // la sala remota se cierra con la partida y sus fotos se borran
   await lockGroup(tx, groupId);
   // El resultado de cada participante con resultado se suma a su saldo; el resto queda igual.
   await insertEntries(tx, groupId, session.participants

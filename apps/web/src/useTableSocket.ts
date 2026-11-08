@@ -23,7 +23,10 @@ export interface TableSocket {
 export function useTableSocket(
   groupId: string, onChanged: () => void, onSignal?: (msg: ApiRtcServerMessage) => void,
   onEmoji?: (msg: ApiEmojiServerMessage) => void,
+  /** Con `room` el socket es el de una sala remota (canal propio); con `enabled: false` no se conecta todavía. */
+  opts: { room?: string; enabled?: boolean } = {},
 ): TableSocket {
+  const { room, enabled = true } = opts;
   const [live, setLive] = useState(false);
   const callback = useRef(onChanged);
   callback.current = onChanged;
@@ -42,7 +45,7 @@ export function useTableSocket(
     const connect = () => {
       const token = getToken();
       if (!token || stopped) return;
-      const ws = new WebSocket(wsUrl(`/groups/${groupId}/table/ws`));
+      const ws = new WebSocket(wsUrl(`/groups/${groupId}/table/ws${room ? `?room=${encodeURIComponent(room)}` : ''}`));
       socket = ws;
       ws.onopen = () => ws.send(JSON.stringify({ type: 'auth', token }));
       ws.onmessage = event => {
@@ -70,7 +73,7 @@ export function useTableSocket(
       };
     };
 
-    connect();
+    if (enabled) connect();
     return () => {
       stopped = true;
       clearTimeout(timer);
@@ -78,7 +81,7 @@ export function useTableSocket(
       current.current = null;
       setLive(false);
     };
-  }, [groupId]);
+  }, [groupId, room, enabled]);
 
   const send = useCallback((msg: Omit<ApiRtcClientMessage, 'type'>) => {
     const ws = current.current;

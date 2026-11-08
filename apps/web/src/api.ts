@@ -107,4 +107,18 @@ export async function api<T>(path: string, { method = 'GET', body, idempotent }:
   return data as T;
 }
 
+/** Una imagen protegida (las fotos de cartas): se pide con el token en un header, nunca en la URL, y se devuelve como Blob. */
+export async function apiBlob(path: string): Promise<Blob> {
+  const headers: Record<string, string> = {};
+  if (memoryToken) headers.Authorization = `Bearer ${memoryToken}`;
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}${path}`, { headers, signal: AbortSignal.timeout(TIMEOUT_MS) });
+  } catch {
+    throw new NetworkError();
+  }
+  if (!res.ok) throw new ApiRequestError(res.status, 'error', 'No se pudo cargar la foto.');
+  return res.blob();
+}
+
 export { storageGet, storageSet };

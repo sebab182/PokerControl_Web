@@ -13,7 +13,8 @@ import { Value } from '@sinclair/typebox/value';
 import { and, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import * as schema from '../db/schema';
-import { canAccessGroup } from './groups';
+import { canAccessGroup, isEditor } from './groups';
+import { roomChannel } from './live';
 
 const AUTH_TIMEOUT_MS = 5000;
 const PING_MS = 25_000;
@@ -29,11 +30,15 @@ const EMOJI_MIN_MS = 1500;
 export const WS_CLOSE = { unauthorized: 4401, forbidden: 4403 } as const;
 
 export async function tableSocketRoutes(app: FastifyInstance) {
-  app.get<{ Params: { groupId: string } }>('/groups/:groupId/table/ws', {
+  app.get<{ Params: { groupId: string }; Querystring: { room?: string } }>('/groups/:groupId/table/ws', {
     websocket: true,
     schema: { hide: true },
   }, (socket, req) => {
     const { groupId } = req.params;
+    // Con ?room=<id> el socket es de una sala remota: tiene su propio canal (avisos, video, emojis) y entran solo sus miembros.
+    const roomId = typeof req.query.room === 'string' && req.query.room.length <= 64 ? req.query.room : null;
+    let channel = groupId;
+    let canBroadcastTable = false;
     let unsubscribe: (() => void) | null = null;
     let authed = false;
     let alive = true;
@@ -72,7 +77,7 @@ export async function tableSocketRoutes(app: FastifyInstance) {
       lastEmoji = now; // antes del await: dos mensajes seguidos no se cuelan juntos
       try {
         const who = await whoIs();
-        app.tableHub.broadcast(groupId, JSON.stringify({ type: 'emoji', id: msg.id, playerId: who.playerId, name: who.name.slice(0, 60) }));
+        app.tableHub.broadcast(channel, JSON.stringify({ type: 'emoji', id: msg.id, playerId: who.playerId, name: who.name.slice(0, 60) }));
       } catch { /* sin respuesta: se ignora */ }
     };
 
@@ -91,10 +96,12 @@ export async function tableSocketRoutes(app: FastifyInstance) {
       if (targeted !== (msg.to !== undefined)) return;
       // Quien se sienta o elige su nick con la mesa abierta no estaba como jugador al conectarse.
       if (msg.kind === 'start') {
-        try { app.tableHub.setPlayer(groupId, socket, await playerOf()); } catch { return; }
+        // La cámara de la mesa solo la transmite un operador de la sala.
+        if (msg.source === 'table' && !canBroadcastTable) return;
+        try { app.tableHub.setPlayer(channel, socket, await playerOf()); } catch { return; }
         if (socket.readyState !== socket.OPEN) return;
       }
-      app.tableHub.relay(groupId, socket, msg);
+      app.tableHub.relay(channel, socket, msg);
     };
 
     socket.on('message', async (raw: Buffer) => {
@@ -109,13 +116,26 @@ export async function tableSocketRoutes(app: FastifyInstance) {
         if (socket.readyState !== socket.OPEN || authed) return;
         // Sin jugador propio (p. ej. un administrador) mira el video de los demás pero no transmite.
         userId = payload.sub;
+        if (roomId) {
+          // Sala remota: debe existir, estar abierta y ser de este grupo; entran quienes se unieron a ella y los administradores.
+          const [room] = await app.db.select().from(schema.liveRooms)
+            .where(and(eq(schema.liveRooms.id, roomId), eq(schema.liveRooms.groupId, groupId), eq(schema.liveRooms.status, 'open')));
+          if (!room) return socket.close(WS_CLOSE.forbidden, 'room not found');
+          const [role] = await app.db.select({ role: schema.users.role }).from(schema.users).where(eq(schema.users.id, userId));
+          const [member] = await app.db.select({ role: schema.liveMembers.role }).from(schema.liveMembers)
+            .where(and(eq(schema.liveMembers.roomId, roomId), eq(schema.liveMembers.userId, userId)));
+          const editor = isEditor(role?.role ?? null);
+          if (!member && !editor) return socket.close(WS_CLOSE.forbidden, 'not in room');
+          canBroadcastTable = editor || member?.role === 'operator';
+          channel = roomChannel(roomId);
+        }
         const playerId = await playerOf();
         if (socket.readyState !== socket.OPEN || authed) return;
         authed = true;
         clearTimeout(authTimer);
-        unsubscribe = app.tableHub.subscribe(groupId, socket, playerId);
+        unsubscribe = app.tableHub.subscribe(channel, socket, playerId);
         socket.send(JSON.stringify({ type: 'ready' }));
-        app.tableHub.announceBroadcasters(groupId, socket);
+        app.tableHub.announceBroadcasters(channel, socket);
       } catch {
         socket.close(WS_CLOSE.unauthorized, 'invalid token');
       }

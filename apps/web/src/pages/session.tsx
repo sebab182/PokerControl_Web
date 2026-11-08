@@ -1,5 +1,5 @@
 import type {
-  ApiCloseSessionResponse, ApiGroup, ApiParticipant, ApiPlayer, ApiPlayerBalance, ApiSession, ApiSessionDebtsView,
+  ApiCloseSessionResponse, ApiGroup, ApiLiveRoomRef, ApiParticipant, ApiPlayer, ApiPlayerBalance, ApiSession, ApiSessionDebtsView,
 } from '@pokercontrol/contracts';
 import { POT_TOLERANCE, buildWhatsAppSummary, calcParticipant, formatMoney, parseAmount, round2 } from '@pokercontrol/core';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -33,6 +33,12 @@ export function SessionPage() {
   const details = useQuery({
     queryKey: key('group-details'),
     queryFn: () => api<ApiGroup>(path('')),
+  });
+  // Sala remota: si la partida tiene una abierta, cualquier miembro puede entrar; un administrador puede abrirla.
+  const liveRoom = useQuery({
+    queryKey: key('session-live', sessionId),
+    queryFn: () => api<{ room: ApiLiveRoomRef | null }>(path(`/sessions/${sessionId}/live`)),
+    refetchInterval: q => (q.state.data?.room ? false : 15000),
   });
   const [addOpen, setAddOpen] = useState(false);
   const available = useQuery({
@@ -168,6 +174,11 @@ export function SessionPage() {
   };
 
   const share = () => shareText(buildWhatsAppSummary(session, details.data?.timezone), notify);
+  const openLive = () => run(async () => {
+    const room = await api<ApiLiveRoomRef>(path(`/sessions/${sessionId}/live`), { method: 'POST', idempotent: true, body: {} });
+    await liveRoom.refetch();
+    void navigate(`/live/${room.code}`);
+  });
 
   return (
     <>
@@ -194,6 +205,12 @@ export function SessionPage() {
           Esta partida está anulada: no suma a los saldos, al ranking ni a las estadísticas.
           {canEdit && ' Podés reactivarla desde abajo.'}
         </div>
+      )}
+
+      {session.status === 'active' && (
+        liveRoom.data?.room
+          ? <Link className="notice notice-info live-banner" to={`/live/${liveRoom.data.room.code}`} data-testid="live-banner"><Emoji>🎥</Emoji> Sala remota abierta · <strong>Entrar</strong></Link>
+          : canEdit && <Btn variant="ghost" block busy={busy} onClick={() => { void openLive(); }} style={{ marginBottom: 12 }}><Emoji>🎥</Emoji> Abrir sala remota</Btn>
       )}
 
       {session.participants.length > 0 && (

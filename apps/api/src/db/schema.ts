@@ -397,3 +397,58 @@ export const pokerHandPlayers = pgTable('poker_hand_players', {
   foreignKey({ columns: [t.groupId, t.playerId], foreignColumns: [players.groupId, players.id], name: 'fk_poker_hand_players_player' }).onDelete('cascade'),
   index('idx_poker_hand_players_player').on(t.playerId),
 ]);
+
+/** bytea como Buffer (fotos de la sala remota). */
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () => 'bytea' });
+
+/**
+ * Sala remota de una partida presencial: los jugadores que no están en la mesa se conectan, ven el video de la mesa y
+ * reciben fotos de las cartas. Una sala por partida; se cierra con la partida y sus fotos se borran.
+ */
+export const liveRooms = pgTable('live_rooms', {
+  id: text('id').primaryKey(),
+  groupId: text('group_id').notNull().references(() => groups.id, { onDelete: 'cascade' }),
+  sessionId: text('session_id').notNull(),
+  /** Código corto del link que se comparte. */
+  code: text('code').notNull(),
+  status: text('status').notNull().default('open').$type<'open' | 'closed'>(),
+  /** Mano en curso: «Nueva mano» la suma y borra las fotos de la anterior. */
+  handNo: integer('hand_no').notNull().default(1),
+  version: integer('version').notNull().default(0),
+  createdBy: text('created_by').notNull(),
+  createdAt: ts('created_at').notNull().defaultNow(),
+}, t => [
+  unique('uq_live_rooms_session').on(t.sessionId),
+  unique('uq_live_rooms_code').on(t.code),
+  foreignKey({ columns: [t.groupId, t.sessionId], foreignColumns: [sessions.groupId, sessions.id], name: 'fk_live_rooms_session' }).onDelete('cascade'),
+  check('ck_live_rooms_status', sql`${t.status} in ('open', 'closed')`),
+]);
+
+/** Quién está en la sala: remotos (con jugador) y operadores (sacan las fotos). */
+export const liveMembers = pgTable('live_members', {
+  roomId: text('room_id').notNull().references(() => liveRooms.id, { onDelete: 'cascade' }),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  /** Su jugador en el grupo; null para un administrador que mira o saca fotos sin jugar. */
+  playerId: text('player_id'),
+  role: text('role').notNull().default('remote').$type<'remote' | 'operator'>(),
+  lastSeenAt: ts('last_seen_at').notNull().defaultNow(),
+}, t => [
+  primaryKey({ columns: [t.roomId, t.userId] }),
+  check('ck_live_members_role', sql`${t.role} in ('remote', 'operator')`),
+]);
+
+/** Fotos de cartas, solo mientras dura la mano. `hole`: de las cartas de un remoto (solo él la ve); `board`: de la mesa. */
+export const livePhotos = pgTable('live_photos', {
+  id: text('id').primaryKey(),
+  roomId: text('room_id').notNull().references(() => liveRooms.id, { onDelete: 'cascade' }),
+  handNo: integer('hand_no').notNull(),
+  kind: text('kind').notNull().$type<'board' | 'hole'>(),
+  playerId: text('player_id'),
+  bytes: bytea('bytes').notNull(),
+  createdBy: text('created_by').notNull(),
+  createdAt: ts('created_at').notNull().defaultNow(),
+}, t => [
+  index('idx_live_photos_room').on(t.roomId),
+  check('ck_live_photos_kind', sql`${t.kind} in ('board', 'hole')`),
+  check('ck_live_photos_owner', sql`(${t.kind} = 'hole') = (${t.playerId} is not null)`),
+]);

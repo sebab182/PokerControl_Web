@@ -830,6 +830,91 @@ test('mesa online: al terminar, los jugadores que manejás se muestran juntos y 
   await expect(page.locator('.felt .pseat .pcard:not(.pcard-own)')).toHaveCount(6);
 });
 
+test.describe('sala remota', () => {
+  // Cámara y micrófono falsos del navegador (ver launchOptions en playwright.config.ts).
+  test.use({ permissions: ['camera', 'microphone'] });
+
+  test('el host arma la sala; el remoto ve el video de la mesa, las fotos y sus cartas (solo él)', async ({ page, browser }) => {
+    test.setTimeout(90000);
+    const hostToken = await login(page, 'Seba');
+    const code = await createGroup(page);
+    const auth = { authorization: `Bearer ${hostToken}` };
+
+    // El remoto se une al grupo y elige su jugador.
+    const context2 = await browser.newContext({ permissions: ['camera', 'microphone'] });
+    const page2 = await context2.newPage();
+    await login(page2, 'Nico', 'reader');
+    await page2.goto('/');
+    await page2.getByLabel('Código de invitación').fill(code);
+    await page2.getByRole('button', { name: 'Unirme' }).click();
+    await page2.getByLabel('Tu nick').fill('Nico');
+    await page2.getByRole('button', { name: 'Crear mi jugador' }).click();
+
+    // La partida presencial: Nico (remoto) y Ana en la mesa.
+    const groupId = (await (await page.request.get(`${API}/groups`, { headers: auth })).json())[0].id;
+    const ana = (await (await page.request.post(`${API}/groups/${groupId}/players`, { headers: auth, data: { name: 'Ana' } })).json()).id;
+    const nico = (await (await page.request.get(`${API}/groups/${groupId}/players`, { headers: auth })).json()).find((p: { name: string }) => p.name === 'Nico').id;
+    const season = (await (await page.request.get(`${API}/groups/${groupId}/seasons`, { headers: auth })).json())[0].id;
+    const session = await (await page.request.post(`${API}/groups/${groupId}/seasons/${season}/sessions`, {
+      headers: { ...auth, 'idempotency-key': `e2e-live-${Date.now()}` }, data: { playerIds: [ana, nico], initialBuyIn: 100 },
+    })).json();
+
+    // Antes de abrirla, un lector no ve el botón; el host sí lo ve y la abre.
+    await page2.goto(`/sessions/${session.id}`);
+    await expect(page2.getByRole('button', { name: 'Abrir sala remota' })).toBeHidden();
+    await page.goto(`/sessions/${session.id}`);
+    await page.getByRole('button', { name: 'Abrir sala remota' }).click();
+    await expect(page.getByRole('heading', { name: /^Sala remota · / })).toBeVisible();
+
+    // El remoto la encuentra desde la partida (aviso) y entra.
+    await page2.reload();
+    await page2.getByTestId('live-banner').click();
+    await expect(page2.getByRole('heading', { name: /^Sala remota · / })).toBeVisible();
+    await expect(page2.getByText('Esperando la cámara de la mesa…')).toBeVisible();
+    await expect(page.getByTestId('face-Nico')).toBeVisible({ timeout: 15000 });
+    await checkPage(page2, 'sala remota: remoto');
+    await checkPage(page, 'sala remota: host');
+
+    // El host transmite la cámara de la mesa: el remoto la recibe por WebRTC (frames reales).
+    await page.getByRole('button', { name: /Transmitir la mesa/ }).click();
+    const tableVideo = page2.locator('video.live-table-video');
+    await expect(tableVideo).toBeVisible({ timeout: 20000 });
+    await expect.poll(() => tableVideo.evaluate((v: HTMLVideoElement) => v.videoWidth), { timeout: 20000 }).toBeGreaterThan(0);
+
+    // El remoto enciende su cámara: el host ve su cara.
+    await page2.getByRole('button', { name: 'Transmitir video' }).click();
+    const face = page.getByTestId('face-Nico').locator('video.live-face-video');
+    await expect(face).toBeVisible({ timeout: 20000 });
+
+    // Fotos: un JPEG chico que el navegador reduce y vuelve a codificar.
+    const jpegPixel = Buffer.from('/9j/4AAQSkZJRgABAgAAAQABAAD//gAQTGF2YzYwLjMxLjEwMgD/2wBDAAgEBAQEBAUFBQUFBQYGBgYGBgYGBgYGBgYHBwcICAgHBwcGBgcHCAgICAkJCQgICAgJCQoKCgwMCwsODg4RERT/xABNAAEBAAAAAAAAAAAAAAAAAAAABgEBAQEAAAAAAAAAAAAAAAAAAAYHEAEAAAAAAAAAAAAAAAAAAAAAEQEAAAAAAAAAAAAAAAAAAAAA/8AAEQgAGAAgAwEiAAIRAAMRAP/aAAwDAQACEQMRAD8AiwEo38AAAAAB/9k=', 'base64');
+    const photo = { name: 'cartas.jpg', mimeType: 'image/jpeg', buffer: jpegPixel };
+    await page.getByTestId('photo-input').nth(0).setInputFiles(photo); // mesa
+    await expect(page2.getByRole('img', { name: 'Cartas de la mesa' })).toBeVisible({ timeout: 15000 });
+    // Las cartas del remoto: tapadas hasta que las toca; solo él las recibe.
+    await expect(page2.getByText('Todavía no te mandaron tus cartas en esta mano.')).toBeVisible();
+    await page.waitForTimeout(1200); // el servidor pide una pausa entre fotos de la misma persona
+    await page.getByTestId('photo-input').nth(1).setInputFiles(photo); // Nico
+    await expect(page2.getByRole('button', { name: 'Ver mis cartas' })).toBeVisible({ timeout: 15000 });
+    await expect(page2.getByRole('img', { name: 'Tus cartas' })).toBeHidden();
+    await page2.getByRole('button', { name: 'Ver mis cartas' }).click();
+    await expect(page2.getByRole('img', { name: 'Tus cartas' })).toBeVisible();
+    await checkPage(page2, 'sala remota: con fotos');
+
+    // Mano nueva: se borran las fotos.
+    await page.getByRole('button', { name: 'Nueva mano' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Nueva mano' }).click();
+    await expect(page2.getByText('Todavía no mandaron fotos de la mesa en esta mano.')).toBeVisible({ timeout: 15000 });
+
+    // Pantalla de la mesa: muestra la cara del remoto en grande.
+    await page.goto(`/live/${(await page.evaluate(() => location.pathname)).split('/').pop() ?? ''}?mesa`);
+    await expect(page.getByRole('heading', { name: /^Pantalla de la mesa · / })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Activar sonido' })).toBeVisible();
+    await checkPage(page, 'sala remota: pantalla de la mesa');
+    await context2.close();
+  });
+});
+
 test.describe('mesa online: video', () => {
   // Cámara y micrófono falsos del navegador (ver launchOptions en playwright.config.ts).
   test.use({ permissions: ['camera', 'microphone'] });

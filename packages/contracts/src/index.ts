@@ -192,6 +192,40 @@ export const SessionDebtsView = Obj({
   sessionStatus: SessionStatus,
 }, 'SessionDebtsView');
 
+// ─── Sala remota (partidas presenciales) ─────────────────────────────────────
+export const LiveCodeParams = Obj({ groupId: T.String(), code: T.String({ minLength: 4, maxLength: 16 }) });
+export const LivePhotoParams = Obj({ groupId: T.String(), code: T.String({ minLength: 4, maxLength: 16 }), photoId: T.String() });
+export const LiveOperatorParams = Obj({ groupId: T.String(), code: T.String({ minLength: 4, maxLength: 16 }), userId: T.String() });
+export const LiveRoomRef = Obj({ id: T.String(), code: T.String(), status: T.Union([T.Literal('open'), T.Literal('closed')]) }, 'LiveRoomRef');
+export const LiveRoomRefResponse = Obj({ room: Nullable(LiveRoomRef) }, 'LiveRoomRefResponse');
+export const LiveRemote = Obj({ playerId: T.String(), name: T.String(), online: T.Boolean(), operator: T.Boolean(), userId: T.String() }, 'LiveRemote');
+export const LivePhotoMeta = Obj({ id: T.String(), at: T.String(), handNo: T.Integer() }, 'LivePhotoMeta');
+export const LiveView = Obj({
+  id: T.String(), code: T.String(), status: T.Union([T.Literal('open'), T.Literal('closed')]),
+  sessionId: T.String(), sessionName: T.String(),
+  /** Cambia con cada novedad (fotos, mano nueva, gente que entra). */
+  version: T.Integer(), handNo: T.Integer(),
+  /** Tu lugar en la sala: null si todavía no entraste. */
+  me: Nullable(Obj({ userId: T.String(), playerId: Nullable(T.String()), operator: T.Boolean() })),
+  /** Quien armó la sala o un administrador: puede habilitar operadores y cerrarla. */
+  canManage: T.Boolean(),
+  members: T.Array(LiveRemote),
+  /** Fotos de la mesa en esta mano, de la más vieja a la más nueva (solo si entraste a la sala). */
+  board: T.Array(LivePhotoMeta),
+  /** Tus fotos de cartas en esta mano (las de otros no salen). */
+  myCards: T.Array(LivePhotoMeta),
+  /** Para operadores: cuántas fotos de cartas se mandó a cada remoto en esta mano. */
+  sent: T.Record(T.String(), T.Integer()),
+}, 'LiveView');
+export const LivePhotoBody = Obj({
+  kind: T.Union([T.Literal('board'), T.Literal('hole')]),
+  /** Dueño de las cartas (solo con `hole`). */
+  playerId: T.Optional(T.String()),
+  /** JPEG en base64 (con o sin el prefijo data:). */
+  image: T.String({ minLength: 100, maxLength: 600_000 }),
+}, 'LivePhotoBody');
+export const LiveOperatorBody = Obj({ operator: T.Boolean() }, 'LiveOperatorBody');
+
 // ─── Análisis de la partida (historial de manos) ────────────────────────────
 const Street = T.Union([T.Literal('preflop'), T.Literal('flop'), T.Literal('turn'), T.Literal('river')]);
 const ActionKindSchema = T.Union([T.Literal('fold'), T.Literal('check'), T.Literal('call'), T.Literal('raise')]);
@@ -396,6 +430,8 @@ export const RtcClientMessage = Obj({
   type: T.Literal('rtc'), kind: RtcKind,
   /** Conexión destino (el `from` de un mensaje anterior). */
   to: T.Optional(T.String({ maxLength: 64 })),
+  /** Solo con `start`: «face» es la cara de un jugador; «table» es la cámara de la mesa (la manda un operador de una sala remota). */
+  source: T.Optional(T.Union([T.Literal('face'), T.Literal('table')])),
   data: T.Optional(T.Unknown()),
 }, 'RtcClientMessage');
 export const RtcServerMessage = Obj({
@@ -404,6 +440,8 @@ export const RtcServerMessage = Obj({
   from: T.String(),
   /** Jugador de esa conexión; null si es un administrador sin jugador propio. */
   playerId: Nullable(T.String()),
+  /** De qué es el video de esa conexión (por defecto, la cara de su jugador). */
+  source: T.Optional(T.Union([T.Literal('face'), T.Literal('table')])),
   data: T.Optional(T.Unknown()),
 }, 'RtcServerMessage');
 
@@ -475,6 +513,9 @@ export type ApiPlayerDebts = Static<typeof PlayerDebts>;
 export type ApiReorganizeStatus = Static<typeof ReorganizeStatus>;
 export type ApiSessionDebtsView = Static<typeof SessionDebtsView>;
 export type ApiSessionAnalysis = Static<typeof SessionAnalysis>;
+export type ApiLiveView = Static<typeof LiveView>;
+export type ApiLiveRoomRef = Static<typeof LiveRoomRef>;
+export type ApiLivePhotoMeta = Static<typeof LivePhotoMeta>;
 export type ApiPlayerInsights = Static<typeof PlayerInsights>;
 export type ApiHandRow = Static<typeof HandRow>;
 export type ApiImportResult = Static<typeof ImportResult>;

@@ -23,6 +23,8 @@ interface Peer {
   id: string;
   playerId: string | null;
   broadcasting: boolean;
+  /** Qué transmite: la cara de su jugador o, en una sala remota, la cámara de la mesa (sin jugador). */
+  source: 'face' | 'table';
 }
 
 const OPEN = 1;
@@ -33,7 +35,7 @@ export class TableHub {
   subscribe(groupId: string, socket: HubSocket, playerId: string | null = null): () => void {
     let peers = this.groups.get(groupId);
     if (!peers) this.groups.set(groupId, (peers = new Map()));
-    const peer: Peer = { id: randomUUID(), playerId, broadcasting: false };
+    const peer: Peer = { id: randomUUID(), playerId, broadcasting: false, source: 'face' };
     peers.set(socket, peer);
     return () => {
       // Si se cae quien transmitía, los demás tienen que dejar de esperar su video.
@@ -76,13 +78,15 @@ export class TableHub {
    * conexión (si sigue en el mismo grupo). start/stop además marcan si esta conexión está transmitiendo.
    * Devuelve false si el mensaje no se puede cursar (p. ej. empezar a transmitir sin tener jugador).
    */
-  relay(groupId: string, from: HubSocket, msg: { kind: ApiRtcKind; to?: string; data?: unknown }): boolean {
+  relay(groupId: string, from: HubSocket, msg: { kind: ApiRtcKind; to?: string; source?: 'face' | 'table'; data?: unknown }): boolean {
     const peers = this.groups.get(groupId);
     const sender = peers?.get(from);
     if (!peers || !sender) return false;
 
     if (msg.kind === 'start') {
-      if (!sender.playerId) return false;
+      // La cámara de la mesa de una sala remota no tiene jugador; la cara de cada uno, sí.
+      if (!sender.playerId && msg.source !== 'table') return false;
+      sender.source = msg.source === 'table' ? 'table' : 'face';
       sender.broadcasting = true;
     } else if (msg.kind === 'stop') {
       if (!sender.broadcasting) return true; // ya estaba cortada: nada que avisar
@@ -98,7 +102,10 @@ export class TableHub {
   }
 
   private message(peer: Peer, kind: ApiRtcKind, data?: unknown): ApiRtcServerMessage {
-    return { type: 'rtc', kind, from: peer.id, playerId: peer.playerId, ...(data === undefined ? {} : { data }) };
+    return {
+      type: 'rtc', kind, from: peer.id, playerId: peer.playerId, ...(peer.source === 'table' ? { source: 'table' as const } : {}),
+      ...(data === undefined ? {} : { data }),
+    };
   }
 
   private deliver(socket: HubSocket, payload: string): void {
