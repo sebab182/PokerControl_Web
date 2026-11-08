@@ -31,7 +31,8 @@ export interface Participant {
   finalAmount: number | null;
 }
 
-export type SessionStatus = 'active' | 'closed';
+/** `voided`: partida cerrada que se anuló; no cuenta en saldos ni estadísticas y se puede reactivar. */
+export type SessionStatus = 'active' | 'closed' | 'voided';
 
 export interface Session {
   id: string;

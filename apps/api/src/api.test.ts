@@ -313,6 +313,44 @@ describe('partidas', () => {
     expect((await c.call('POST', `/g/sessions/${first}/close`, {}, 'clave-recierre')).body.error).toBe('session_closed');
     expect((await c.ok('GET', '/g/balances'))[0].balance).toBe(100);
   });
+  it('anular una partida cerrada revierte sus saldos sin borrarla, y reactivarla los restaura', async () => {
+    const { c } = await withGroup();
+    const { season, ana, beto } = await seed(c);
+    const first = await closedSession(c, season.id, ana, beto); // Ana +50
+    await closedSession(c, season.id, ana, beto, 30); // Ana +30
+    const balances = async () => (await c.ok('GET', '/g/balances')).map((b: { name: string; balance: number }) => [b.name, b.balance]);
+    const anaScore = async () => (await c.ok('GET', '/g/ranking')).find((r: { name: string }) => r.name === 'Ana').sessionBalance;
+    expect(await balances()).toEqual([['Ana', 80], ['Beto', -80]]);
+    expect(await anaScore()).toBe(80);
+
+    const voided = await c.idem(`/g/sessions/${first}/void`);
+    expect(voided.session.status).toBe('voided');
+    // Los saldos se corrigen y la partida deja de contar en el ranking, pero sigue ahí con sus datos.
+    expect(await balances()).toEqual([['Ana', 30], ['Beto', -30]]);
+    expect(await anaScore()).toBe(30);
+    const kept = await c.ok('GET', `/g/sessions/${first}`);
+    expect([kept.status, kept.participants.length, kept.closedAt === null]).toEqual(['voided', 2, false]);
+    expect((await c.ok('GET', `/g/seasons/${season.id}/sessions`)).map((x: { status: string }) => x.status).sort()).toEqual(['closed', 'voided']);
+    expect((await c.ok('GET', '/g/seasons'))[0].sessionCount).toBe(1);
+    // Anulada no se edita, ni se vuelve a anular.
+    expect((await c.call('PATCH', `/g/sessions/${first}/participants/${ana.id}`, { finalAmount: 1 })).body.error).toBe('session_closed');
+    expect((await c.call('POST', `/g/sessions/${first}/void`, {}, 'clave-anular-2')).body.error).toBe('not_closed');
+    expect((await c.call('POST', `/g/sessions/${first}/close`, {}, 'clave-anular-3')).body.error).toBe('session_closed');
+
+    const restored = await c.idem(`/g/sessions/${first}/restore`);
+    expect(restored.session.status).toBe('closed');
+    expect(await balances()).toEqual([['Ana', 80], ['Beto', -80]]);
+    expect(await anaScore()).toBe(80);
+    expect((await c.call('POST', `/g/sessions/${first}/restore`, {}, 'clave-restaurar-2')).body.error).toBe('not_voided');
+    const { rows } = await conn.pool.query(`select count(*)::int as n from balance_entries where note = 'anulación'`);
+    expect(rows[0].n).toBe(0);
+  });
+  it('una partida abierta no se puede anular', async () => {
+    const { c } = await withGroup();
+    const { season, ana, beto } = await seed(c);
+    const s = await c.idem(`/g/seasons/${season.id}/sessions`, { playerIds: [ana.id, beto.id], initialBuyIn: 100 });
+    expect((await c.call('POST', `/g/sessions/${s.id}/void`, {}, 'clave-anular-abierta')).body.error).toBe('not_closed');
+  });
   it('pide confirmar la diferencia, y rechaza si cambió', async () => {
     const { c } = await withGroup();
     const { season, ana, beto } = await seed(c);
@@ -841,6 +879,13 @@ describe('roles', () => {
     return { master, reader, group };
   }
 
+  it('un lector no puede anular ni reactivar una partida', async () => {
+    const { master, reader } = await withReader();
+    const { season, ana, beto } = await seed(master);
+    const id = await closedSession(master, season.id, ana, beto);
+    expect((await reader.call('POST', `/g/sessions/${id}/void`, {}, 'lector-anular')).body.error).toBe('read_only');
+    expect((await reader.call('POST', `/g/sessions/${id}/restore`, {}, 'lector-restaurar')).body.error).toBe('read_only');
+  });
   it('el primer login es master, incluso con dos simultáneos', async () => {
     const results = await Promise.all(['uno', 'dos', 'tres'].map(async sub => (await login(sub)).ok('GET', '/me')));
     expect(results.map(r => r.user.role).sort()).toEqual(['master', 'reader', 'reader']);
@@ -1911,6 +1956,43 @@ describe('mesa online', () => {
       expect(after.card_score).toBe(before.card_score);
       expect(after.all_in_equity).not.toBeNull();
       expect(await backfillHandInsights(conn.db)).toBe(0);
+    });
+  });
+
+  describe('mostrar todas las cartas al terminar', () => {
+    const holes = (v: { hand: { players: { hole: string[] }[] } }) => v.hand.players.map(p => p.hole);
+
+    async function foldedHand(showAllCards: boolean) {
+      const ctx = await setup(1);
+      const [a, b, c] = ctx.clients;
+      for (const x of [a, b, c]) await x.ok('POST', '/g/table/join');
+      let v = await a.idem('/g/table/start', { showAllCards });
+      expect(v.showAllCards).toBe(showAllCards);
+      // En juego, nadie ve las cartas de los demás.
+      expect(holes(await view(b)).filter(h => !h.includes('??'))).toHaveLength(1);
+      while (v.hand.street !== 'done') {
+        const who = ctx.byPlayer(v.hand.toActPlayerId);
+        v = await act(who, await view(who), { type: 'fold' });
+      }
+      return { ...ctx, a, b, c };
+    }
+
+    it('con la opción, al terminar todos ven las cartas de todos, también las de quienes se retiraron', async () => {
+      const { a, b, c } = await foldedHand(true);
+      for (const x of [a, b, c]) {
+        const v = await view(x);
+        expect(holes(v).every(h => h.length === 2 && !h.includes('??'))).toBe(true);
+        expect(v.hand.players.every((p: { shown: number[] }) => p.shown.length === 2)).toBe(true);
+      }
+      // La mano siguiente vuelve a ocultarlas.
+      const next = await a.ok('POST', '/g/table/deal');
+      expect(holes(await view(b)).filter(h => !h.includes('??'))).toHaveLength(1);
+      expect(next.showAllCards).toBe(true);
+    });
+
+    it('sin la opción, quienes se retiraron siguen ocultos', async () => {
+      const { b } = await foldedHand(false);
+      expect(holes(await view(b)).filter(h => h.includes('??')).length).toBeGreaterThanOrEqual(2);
     });
   });
 

@@ -40,7 +40,7 @@ async function findSession(db: Conn, groupId: string, id: string): Promise<CoreS
 async function lockOpen(tx: Tx, groupId: string, id: string): Promise<void> {
   if (!(await lockSession(tx, groupId, id))) throw notFound('Partida');
   const [row] = await tx.select({ status: schema.sessions.status }).from(schema.sessions).where(eq(schema.sessions.id, id));
-  if (row.status === 'closed') throw sessionClosed();
+  if (row.status !== 'active') throw sessionClosed();
 }
 
 async function assertUsablePlayers(tx: Tx, groupId: string, ids: string[]): Promise<void> {
@@ -89,6 +89,44 @@ export async function closeSessionTx(
   for (const b of typedBalances) assertAmount(b.amount);
   if (typedBalances.some(b => !session.participants.some(p => p.playerId === b.playerId))) throw notFound('Jugador');
   await setBalances(tx, groupId, id, 'cierre', typedBalances);
+  return { session: toApiSession(await findSession(tx, groupId, id)) };
+}
+
+const VOID_NOTE = 'anulación';
+
+/**
+ * Anula una partida cerrada sin borrarla: deja de contar en saldos, ranking y estadísticas, pero conserva sus
+ * participantes, compras y manos. El libro de saldos no se reescribe: por cada jugador se agrega un ajuste con
+ * el opuesto de lo que la partida le sumó, así se puede auditar y revertir exacto con `restoreSessionTx`.
+ * Los pagos ya registrados no se tocan.
+ */
+export async function voidSessionTx(tx: Tx, groupId: string, id: string) {
+  if (!(await lockSession(tx, groupId, id))) throw notFound('Partida');
+  const [row] = await tx.select({ status: schema.sessions.status }).from(schema.sessions).where(eq(schema.sessions.id, id));
+  if (row.status !== 'closed') throw new ApiError(409, 'not_closed', 'Solo se puede anular una partida cerrada.');
+  await lockGroup(tx, groupId);
+  const entries = await tx.select({ playerId: schema.balanceEntries.playerId, amount: schema.balanceEntries.amount })
+    .from(schema.balanceEntries)
+    .where(and(eq(schema.balanceEntries.groupId, groupId), eq(schema.balanceEntries.sessionId, id)));
+  const effect = new Map<string, number>();
+  for (const e of entries) effect.set(e.playerId, round2((effect.get(e.playerId) ?? 0) + e.amount));
+  await insertEntries(tx, groupId, [...effect].map(([playerId, amount]) => ({
+    playerId, kind: 'adjustment' as const, sessionId: id, amount: round2(-amount), note: VOID_NOTE,
+  })));
+  await tx.update(schema.sessions).set({ status: 'voided' }).where(eq(schema.sessions.id, id));
+  return { session: toApiSession(await findSession(tx, groupId, id)) };
+}
+
+/** Reactiva una partida anulada: quita sus ajustes de anulación y vuelve a sumar sus resultados. */
+export async function restoreSessionTx(tx: Tx, groupId: string, id: string) {
+  if (!(await lockSession(tx, groupId, id))) throw notFound('Partida');
+  const [row] = await tx.select({ status: schema.sessions.status }).from(schema.sessions).where(eq(schema.sessions.id, id));
+  if (row.status !== 'voided') throw new ApiError(409, 'not_voided', 'La partida no está anulada.');
+  await lockGroup(tx, groupId);
+  await tx.delete(schema.balanceEntries).where(and(
+    eq(schema.balanceEntries.groupId, groupId), eq(schema.balanceEntries.sessionId, id), eq(schema.balanceEntries.note, VOID_NOTE),
+  ));
+  await tx.update(schema.sessions).set({ status: 'closed' }).where(eq(schema.sessions.id, id));
   return { session: toApiSession(await findSession(tx, groupId, id)) };
 }
 
@@ -230,6 +268,14 @@ export async function sessionRoutes(app: FastifyInstance) {
     schema: { tags, params: IdParams, body: CloseSessionBody, response: { 200: CloseSessionResponse, ...err } },
   }, async req => idempotent(req, tx => closeSessionTx(tx, req.group.id, req.params.id, req.body.confirmedDiff, req.body.balances)));
 
+  app.post<I>('/sessions/:id/void', {
+    schema: { tags, params: IdParams, response: { 200: CloseSessionResponse, ...err } },
+  }, async req => idempotent(req, tx => voidSessionTx(tx, req.group.id, req.params.id)));
+
+  app.post<I>('/sessions/:id/restore', {
+    schema: { tags, params: IdParams, response: { 200: CloseSessionResponse, ...err } },
+  }, async req => idempotent(req, tx => restoreSessionTx(tx, req.group.id, req.params.id)));
+
   app.get<I>('/sessions/:id/debts', {
     schema: { tags, params: IdParams, response: { 200: SessionDebtsView, ...err } },
   }, async req => {
@@ -262,7 +308,7 @@ export async function sessionRoutes(app: FastifyInstance) {
     schema: { tags, params: IdParams, response: { 200: SessionAnalysis, ...err } },
   }, async req => {
     const session = await findSession(app.db, req.group.id, req.params.id);
-    if (session.status !== 'closed') {
+    if (session.status === 'active') {
       throw new ApiError(409, 'analysis_locked', 'El análisis se habilita al cerrar la partida: muestra las cartas de todos.');
     }
     const rows = await app.db.select({ id: schema.players.id, name: schema.players.name }).from(schema.players)

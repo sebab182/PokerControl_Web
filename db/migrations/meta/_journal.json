@@ -85,6 +85,13 @@
       "when": 1794050512608,
       "tag": "0011_poker_hand_insights",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1794110035444,
+      "tag": "0012_void_sessions_show_all_cards",
+      "breakpoints": true
     }
   ]
 }

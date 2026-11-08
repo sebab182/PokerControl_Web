@@ -481,6 +481,17 @@ test('accesibilidad y responsive en cada vista, en ambos temas', async ({ page }
     await page.getByRole('link', { name: /Noche dos/ }).click();
     await expect(page.getByTestId('pot')).toBeVisible();
     await check('partida');
+    // Anular una partida cerrada la deja marcada y reversible.
+    await page.getByRole('button', { name: 'Anular partida' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Anular', exact: true }).click();
+    await expect(page.getByText('Partida anulada', { exact: true })).toBeVisible();
+    await check('partida anulada');
+    await page.locator('main').getByRole('link', { name: /Saldos$/ }).click();
+    await expect(page.getByText('Partida anulada: estos resultados no se suman a los saldos.')).toBeVisible();
+    await page.getByRole('link', { name: '← Partida' }).click();
+    await page.getByRole('button', { name: 'Reactivar partida' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Reactivar', exact: true }).click();
+    await expect(page.getByText('✓ Partida cerrada')).toBeVisible();
     await page.locator('main').getByRole('link', { name: /Saldos$/ }).click();
     await expect(page.getByRole('heading', { name: 'Saldos de la partida' })).toBeVisible();
     await check('saldos de partida');
@@ -508,7 +519,18 @@ test('accesibilidad y responsive en cada vista, en ambos temas', async ({ page }
   }
 });
 
+/** Cuenta las veces que suena el aviso de mano nueva (ignora el "calentamiento" en silencio). */
+const countHandSounds = (p: Page) => p.addInitScript(() => {
+  const w = window as unknown as { __handSounds: number };
+  w.__handSounds = 0;
+  HTMLMediaElement.prototype.play = function (this: HTMLMediaElement) {
+    if (!this.muted && this.src.includes('hand-start')) w.__handSounds++;
+    return Promise.resolve();
+  };
+});
+
 test('mesa online: sala de espera, iniciar, jugar una mano y cerrar', async ({ page, browser, isMobile }) => {
+  await countHandSounds(page);
   await login(page, 'Seba');
   const code = await createGroup(page);
   await nav(page, 'Mesa');
@@ -537,11 +559,15 @@ test('mesa online: sala de espera, iniciar, jugar una mano y cerrar', async ({ p
   const start = page.getByRole('button', { name: /Iniciar partida \(2 jugadores\)/ });
   await expect(start).toBeEnabled();
   await start.click();
+  // Opción de la mesa: al terminar la mano se ven las cartas de todos.
+  await page.getByRole('switch', { name: /Mostrar todas las cartas al terminar la mano/ }).check();
   await page.getByRole('dialog').getByRole('button', { name: 'Iniciar partida' }).click();
 
   // Los dos ven la mano; solo cada uno ve sus cartas.
   await expect(page.getByTestId('felt')).toBeVisible();
   await expect(page.getByTestId('pot')).toHaveText('Pozo $30');
+  // Al empezar la mano suena el aviso, una sola vez.
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __handSounds: number }).__handSounds)).toBe(1);
   // Cada jugador muestra sus recompras y su neto: al empezar, 0 recompras y $0.
   await expect(page.getByTestId('seat-score').first()).toContainText('↻0 · $0');
   // Cuenta regresiva del turno y conexión en vivo.
@@ -577,6 +603,10 @@ test('mesa online: sala de espera, iniciar, jugar una mano y cerrar', async ({ p
   await expect(other.getByTestId('last-action')).toContainText('se retiró', { timeout: 5000 });
   await expect(page.getByRole('status').filter({ hasText: 'ganó' }).or(page.getByRole('status').filter({ hasText: 'ganaste' }))).toBeVisible({ timeout: 10000 });
   await checkPage(page, 'mesa: fin de mano');
+  // Con la opción activa nadie tiene que mostrar nada: ya están a la vista las cartas de los dos.
+  await expect(page.getByRole('button', { name: /^Mostrar cartas/ })).toHaveCount(0);
+  await expect(actor.getByRole('img', { name: 'Carta oculta' })).toHaveCount(0);
+  await expect(other.getByRole('img', { name: 'Carta oculta' })).toHaveCount(0);
 
   // Cierre: se genera la partida con su deuda.
   await page.getByRole('button', { name: 'Cerrar partida' }).click();
@@ -785,6 +815,24 @@ test.describe('mesa online: video', () => {
     await expect.poll(() => seba.evaluate((v: HTMLVideoElement) => (v.srcObject as MediaStream).getAudioTracks().length), { timeout: 15000 }).toBe(1);
     await page.getByRole('button', { name: 'Detener transmisión' }).click();
     await expect(page2.locator('.pseat-video')).toHaveCount(0, { timeout: 10000 });
+
+    // Solo micrófono, sin cámara: el otro recibe audio y ve la inicial con el ícono de micrófono, sin video.
+    await page.getByLabel('Cámara').uncheck();
+    await page.getByRole('button', { name: 'Transmitir audio' }).click();
+    await expect(page.getByRole('button', { name: 'Detener transmisión' })).toBeVisible();
+    const audio = page2.getByTestId('seat-Seba').locator('video.pseat-audio');
+    await expect(audio).toBeAttached({ timeout: 15000 });
+    await expect.poll(() => audio.evaluate((v: HTMLVideoElement) => (v.srcObject as MediaStream).getAudioTracks().length), { timeout: 15000 }).toBe(1);
+    expect(await audio.evaluate((v: HTMLVideoElement) => (v.srcObject as MediaStream).getVideoTracks().length)).toBe(0);
+    await expect(page2.getByTestId('seat-Seba').getByRole('img', { name: 'Micrófono activo' })).toBeVisible();
+    await expect(page2.locator('.pseat-video')).toHaveCount(0);
+    // Con la transmisión en curso, sumar la cámara la reinicia con video y audio.
+    // La transmisión se reinicia: el casillero cambia cuando el navegador entrega la cámara.
+    await page.getByLabel('Cámara').click();
+    await expect(page.getByLabel('Cámara')).toBeChecked();
+    await expect(page2.getByTestId('seat-Seba').locator('video.pseat-video')).toBeVisible({ timeout: 15000 });
+    await page.getByRole('button', { name: 'Detener transmisión' }).click();
+    await expect(page2.locator('.pseat-audio, .pseat-video')).toHaveCount(0, { timeout: 10000 });
     await context2.close();
   });
 });

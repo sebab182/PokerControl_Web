@@ -6,6 +6,8 @@ export interface TablePrefs {
   vibrate: boolean;
   animations: boolean;
   keepAwake: boolean;
+  /** Un sonido corto al empezar cada mano. */
+  handSound: boolean;
   /** Ver los emojis de los demás y poder mandar los propios. */
   emojis: boolean;
   /**
@@ -19,7 +21,7 @@ export const DECKS = ['classic', 'four', 'color'] as const;
 export type Deck = typeof DECKS[number];
 
 const KEY = 'pc_table_prefs';
-const DEFAULTS: TablePrefs = { sound: true, vibrate: true, animations: true, keepAwake: true, emojis: true, deck: 'four' };
+const DEFAULTS: TablePrefs = { sound: true, vibrate: true, animations: true, keepAwake: true, handSound: true, emojis: true, deck: 'four' };
 
 function load(): TablePrefs {
   try {
@@ -58,6 +60,41 @@ function beep() {
     osc.start(t);
     osc.stop(t + 0.25);
   } catch { /* sin Web Audio */ }
+}
+
+const HAND_SOUND = `${import.meta.env.BASE_URL}sounds/hand-start.mp3`;
+/** Duración máxima: suenan los primeros 5 s del archivo aunque se reemplace por uno más largo. */
+const HAND_SOUND_MAX_MS = 5000;
+let handAudio: HTMLAudioElement | null = null;
+let handTimer: ReturnType<typeof setTimeout> | undefined;
+
+function handAudioEl(): HTMLAudioElement {
+  handAudio ??= new Audio(HAND_SOUND);
+  handAudio.preload = 'auto';
+  return handAudio;
+}
+
+/**
+ * El navegador solo deja sonar después de un toque. Con el primero se "prepara" el audio en silencio, así la mano nueva
+ * suena aunque quien mira no haya tocado nada desde entonces.
+ */
+export function primeHandSound(): void {
+  const a = handAudioEl();
+  a.muted = true;
+  a.play().then(() => { a.pause(); a.currentTime = 0; a.muted = false; }).catch(() => { a.muted = false; });
+}
+
+/** Suena el aviso de mano nueva (los primeros 5 s del archivo). Sin permiso del navegador, no hace nada. */
+export function playHandStart(): void {
+  try {
+    const a = handAudioEl();
+    clearTimeout(handTimer);
+    a.muted = false;
+    a.currentTime = 0;
+    a.volume = 0.7;
+    a.play().catch(() => {});
+    handTimer = setTimeout(() => a.pause(), HAND_SOUND_MAX_MS);
+  } catch { /* sin audio */ }
 }
 
 /** Aviso al pasar a tener el turno: sonido y vibración, según las preferencias. */

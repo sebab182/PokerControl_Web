@@ -48,7 +48,7 @@ export function SessionAnalysisPage() {
     queryKey: key('session', sessionId),
     queryFn: () => api<ApiSession>(path(`/sessions/${sessionId}`)),
   });
-  const closed = session.data?.status === 'closed';
+  const closed = session.data !== undefined && session.data.status !== 'active';
   const analysis = useQuery({
     queryKey: key('session-analysis', sessionId),
     queryFn: () => api<ApiSessionAnalysis>(path(`/sessions/${sessionId}/analysis`)),

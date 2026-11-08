@@ -252,8 +252,8 @@ export function SeasonSessionsPage() {
             <Link to={`/sessions/${s.id}`} className="grow" style={{ color: 'inherit', textDecoration: 'none', minWidth: 0 }}>
               <div className="row-between">
                 <h3 className="ellipsis">{s.name}</h3>
-                <span className={`badge ${s.status === 'active' ? 'badge-green' : 'badge-muted'}`}>
-                  {s.status === 'active' ? 'Activa' : 'Cerrada'}
+                <span className={`badge ${s.status === 'active' ? 'badge-green' : s.status === 'voided' ? 'badge-red' : 'badge-muted'}`}>
+                  {s.status === 'active' ? 'Activa' : s.status === 'voided' ? 'Anulada' : 'Cerrada'}
                 </span>
               </div>
               <p className="small muted">
