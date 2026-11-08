@@ -351,6 +351,12 @@ function deadlineFor(table: Pick<TableRow, 'turnSeconds'>, state: HandState): Da
  */
 async function armDeadline(tx: Tx, table: TableRow, state: HandState): Promise<Date | null> {
   const actor = state.street !== 'done' && state.toAct >= 0 ? state.players[state.toAct] : null;
+  // Quien se levantó de la mesa en medio de la mano se retira apenas le toca.
+  if (actor) {
+    const [out] = await tx.select({ s: schema.pokerSeats.status }).from(schema.pokerSeats)
+      .where(and(eq(schema.pokerSeats.tableId, table.id), eq(schema.pokerSeats.playerId, actor.id)));
+    if (out?.s === 'out') return new Date();
+  }
   if (!actor?.pending) return deadlineFor(table, state);
   const [seat] = await tx.select().from(schema.pokerSeats)
     .where(and(eq(schema.pokerSeats.tableId, table.id), eq(schema.pokerSeats.playerId, actor.id)));
@@ -438,9 +444,12 @@ export async function sweepTurns(app: FastifyInstance): Promise<string[]> {
         await tx.update(schema.pokerTables).set({ turnDeadline: null }).where(eq(schema.pokerTables.id, table.id));
         return null;
       }
+      const [actorSeat] = await tx.select({ s: schema.pokerSeats.status }).from(schema.pokerSeats)
+        .where(and(eq(schema.pokerSeats.tableId, table.id), eq(schema.pokerSeats.playerId, legal.playerId)));
+      const left = actorSeat?.s === 'out'; // se levantó en medio de la mano: se retira sin esperar
       // Sin límite de turno solo vencen los pendientes de recompra (que siempre tienen un tiempo para pagar).
-      if (table.turnSeconds <= 0 && !legal.mustBuy) return null;
-      await playAction(tx, table, hand, legal.playerId, legal.canCheck ? { type: 'check' } : { type: 'fold' }, true);
+      if (table.turnSeconds <= 0 && !legal.mustBuy && !left) return null;
+      await playAction(tx, table, hand, legal.playerId, legal.canCheck && !left ? { type: 'check' } : { type: 'fold' }, true);
       const [fresh] = await tx.select({ version: schema.pokerTables.version }).from(schema.pokerTables).where(eq(schema.pokerTables.id, table.id));
       return { groupId: table.groupId, version: fresh.version };
     });
@@ -492,7 +501,13 @@ async function sitPlayer(
 }
 
 /** Levanta a un jugador: sin partida se libera el lugar; con partida sus fichas quedan en la mesa. */
-async function standPlayer(tx: Tx, table: TableRow, playerId: string): Promise<void> {
+/**
+ * Levanta a un jugador. En la sala de espera libera el asiento; con la partida en juego lo deja "afuera" (sus fichas
+ * siguen en la mesa y cuentan al cerrar). Quien se levanta por su cuenta (`self`) puede hacerlo en medio de una mano:
+ * se retira solo cuando le toca (enseguida, si ya le tocaba). Si con eso no queda ningún jugador real sentado, la
+ * partida se cancela y no se registra (ver cancelGame). Un administrador no levanta a nadie en medio de una mano.
+ */
+async function standPlayer(tx: Tx, table: TableRow, playerId: string, self = false): Promise<void> {
   const key = and(eq(schema.pokerSeats.tableId, table.id), eq(schema.pokerSeats.playerId, playerId));
   const [seat] = await tx.select().from(schema.pokerSeats).where(key);
   if (!seat) return;
@@ -501,9 +516,34 @@ async function standPlayer(tx: Tx, table: TableRow, playerId: string): Promise<v
     return;
   }
   const hand = await activeHand(tx, table.id);
-  const inHand = (hand?.state as HandState | undefined)?.players.find(p => p.id === playerId);
-  if (inHand && !inHand.folded) throw new ApiError(409, 'in_hand', 'No se puede levantar a un jugador en medio de una mano.');
+  const state = hand?.state as HandState | undefined;
+  const inHand = state?.players.find(p => p.id === playerId);
+  const playing = !!inHand && !inHand.folded;
+  if (playing && !self) throw new ApiError(409, 'in_hand', 'No se puede levantar a un jugador en medio de una mano.');
   await tx.update(schema.pokerSeats).set({ status: 'out' }).where(key);
+  // Le tocaba a él: se retira ya, sin esperar el tiempo del turno.
+  if (playing && state && state.street !== 'done' && state.players[state.toAct]?.id === playerId) {
+    await tx.update(schema.pokerTables).set({ turnDeadline: new Date() }).where(eq(schema.pokerTables.id, table.id));
+  }
+  // Se fue una persona (no un jugador manejado por un administrador): ¿queda alguna?
+  if (seat.userId !== null) {
+    const seats = (await loadSeats(tx, table.id)).map(x => x.seat);
+    if (!seats.some(x => x.userId !== null && x.status === 'sitting')) await cancelGame(tx, table);
+  }
+}
+
+/**
+ * Cancela la partida en juego porque no quedó ningún jugador real: se borra la partida con sus participantes, compras y
+ * manos, así que no suma a saldos, ranking ni historial. La mesa vuelve a la sala de espera.
+ */
+async function cancelGame(tx: Tx, table: TableRow): Promise<void> {
+  const sessionId = table.sessionId as string;
+  await tx.delete(schema.pokerHands).where(and(eq(schema.pokerHands.tableId, table.id), eq(schema.pokerHands.sessionId, sessionId)));
+  await tx.delete(schema.pokerSeats).where(eq(schema.pokerSeats.tableId, table.id));
+  await tx.update(schema.pokerTables)
+    .set({ status: 'waiting', sessionId: null, startedBy: null, hostSeenAt: null, turnDeadline: null, version: bump })
+    .where(eq(schema.pokerTables.id, table.id));
+  await tx.delete(schema.sessions).where(and(eq(schema.sessions.groupId, table.groupId), eq(schema.sessions.id, sessionId)));
 }
 
 /**
@@ -624,7 +664,7 @@ export async function tableRoutes(app: FastifyInstance) {
   app.post<G>('/table/leave', {
     schema: { ...base, response: { 200: TableView, ...err } },
   }, async req => mutate(req, async (tx, table) => {
-    await standPlayer(tx, table, await requirePlayer(tx, req.group.id, req.user.sub));
+    await standPlayer(tx, table, await requirePlayer(tx, req.group.id, req.user.sub), true);
   }));
 
   // Administración manual: sentar, levantar y recomprar a cualquier jugador del grupo.

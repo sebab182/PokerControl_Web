@@ -1227,8 +1227,6 @@ describe('mesa online', () => {
     expect((await actor.call('POST', '/g/table/deal')).body.error).toBe('hand_in_progress');
     expect((await actor.call('POST', '/g/table/close', {}, 'close-key-0001')).body.error).toBe('hand_in_progress');
 
-    // Se levanta con la mano en curso: no puede; el que foldea sí.
-    expect((await actor.call('POST', '/g/table/leave')).body.error).toBe('in_hand');
     expect(started.hand.lastAction).toBeNull();
     const done = await act(actor, started, { type: 'fold' });
     expect(done.hand.lastAction).toEqual({ playerId: started.hand.toActPlayerId, type: 'fold' });
@@ -1993,6 +1991,127 @@ describe('mesa online', () => {
     it('sin la opción, quienes se retiraron siguen ocultos', async () => {
       const { b } = await foldedHand(false);
       expect(holes(await view(b)).filter(h => h.includes('??')).length).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  describe('salir de una partida en curso', () => {
+    const sessionCount = async () => (await conn.pool.query('select count(*)::int as n from sessions')).rows[0].n as number;
+
+    it('se puede salir en medio de una mano: se retira solo cuando le toca y la partida sigue', async () => {
+      const { a, clients, pid, byPlayer } = await setup(2); // tres jugadores reales
+      for (const c of clients) await c.ok('POST', '/g/table/join');
+      let v = await a.idem('/g/table/start', {});
+      // Se va alguien a quien todavía no le tocaba.
+      const leaver = clients.find(c => c !== byPlayer(v.hand.toActPlayerId) && v.hand.players.some((p: { playerId: string }) => p.playerId === pid[clients.indexOf(c)]))!;
+      const leaverId = pid[clients.indexOf(leaver)];
+      const out = await leaver.ok('POST', '/g/table/leave');
+      expect(out.status).toBe('playing');
+      expect(out.seats.find((s: { isYou: boolean }) => s.isYou)).toMatchObject({ status: 'out' });
+      expect(await sessionCount()).toBe(1);
+      // Sigue la mano: al llegarle el turno el servidor lo retira sin esperar.
+      for (let i = 0; i < 12 && v.hand.street !== 'done'; i++) {
+        if (v.hand.toActPlayerId === leaverId) {
+          expect(await sweepTurns(app)).toEqual([a.groupId]);
+          v = await view(a);
+          expect(v.hand.players.find((p: { playerId: string }) => p.playerId === leaverId).folded).toBe(true);
+          break;
+        }
+        const who = byPlayer(v.hand.toActPlayerId);
+        const cur = await view(who);
+        v = await act(who, cur, cur.hand.legal.canCheck ? { type: 'check' } : { type: 'call' });
+      }
+      expect(v.hand.players.find((p: { playerId: string }) => p.playerId === leaverId).folded).toBe(true);
+    });
+
+    it('si le tocaba, se retira enseguida', async () => {
+      const { a, clients, byPlayer } = await setup(1);
+      for (const c of clients) await c.ok('POST', '/g/table/join');
+      let v = await a.idem('/g/table/start', {});
+      const actor = byPlayer(v.hand.toActPlayerId);
+      const actorId = v.hand.toActPlayerId;
+      await actor.ok('POST', '/g/table/leave');
+      expect(await sweepTurns(app)).toEqual([a.groupId]);
+      v = await view(a);
+      expect(v.hand.players.find((p: { playerId: string }) => p.playerId === actorId).folded).toBe(true);
+    });
+
+    it('si no queda ningún jugador real la partida se cancela y no se registra', async () => {
+      const { a, b, clients, pid } = await setup(0);
+      for (const c of clients) await c.ok('POST', '/g/table/join');
+      const before = await a.ok('GET', '/g/balances');
+      let v = await a.idem('/g/table/start', {});
+      const sessionId = v.sessionId;
+      expect(await sessionCount()).toBe(1);
+      // Juegan una mano completa: queda en el historial mientras la partida existe.
+      while (v.hand.street !== 'done') {
+        const who = v.hand.toActPlayerId === pid[0] ? a : b;
+        v = await act(who, await view(who), { type: 'fold' });
+      }
+      expect(Number((await conn.pool.query('select count(*) from poker_hands')).rows[0].count)).toBe(1);
+
+      // El primero se va: la partida sigue con el otro.
+      const first = await a.ok('POST', '/g/table/leave');
+      expect(first.status).toBe('playing');
+      expect(await sessionCount()).toBe(1);
+      // Se va el último jugador real: se cancela.
+      const last = await b.ok('POST', '/g/table/leave');
+      expect(last).toMatchObject({ status: 'waiting', sessionId: null, seats: [], hand: null });
+      expect(await sessionCount()).toBe(0);
+      expect((await a.call('GET', `/g/sessions/${sessionId}`)).status).toBe(404);
+      for (const table of ['poker_hands', 'poker_hand_players', 'poker_actions', 'session_participants', 'buys', 'balance_entries']) {
+        expect([table, Number((await conn.pool.query(`select count(*) from ${table}`)).rows[0].count)]).toEqual([table, 0]);
+      }
+      expect(await a.ok('GET', '/g/balances')).toEqual(before);
+      expect(await a.ok('GET', '/g/ranking')).toEqual([]);
+      // La mesa queda lista para una partida nueva.
+      v = await a.ok('POST', '/g/table/join');
+      await b.ok('POST', '/g/table/join');
+      v = await a.idem('/g/table/start', {});
+      expect(v.status).toBe('playing');
+      expect(await sessionCount()).toBe(1);
+    });
+
+    it('con jugadores sin usuario que sobran, igual se cancela al irse el último jugador real', async () => {
+      const { c: admin, group } = await withGroup('master');
+      const ghosts = [await admin.ok('POST', '/g/players', { name: 'Fantasma0' }), await admin.ok('POST', '/g/players', { name: 'Fantasma1' })];
+      const reader = await login('lector');
+      await reader.ok('POST', '/groups/join', { inviteCode: group.inviteCode });
+      reader.groupId = group.id;
+      await reader.ok('POST', '/g/me/player', { name: 'Real' });
+      await reader.ok('POST', '/g/table/join');
+      for (const g of ghosts) await admin.ok('POST', `/g/table/seats/${g.id}`);
+      await reader.idem('/g/table/start', {});
+      expect(await sessionCount()).toBe(1);
+      const out = await reader.ok('POST', '/g/table/leave');
+      expect(out).toMatchObject({ status: 'waiting', sessionId: null });
+      expect(await sessionCount()).toBe(0);
+    });
+
+    it('una partida de solo jugadores sin usuario no se cancela al quitar a uno entre manos', async () => {
+      const { c: admin } = await withGroup('master');
+      const ghosts = [] as { id: string }[];
+      for (let i = 0; i < 3; i++) ghosts.push(await admin.ok('POST', '/g/players', { name: `Fantasma${i}` }));
+      for (const g of ghosts) await admin.ok('POST', `/g/table/seats/${g.id}`);
+      let v = await admin.idem('/g/table/start', {});
+      while (v.hand.street !== 'done') {
+        v = await admin.ok('POST', '/g/table/action', { version: v.version, playerId: v.hand.toActPlayerId, action: { type: 'fold' } });
+      }
+      v = await admin.ok('DELETE', `/g/table/seats/${ghosts[0].id}`);
+      expect(v.status).toBe('playing');
+      expect(await sessionCount()).toBe(1);
+    });
+
+    it('el solo lectura puede salir (y cancelar su partida) pero no anular ni borrar partidas ajenas', async () => {
+      const { a, b } = await setup(0);
+      const { season, ana, beto } = await seed(a);
+      const closedId = await closedSession(a, season.id, ana, beto);
+      for (const c of [a, b]) await c.ok('POST', '/g/table/join');
+      await a.idem('/g/table/start', {});
+      expect((await b.call('DELETE', `/g/sessions/${closedId}`)).body.error).toBe('read_only');
+      expect((await b.call('POST', `/g/sessions/${closedId}/void`, {}, 'lector-anular-2')).body.error).toBe('read_only');
+      expect((await b.call('DELETE', `/g/sessions/${(await view(b)).sessionId}`)).body.error).toBe('read_only');
+      await b.ok('POST', '/g/table/leave');
+      expect((await a.ok('GET', `/g/sessions/${closedId}`)).status).toBe('closed');
     });
   });
 

@@ -647,6 +647,53 @@ test('mesa online: sala de espera, iniciar, jugar una mano y cerrar', async ({ p
   await context2.close();
 });
 
+test('mesa online: salir en medio de la partida; si no queda nadie real se cancela y no se registra', async ({ page, browser }) => {
+  test.setTimeout(60000);
+  await login(page, 'Seba');
+  const code = await createGroup(page);
+  await nav(page, 'Mesa');
+  await page.getByText('Quiero jugar yo también').click();
+  await page.getByLabel('Tu nick').fill('Seba');
+  await page.getByRole('button', { name: 'Crear mi jugador' }).click();
+
+  const context2 = await browser.newContext();
+  const page2 = await context2.newPage();
+  await login(page2, 'Nico', 'reader');
+  await page2.goto('/');
+  await page2.getByLabel('Código de invitación').fill(code);
+  await page2.getByRole('button', { name: 'Unirme' }).click();
+  await page2.getByLabel('Tu nick').fill('Nico');
+  await page2.getByRole('button', { name: 'Crear mi jugador' }).click();
+  await nav(page2, 'Mesa');
+  await expect(page2.getByText('Nico (vos)')).toBeVisible();
+
+  const start = page.getByRole('button', { name: /Iniciar partida \(2 jugadores\)/ });
+  await expect(start).toBeEnabled({ timeout: 10000 });
+  await start.click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Iniciar partida' }).click();
+  await expect(page.getByTestId('felt')).toBeVisible();
+  await expect(page2.getByTestId('felt')).toBeVisible({ timeout: 10000 });
+
+  // Nico se va en medio de la mano (aunque no le toque): queda afuera y la partida sigue.
+  await page2.getByRole('button', { name: 'Salir de la partida' }).click();
+  await page2.getByRole('dialog').getByRole('button', { name: 'Salir', exact: true }).click();
+  await expect(page2.getByRole('button', { name: /Iniciar partida|Sentarme|Volver a sentarme/ }).first()).toBeVisible({ timeout: 10000 });
+  await expect(page.getByTestId('felt')).toBeVisible();
+
+  // Seba es el último jugador real: al salir, la partida se cancela.
+  await page.getByRole('button', { name: 'Salir de la partida' }).click();
+  await expect(page.getByRole('dialog')).toContainText('se cancela y no se registra');
+  await page.getByRole('dialog').getByRole('button', { name: 'Cancelar partida' }).click();
+  await expect(page.getByTestId('felt')).toBeHidden({ timeout: 10000 });
+  await expect(page.getByText('La partida se canceló y no se registró.')).toBeVisible();
+
+  // No quedó registrada: no hay partidas en la temporada.
+  await page.goto('/seasons');
+  await page.getByRole('link', { name: 'Ver partidas' }).click();
+  await expect(page.getByText('No hay partidas aún')).toBeVisible();
+  await context2.close();
+});
+
 test('mesa online: al agotarse el tiempo el servidor juega por quien no responde', async ({ page, browser }) => {
   test.setTimeout(60000);
   await login(page, 'Seba');

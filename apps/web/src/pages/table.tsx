@@ -243,6 +243,31 @@ function TableView() {
 
   const join = () => { setStanding(false); void run(() => post('join', undefined, { refresh: true })); };
   const leave = () => { setStanding(true); void run(() => post('leave')); };
+  /**
+   * Salir con la partida en juego (también en medio de una mano). Si sos el último jugador real, la partida se
+   * cancela y no se registra; si no, tus fichas siguen en la mesa y te retirás de la mano cuando te toque.
+   */
+  const leaveGame = async () => {
+    const real = view.seats.filter(s => !s.managed && s.status === 'sitting');
+    const last = real.length === 1 && real[0].isYou;
+    const myPlayer = view.hand?.players.find(p => p.playerId === view.myPlayerId);
+    const inHand = !!view.hand && view.hand.street !== 'done' && !!myPlayer && !myPlayer.folded;
+    const ok = await confirm({
+      title: last ? 'Salir y cancelar la partida' : 'Salir de la partida',
+      message: last
+        ? 'Sos el último jugador: la partida se cancela y no se registra (no suma a saldos, ranking ni historial).'
+        : inHand
+          ? 'Te retirás de la mano en juego y quedás afuera. Tus fichas siguen en la mesa y cuentan al cerrar. Podés volver a sentarte.'
+          : 'Quedás afuera. Tus fichas siguen en la mesa y cuentan al cerrar. Podés volver a sentarte.',
+      danger: last, confirmLabel: last ? 'Cancelar partida' : 'Salir',
+    });
+    if (!ok) return;
+    setStanding(true);
+    void run(async () => {
+      const next = await post('leave', undefined, { refresh: true });
+      if (last && next?.status === 'waiting') notify('La partida se canceló y no se registró.');
+    });
+  };
   const deal = () => run(() => post('deal'));
   const admin = {
     add: (playerId: string) => run(async () => { await post(`seats/${playerId}`, undefined, { refresh: true }); }),
@@ -292,7 +317,7 @@ function TableView() {
           {view.status === 'waiting'
             ? <Waiting view={view} canEdit={canEdit} standing={standing} busy={busy} onJoin={join} onLeave={leave} onStart={() => setStartOpen(true)} onAddOpen={() => setAddOpen(true)} />
             : <Playing view={view} updatedAt={query.dataUpdatedAt} busy={busy}
-              fab={prefs.emojis ? <EmojiFab placement="felt" live={live} onSend={socket.sendEmoji} /> : null} onJoin={join} onLeave={leave} onDeal={deal} onClose={close}
+              fab={prefs.emojis ? <EmojiFab placement="felt" live={live} onSend={socket.sendEmoji} /> : null} onJoin={join} onLeave={leave} onLeaveGame={() => { void leaveGame(); }} onDeal={deal} onClose={close}
               bar={view.hand && <TableBar view={view} hand={view.hand} updatedAt={query.dataUpdatedAt} live={live} onPrefs={() => setPrefsOpen(true)} />}
               onReveal={(playerIds, cards) => run(async () => {
                 // Varios a la vez (los jugadores que manejás): uno por vez, cada uno con la mesa ya actualizada.
@@ -459,8 +484,8 @@ function StartModal({ view, open, onClose, onStart, busy }: {
 // ─── Partida en curso ────────────────────────────────────────────────────────
 type Seat = ApiTableView['seats'][number];
 
-function Playing({ view, updatedAt, bar, fab, busy, onJoin, onLeave, onDeal, onClose, onAction, onRebuy, onReveal }: {
-  view: ApiTableView; updatedAt: number; bar: ReactNode; fab: ReactNode; busy: boolean; onJoin: () => void; onLeave: () => void; onDeal: () => void;
+function Playing({ view, updatedAt, bar, fab, busy, onJoin, onLeave, onLeaveGame, onDeal, onClose, onAction, onRebuy, onReveal }: {
+  view: ApiTableView; updatedAt: number; bar: ReactNode; fab: ReactNode; busy: boolean; onJoin: () => void; onLeave: () => void; onLeaveGame: () => void; onDeal: () => void;
   onClose: () => void; onAction: (a: ApiTableAction) => void; onRebuy: (amount: number) => void;
   onReveal: (playerIds: string[], cards?: number[]) => void;
 }) {
@@ -509,6 +534,7 @@ function Playing({ view, updatedAt, bar, fab, busy, onJoin, onLeave, onDeal, onC
         {!me && view.myPlayerId && <Btn variant="ghost" block busy={busy} onClick={onJoin}>Sumarme a la mesa por {formatMoney(view.buyIn)}</Btn>}
         {me?.status === 'out' && <Btn variant="ghost" block busy={busy} onClick={onJoin}>Volver a sentarme</Btn>}
         {view.canHost && !live && <Btn variant="danger" block busy={busy} onClick={onClose}>Cerrar partida</Btn>}
+        {me?.status === 'sitting' && <Btn variant="ghost" block busy={busy} onClick={onLeaveGame}>Salir de la partida</Btn>}
       </div>
     </>
   );
