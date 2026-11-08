@@ -1994,6 +1994,30 @@ describe('mesa online', () => {
     });
   });
 
+  describe('mano de la partida', () => {
+    it('cuenta las manos de la partida en curso y vuelve a 1 en una partida nueva', async () => {
+      const { a, b, pid } = await setup(0);
+      for (const c of [a, b]) await c.ok('POST', '/g/table/join');
+      const finish = async (first: Client) => {
+        let v = await view(first);
+        while (v.hand.street !== 'done') {
+          const who = v.hand.toActPlayerId === pid[0] ? a : b;
+          v = await act(who, await view(who), { type: 'fold' });
+        }
+      };
+      let v = await a.idem('/g/table/start', {});
+      expect([v.hand.handNo, v.hand.gameHandNo]).toEqual([1, 1]);
+      await finish(a);
+      v = await a.ok('POST', '/g/table/deal');
+      expect([v.hand.handNo, v.hand.gameHandNo]).toEqual([2, 2]);
+      await finish(a);
+      await a.idem('/g/table/close');
+      for (const c of [a, b]) await c.ok('POST', '/g/table/join');
+      v = await a.idem('/g/table/start', {});
+      expect([v.hand.handNo, v.hand.gameHandNo]).toEqual([3, 1]);
+    });
+  });
+
   describe('salir de una partida en curso', () => {
     const sessionCount = async () => (await conn.pool.query('select count(*)::int as n from sessions')).rows[0].n as number;
 

@@ -238,6 +238,8 @@ export const pokerTables = pgTable('poker_tables', {
   /** Cuándo empezó la partida en curso: de acá corre el reloj de las ciegas. */
   blindsStartedAt: ts('blinds_started_at'),
   handCount: integer('hand_count').notNull().default(0),
+  /** Manos jugadas antes de iniciar la partida en curso: la mano N de la partida es hand_no − session_hand_base. */
+  sessionHandBase: integer('session_hand_base').notNull().default(0),
   /** Índice (en orden de asiento) del botón de la última mano. */
   button: integer('button').notNull().default(0),
   /** Se incrementa en cada cambio visible: evita acciones sobre estados viejos. */

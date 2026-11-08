@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { audioContext, unlockAudio } from './sounds';
 
 /** Preferencias de la mesa. Son de cada dispositivo: se guardan en localStorage. */
 export interface TablePrefs {
@@ -8,6 +9,8 @@ export interface TablePrefs {
   keepAwake: boolean;
   /** Un sonido corto al empezar cada mano. */
   handSound: boolean;
+  /** Un sonido corto con cada emoji que llega. */
+  emojiSound: boolean;
   /** Ver los emojis de los demás y poder mandar los propios. */
   emojis: boolean;
   /**
@@ -21,7 +24,7 @@ export const DECKS = ['classic', 'four', 'color'] as const;
 export type Deck = typeof DECKS[number];
 
 const KEY = 'pc_table_prefs';
-const DEFAULTS: TablePrefs = { sound: true, vibrate: true, animations: true, keepAwake: true, handSound: true, emojis: true, deck: 'four' };
+const DEFAULTS: TablePrefs = { sound: true, vibrate: true, animations: true, keepAwake: true, handSound: true, emojiSound: true, emojis: true, deck: 'four' };
 
 function load(): TablePrefs {
   try {
@@ -43,12 +46,11 @@ export function useTablePrefs() {
   return [prefs, update] as const;
 }
 
-let audio: AudioContext | null = null;
-
 /** Tono corto. El navegador solo deja sonar después de un toque, así que puede no oírse la primera vez. */
 function beep() {
   try {
-    audio ??= new AudioContext();
+    const audio = audioContext();
+    if (!audio) return;
     void audio.resume();
     const osc = audio.createOscillator();
     const gain = audio.createGain();
@@ -79,6 +81,7 @@ function handAudioEl(): HTMLAudioElement {
  * suena aunque quien mira no haya tocado nada desde entonces.
  */
 export function primeHandSound(): void {
+  unlockAudio();
   const a = handAudioEl();
   a.muted = true;
   a.play().then(() => { a.pause(); a.currentTime = 0; a.muted = false; }).catch(() => { a.muted = false; });

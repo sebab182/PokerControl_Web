@@ -1,0 +1,1 @@
+ALTER TABLE "poker_tables" ADD COLUMN "session_hand_base" integer DEFAULT 0 NOT NULL;

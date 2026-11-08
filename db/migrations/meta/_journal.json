@@ -92,6 +92,13 @@
       "when": 1794110035444,
       "tag": "0012_void_sessions_show_all_cards",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1794170026264,
+      "tag": "0013_session_hand_base",
+      "breakpoints": true
     }
   ]
 }

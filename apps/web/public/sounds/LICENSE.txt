@@ -1,0 +1,13 @@
+Sonidos de la mesa (apps/web/public/sounds)
+
+CC0 (dominio público, no exigen atribución; se acreditan igual):
+- shuffle, deal-1..4, fold, show, emoji/1f4b8 (plata): Kenney, "Casino Audio" (kenney.nl), CC0.
+  Archivos originales: card-shuffle, card-slide-1..4, card-shove-1, card-fan-1, chips-handle-3.
+- tick, tock: "ticking clock" de bart (opengameart.org/content/ticking-clock), CC0. Originales: tick1 y tick3.
+- emoji/1f602 (risa): "group giggling" (opengameart.org/content/group-giggling), CC0.
+- emoji/1f44f (aplausos): "Well Done" (opengameart.org/content/well-done), CC0 desde 2024-10-05 según su autor.
+
+Propios: los demás sonidos de emojis (1f62e, 1f621, 1f60e, 1f64f, 1f525, 1f921, 1f62d, 1f389, 1f44d, 1f412, 1f3a3, 1f44a)
+se sintetizaron con ffmpeg (aevalsrc) para este proyecto, sin material de terceros.
+
+hand-start.mp3: audio provisto por el dueño del proyecto, que se hace cargo de sus derechos. Se puede reemplazar por otro mp3.

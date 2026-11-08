@@ -2,6 +2,7 @@ import type { ApiEmojiServerMessage } from '@pokercontrol/contracts';
 import { TABLE_EMOJIS, type TableEmojiId } from '@pokercontrol/contracts/emojis';
 import type { AnimationItem } from 'lottie-web';
 import { useEffect, useRef, useState, type CSSProperties, type MutableRefObject } from 'react';
+import { playSfx } from '../sounds';
 
 /**
  * Emojis animados de la mesa. Las animaciones son de Noto Emoji Animation (Google) y se cargan desde su CDN
@@ -56,13 +57,15 @@ function anchorOf(playerId: string | null): { x: number; y: number } {
  * Capa donde flotan los emojis recibidos, por encima de la mesa y sin tapar toques. `handler` lo llama el socket
  * con cada emoji; `enabled` apaga la capa si el usuario silenció los emojis.
  */
-export function EmojiLayer({ handler, enabled }: { handler: MutableRefObject<(m: ApiEmojiServerMessage) => void>; enabled: boolean }) {
+export function EmojiLayer({ handler, enabled, sound = false }: { handler: MutableRefObject<(m: ApiEmojiServerMessage) => void>; enabled: boolean; sound?: boolean }) {
   const [floats, setFloats] = useState<Floating[]>([]);
   const [said, setSaid] = useState('');
   handler.current = m => {
     const emoji = BY_ID.get(m.id);
     if (!enabled || !emoji) return;
     const at = anchorOf(m.playerId);
+    // Cada emoji tiene su efecto (public/sounds/emoji/<código>.mp3).
+    if (sound) playSfx(`emoji:${emoji.id}`, { volume: 0.7 });
     setFloats(prev => [...prev.slice(1 - MAX_FLOATING), { key: ++sequence, id: emoji.id, char: emoji.char, name: m.name, ...at, dx: Math.round(Math.random() * 40 - 20) }]);
     setSaid(`${m.name} envió ${emoji.label}`);
   };

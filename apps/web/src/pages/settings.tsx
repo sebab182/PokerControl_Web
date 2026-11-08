@@ -310,6 +310,8 @@ export function SettingsPage() {
         <p className="small muted" style={{ margin: '4px 0' }}>
           Créditos: los emojis animados de la mesa son de{' '}
           <a href="https://googlefonts.github.io/noto-emoji-animation/" target="_blank" rel="noreferrer">Noto Emoji Animation</a> (Google).
+          Sonidos de cartas y fichas: <a href="https://kenney.nl/assets/casino-audio" target="_blank" rel="noreferrer">Kenney</a> (CC0); reloj, risa y aplausos
+          de <a href="https://opengameart.org" target="_blank" rel="noreferrer">OpenGameArt</a> (CC0).
         </p>
         <p className="small muted" style={{ marginBottom: 12 }}>Sesión iniciada como {me?.user.email}.</p>
         <Btn variant="ghost" onClick={signOut}>Cerrar sesión</Btn>

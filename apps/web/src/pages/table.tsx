@@ -9,7 +9,8 @@ import {
   Avatar, Btn, Emoji, Loading, Modal, QueryError, TextField, useAction, useFeedback,
 } from '../components/ui';
 import { useGroup } from '../context';
-import { DECKS, type Deck, type TablePrefs, playHandStart, primeHandSound, useTablePrefs, useTurnAlert, useWakeLock } from '../tablePrefs';
+import { useTableSounds, useTickTock } from '../tableSounds';
+import { DECKS, type Deck, type TablePrefs, primeHandSound, useTablePrefs, useTurnAlert, useWakeLock } from '../tablePrefs';
 import { shareInvite } from '../share';
 import { EmojiFab, EmojiLayer } from '../components/emoji';
 import { useTableSocket } from '../useTableSocket';
@@ -168,15 +169,8 @@ function TableView() {
   const lastHand = useRef<number | null>(null);
   const lastBig = useRef<number | null>(null);
   const handNo = view?.hand?.handNo;
-  // Sonido al empezar una mano: no suena al abrir la página con una mano ya en curso, sí al empezar la siguiente.
-  const firstHand = useRef<number | null | undefined>(undefined);
-  const soundedHand = useRef<number | null>(null);
-  if (view && firstHand.current === undefined) firstHand.current = handNo ?? null;
-  useEffect(() => {
-    if (handNo === undefined || handNo === firstHand.current || handNo === soundedHand.current) return;
-    soundedHand.current = handNo;
-    if (prefs.handSound) playHandStart();
-  }, [handNo]);
+  // Mezclar, repartir, retirarse, mostrar y el aviso de mano nueva (ver tableSounds.ts).
+  useTableSounds(view, prefs);
   useEffect(() => {
     document.addEventListener('pointerdown', primeHandSound, { once: true });
     return () => document.removeEventListener('pointerdown', primeHandSound);
@@ -294,7 +288,7 @@ function TableView() {
 
   return (
     <VideoProvider state={video.state}>
-      <EmojiLayer handler={emojiHandler} enabled={prefs.emojis} />
+      <EmojiLayer handler={emojiHandler} enabled={prefs.emojis} sound={prefs.emojiSound} />
       {/* En el paño el botón va en la esquina del propio paño; en la sala de espera, flotando sobre la página. */}
       {prefs.emojis && !(view.status === 'playing' && view.hand) && <EmojiFab placement="page" live={live} onSend={socket.sendEmoji} />}
       {/* Con una mano en juego, la barra de la mesa reemplaza al encabezado. */}
@@ -316,7 +310,7 @@ function TableView() {
           )}
           {view.status === 'waiting'
             ? <Waiting view={view} canEdit={canEdit} standing={standing} busy={busy} onJoin={join} onLeave={leave} onStart={() => setStartOpen(true)} onAddOpen={() => setAddOpen(true)} />
-            : <Playing view={view} updatedAt={query.dataUpdatedAt} busy={busy}
+            : <Playing view={view} updatedAt={query.dataUpdatedAt} busy={busy} sound={prefs.sound}
               fab={prefs.emojis ? <EmojiFab placement="felt" live={live} onSend={socket.sendEmoji} /> : null} onJoin={join} onLeave={leave} onLeaveGame={() => { void leaveGame(); }} onDeal={deal} onClose={close}
               bar={view.hand && <TableBar view={view} hand={view.hand} updatedAt={query.dataUpdatedAt} live={live} onPrefs={() => setPrefsOpen(true)} />}
               onReveal={(playerIds, cards) => run(async () => {
@@ -484,8 +478,8 @@ function StartModal({ view, open, onClose, onStart, busy }: {
 // ─── Partida en curso ────────────────────────────────────────────────────────
 type Seat = ApiTableView['seats'][number];
 
-function Playing({ view, updatedAt, bar, fab, busy, onJoin, onLeave, onLeaveGame, onDeal, onClose, onAction, onRebuy, onReveal }: {
-  view: ApiTableView; updatedAt: number; bar: ReactNode; fab: ReactNode; busy: boolean; onJoin: () => void; onLeave: () => void; onLeaveGame: () => void; onDeal: () => void;
+function Playing({ view, updatedAt, bar, fab, busy, sound, onJoin, onLeave, onLeaveGame, onDeal, onClose, onAction, onRebuy, onReveal }: {
+  view: ApiTableView; updatedAt: number; bar: ReactNode; fab: ReactNode; busy: boolean; sound: boolean; onJoin: () => void; onLeave: () => void; onLeaveGame: () => void; onDeal: () => void;
   onClose: () => void; onAction: (a: ApiTableAction) => void; onRebuy: (amount: number) => void;
   onReveal: (playerIds: string[], cards?: number[]) => void;
 }) {
@@ -513,7 +507,7 @@ function Playing({ view, updatedAt, bar, fab, busy, onJoin, onLeave, onLeaveGame
           {/* Tus cartas van en tu asiento; acá solo lo que hay que decidir, siempre en el mismo lugar. */}
           <section className="hand-dock" aria-label="Tus acciones">
             <HandResult view={view} hand={hand} where="dock" />
-            {live && hand.legal && <Controls view={view} hand={hand} updatedAt={updatedAt} busy={busy} onAction={onAction} />}
+            {live && hand.legal && <Controls view={view} hand={hand} updatedAt={updatedAt} busy={busy} sound={sound} onAction={onAction} />}
             {hand.street === 'done' && <ShowCards hand={hand} players={mine} busy={busy} onReveal={onReveal} />}
             {canDeal && <Btn block busy={busy} onClick={onDeal}>Repartir próxima mano</Btn>}
             {hand.street === 'done' && waitingDeal}
@@ -836,12 +830,14 @@ function Kbd({ children }: { children: string }) {
   return <kbd className="kbd" aria-hidden="true">{children}</kbd>;
 }
 
-function Controls({ view, hand, updatedAt, busy, onAction }: {
-  view: ApiTableView; hand: Hand; updatedAt: number; busy: boolean; onAction: (a: ApiTableAction) => void;
+function Controls({ view, hand, updatedAt, busy, sound, onAction }: {
+  view: ApiTableView; hand: Hand; updatedAt: number; busy: boolean; sound: boolean; onAction: (a: ApiTableAction) => void;
 }) {
   const legal = hand.legal;
   const [raising, setRaising] = useState(false);
   const left = useSecondsLeft(view, updatedAt);
+  // Tic-tac en los últimos segundos: solo lo oye quien tiene que decidir (estos controles son solo de quien juega).
+  useTickTock(left ?? 0, !!view.turnDeadline, sound);
   // Atajos en la compu: F retirarse, C pasar o igualar, R subir. Se ignoran mientras se escribe o hay un diálogo abierto.
   const onKey = useRef<(e: KeyboardEvent) => void>(() => {});
   onKey.current = e => {
@@ -1010,12 +1006,13 @@ const DECK_HINT: Record<Deck, string> = {
 function PrefsModal({ open, onClose, prefs, onChange }: {
   open: boolean; onClose: () => void; prefs: TablePrefs; onChange: (patch: Partial<TablePrefs>) => void;
 }) {
-  const items: { key: 'sound' | 'vibrate' | 'animations' | 'keepAwake' | 'handSound' | 'emojis'; label: string; hint: string }[] = [
-    { key: 'sound', label: 'Sonidos', hint: 'Un tono cuando te toca jugar' },
+  const items: { key: 'sound' | 'vibrate' | 'animations' | 'keepAwake' | 'handSound' | 'emojiSound' | 'emojis'; label: string; hint: string }[] = [
+    { key: 'sound', label: 'Sonidos', hint: 'Mezclar, repartir, mostrar, retirarse, el tic-tac de tu turno y un tono cuando te toca' },
     { key: 'vibrate', label: 'Vibrar en mi turno', hint: 'Solo en celulares que lo permiten' },
     { key: 'handSound', label: 'Sonido al empezar la mano', hint: 'Suena al repartir cada mano nueva' },
     { key: 'animations', label: 'Animaciones', hint: 'Reparto de cartas y fichas' },
     { key: 'keepAwake', label: 'Mantener la pantalla encendida', hint: 'Mientras haya una partida en juego' },
+    { key: 'emojiSound', label: 'Sonido de los emojis', hint: 'Un efecto corto con cada emoji que llega' },
     { key: 'emojis', label: 'Emojis', hint: 'Ver los de los demás y poder mandar los tuyos' },
   ];
   return (

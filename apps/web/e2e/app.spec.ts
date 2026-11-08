@@ -542,6 +542,9 @@ const countHandSounds = (p: Page) => p.addInitScript(() => {
   };
 });
 
+/** Efectos de sonido pedidos hasta ahora en esa página (el motor los anota en desarrollo). */
+const sfxLog = (p: Page) => p.evaluate(() => ((window as unknown as { __sfx?: string[] }).__sfx ?? []).slice());
+
 test('mesa online: sala de espera, iniciar, jugar una mano y cerrar', async ({ page, browser, isMobile }) => {
   await countHandSounds(page);
   await login(page, 'Seba');
@@ -579,8 +582,11 @@ test('mesa online: sala de espera, iniciar, jugar una mano y cerrar', async ({ p
   // Los dos ven la mano; solo cada uno ve sus cartas.
   await expect(page.getByTestId('felt')).toBeVisible();
   await expect(page.getByTestId('pot')).toHaveText('Pozo $30');
-  // Al empezar la mano suena el aviso, una sola vez.
+  // Al empezar la mano suena el aviso, una sola vez (la primera siempre suena), y se mezcla y se reparte en los dos.
   await expect.poll(() => page.evaluate(() => (window as unknown as { __handSounds: number }).__handSounds)).toBe(1);
+  for (const p of [page, page2]) {
+    await expect.poll(() => sfxLog(p)).toEqual(expect.arrayContaining(['shuffle', 'deal']));
+  }
   // Cada jugador muestra sus recompras y su neto: al empezar, 0 recompras y $0.
   await expect(page.getByTestId('seat-score').first()).toContainText('↻0 · $0');
   // Cuenta regresiva del turno y conexión en vivo.
@@ -616,6 +622,10 @@ test('mesa online: sala de espera, iniciar, jugar una mano y cerrar', async ({ p
   await expect(other.getByTestId('last-action')).toContainText('se retiró', { timeout: 5000 });
   await expect(page.getByRole('status').filter({ hasText: 'ganó' }).or(page.getByRole('status').filter({ hasText: 'ganaste' }))).toBeVisible({ timeout: 10000 });
   await checkPage(page, 'mesa: fin de mano');
+  // El retiro suena en los dos, y al mostrarse todas las cartas suena el volteo.
+  for (const p of [page, page2]) {
+    await expect.poll(() => sfxLog(p)).toEqual(expect.arrayContaining(['fold', 'show']));
+  }
   // Con la opción activa nadie tiene que mostrar nada: ya están a la vista las cartas de los dos.
   await expect(page.getByRole('button', { name: /^Mostrar cartas/ })).toHaveCount(0);
   await expect(actor.getByRole('img', { name: 'Carta oculta' })).toHaveCount(0);
@@ -734,6 +744,13 @@ test('mesa online: al agotarse el tiempo el servidor juega por quien no responde
     await expect(p.getByTestId('last-action')).toContainText('(tiempo agotado)', { timeout: 25000 });
     await expect(p.getByRole('status').filter({ hasText: /ganó|ganaste/ })).toBeVisible();
   }
+  // El tic-tac de los últimos segundos lo oye solo quien tenía que decidir, alternando tic y toc.
+  const clock = async (p: Page) => (await sfxLog(p)).filter(x => x === 'tick' || x === 'tock');
+  const [a, b] = [await clock(page), await clock(page2)];
+  expect(Math.max(a.length, b.length)).toBeGreaterThanOrEqual(3);
+  expect(Math.min(a.length, b.length)).toBe(0);
+  const heard = a.length > 0 ? a : b;
+  expect(new Set(heard)).toEqual(new Set(['tick', 'tock']));
   await context2.close();
 });
 
@@ -1027,6 +1044,10 @@ test('mesa online: emojis animados desde el botón flotante, estés sentado o no
   for (const p of [nico.page, pablo.page, page]) {
     await expect(p.getByTestId('emoji-float')).toContainText('Nico');
     await expect(p.getByTestId('emoji-said')).toHaveText('Nico envió Risa');
+  }
+  // Cada emoji tiene su sonido en quienes lo reciben.
+  for (const p of [nico.page, pablo.page, page]) {
+    await expect.poll(() => sfxLog(p)).toContain('emoji:1f602');
   }
   // La animación se descarga y reemplaza al emoji común.
   await expect(page.locator('.emoji-lottie svg').first()).toBeAttached({ timeout: 10000 });

@@ -166,6 +166,7 @@ async function buildView(db: Conn, table: TableRow, viewer: Viewer): Promise<Api
     const wins = winDetails(state);
     hand = {
       handNo: row.handNo,
+      gameHandNo: row.handNo - table.sessionHandBase,
       street: v.street,
       board: v.board,
       pot: v.players.reduce((sum, p) => sum + p.totalBet, 0),
@@ -755,7 +756,7 @@ export async function tableRoutes(app: FastifyInstance) {
           .where(and(eq(schema.pokerSeats.tableId, table.id), eq(schema.pokerSeats.playerId, seat.playerId)));
       }
       await tx.update(schema.pokerSeats).set({ stack: cfg.buyIn, status: 'sitting' }).where(eq(schema.pokerSeats.tableId, table.id));
-      await tx.update(schema.pokerTables).set({ ...cfg, status: 'playing', sessionId, startedBy: req.user.sub, hostSeenAt: now, blindsStartedAt: now, version: bump })
+      await tx.update(schema.pokerTables).set({ ...cfg, status: 'playing', sessionId, sessionHandBase: table.handCount, startedBy: req.user.sub, hostSeenAt: now, blindsStartedAt: now, version: bump })
         .where(eq(schema.pokerTables.id, table.id));
       const [fresh] = await tx.select().from(schema.pokerTables).where(eq(schema.pokerTables.id, table.id));
       await dealHand(tx, fresh);

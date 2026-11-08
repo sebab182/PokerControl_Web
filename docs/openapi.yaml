@@ -1429,6 +1429,7 @@ paths:
                     type: object
                     required:
                       - handNo
+                      - gameHandNo
                       - street
                       - board
                       - pot
@@ -1444,6 +1445,8 @@ paths:
                       - showdown
                     properties:
                       handNo:
+                        type: integer
+                      gameHandNo:
                         type: integer
                       street:
                         anyOf:
@@ -1791,6 +1794,7 @@ paths:
                     type: object
                     required:
                       - handNo
+                      - gameHandNo
                       - street
                       - board
                       - pot
@@ -1806,6 +1810,8 @@ paths:
                       - showdown
                     properties:
                       handNo:
+                        type: integer
+                      gameHandNo:
                         type: integer
                       street:
                         anyOf:
@@ -2153,6 +2159,7 @@ paths:
                     type: object
                     required:
                       - handNo
+                      - gameHandNo
                       - street
                       - board
                       - pot
@@ -2168,6 +2175,8 @@ paths:
                       - showdown
                     properties:
                       handNo:
+                        type: integer
+                      gameHandNo:
                         type: integer
                       street:
                         anyOf:
@@ -2515,6 +2524,7 @@ paths:
                     type: object
                     required:
                       - handNo
+                      - gameHandNo
                       - street
                       - board
                       - pot
@@ -2530,6 +2540,8 @@ paths:
                       - showdown
                     properties:
                       handNo:
+                        type: integer
+                      gameHandNo:
                         type: integer
                       street:
                         anyOf:
@@ -2882,6 +2894,7 @@ paths:
                     type: object
                     required:
                       - handNo
+                      - gameHandNo
                       - street
                       - board
                       - pot
@@ -2897,6 +2910,8 @@ paths:
                       - showdown
                     properties:
                       handNo:
+                        type: integer
+                      gameHandNo:
                         type: integer
                       street:
                         anyOf:
@@ -3248,6 +3263,7 @@ paths:
                     type: object
                     required:
                       - handNo
+                      - gameHandNo
                       - street
                       - board
                       - pot
@@ -3263,6 +3279,8 @@ paths:
                       - showdown
                     properties:
                       handNo:
+                        type: integer
+                      gameHandNo:
                         type: integer
                       street:
                         anyOf:
@@ -3627,6 +3645,7 @@ paths:
                     type: object
                     required:
                       - handNo
+                      - gameHandNo
                       - street
                       - board
                       - pot
@@ -3642,6 +3661,8 @@ paths:
                       - showdown
                     properties:
                       handNo:
+                        type: integer
+                      gameHandNo:
                         type: integer
                       street:
                         anyOf:
@@ -4019,6 +4040,7 @@ paths:
                     type: object
                     required:
                       - handNo
+                      - gameHandNo
                       - street
                       - board
                       - pot
@@ -4034,6 +4056,8 @@ paths:
                       - showdown
                     properties:
                       handNo:
+                        type: integer
+                      gameHandNo:
                         type: integer
                       street:
                         anyOf:
@@ -4381,6 +4405,7 @@ paths:
                     type: object
                     required:
                       - handNo
+                      - gameHandNo
                       - street
                       - board
                       - pot
@@ -4396,6 +4421,8 @@ paths:
                       - showdown
                     properties:
                       handNo:
+                        type: integer
+                      gameHandNo:
                         type: integer
                       street:
                         anyOf:
@@ -4810,6 +4837,7 @@ paths:
                     type: object
                     required:
                       - handNo
+                      - gameHandNo
                       - street
                       - board
                       - pot
@@ -4825,6 +4853,8 @@ paths:
                       - showdown
                     properties:
                       handNo:
+                        type: integer
+                      gameHandNo:
                         type: integer
                       street:
                         anyOf:
@@ -5191,6 +5221,7 @@ paths:
                     type: object
                     required:
                       - handNo
+                      - gameHandNo
                       - street
                       - board
                       - pot
@@ -5206,6 +5237,8 @@ paths:
                       - showdown
                     properties:
                       handNo:
+                        type: integer
+                      gameHandNo:
                         type: integer
                       street:
                         anyOf:
@@ -5565,6 +5598,7 @@ paths:
                     type: object
                     required:
                       - handNo
+                      - gameHandNo
                       - street
                       - board
                       - pot
@@ -5580,6 +5614,8 @@ paths:
                       - showdown
                     properties:
                       handNo:
+                        type: integer
+                      gameHandNo:
                         type: integer
                       street:
                         anyOf:
@@ -5937,6 +5973,7 @@ paths:
                         type: object
                         required:
                           - handNo
+                          - gameHandNo
                           - street
                           - board
                           - pot
@@ -5952,6 +5989,8 @@ paths:
                           - showdown
                         properties:
                           handNo:
+                            type: integer
+                          gameHandNo:
                             type: integer
                           street:
                             anyOf:

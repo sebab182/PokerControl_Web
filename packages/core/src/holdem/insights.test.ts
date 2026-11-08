@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  allInSpot, analyzeSession, applyAction, cardScore, describeAction, handClass, handPositions, legalActions, startHand,
+  allInSpot, analyzeSession, playsHandStartSound, applyAction, cardScore, describeAction, handClass, handPositions, legalActions, startHand,
   summarizeHand, type Action, type HandState, type InsightHand, type RecordedAction,
 } from './index';
 
@@ -148,5 +148,33 @@ describe('indicadores con manos armadas', () => {
     expect(by('b').cbet).toEqual({ n: 1, d: 1 });
     expect(by('a').foldToCbet).toEqual({ n: 1, d: 1 });
     expect(by('a').steal).toEqual({ n: 1, d: 1 });
+  });
+});
+
+describe('playsHandStartSound', () => {
+  it('siempre suena en la primera mano de la partida', () => {
+    expect(playsHandStartSound({ gameHandNo: 1, previousPlayed: false, random: () => 0.99 })).toBe(true);
+    expect(playsHandStartSound({ gameHandNo: 1, previousPlayed: true, random: () => 0.99 })).toBe(true);
+  });
+  it('después suena al azar y nunca dos veces seguidas', () => {
+    expect(playsHandStartSound({ gameHandNo: 5, previousPlayed: false, random: () => 0.05 })).toBe(true);
+    expect(playsHandStartSound({ gameHandNo: 5, previousPlayed: false, random: () => 0.5 })).toBe(false);
+    expect(playsHandStartSound({ gameHandNo: 5, previousPlayed: true, random: () => 0 })).toBe(false);
+  });
+  it('en muchas manos suena en una fracción chica, sin repetirse seguido', () => {
+    let seed = 7;
+    const random = () => { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296; };
+    let prev = true;
+    let played = 0;
+    let back2back = 0;
+    for (let n = 2; n <= 4001; n++) {
+      const now = playsHandStartSound({ gameHandNo: n, previousPlayed: prev, random });
+      if (now) played++;
+      if (now && prev) back2back++;
+      prev = now;
+    }
+    expect(back2back).toBe(0);
+    expect(played / 4000).toBeGreaterThan(0.08);
+    expect(played / 4000).toBeLessThan(0.18);
   });
 });

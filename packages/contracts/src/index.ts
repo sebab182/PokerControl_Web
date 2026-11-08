@@ -325,6 +325,8 @@ export const LegalActionsView = Obj({
 }, 'LegalActions');
 export const HandView = Obj({
   handNo: T.Integer(),
+  /** Número de la mano dentro de la partida en curso (1 = la primera). */
+  gameHandNo: T.Integer(),
   street: T.Union([T.Literal('preflop'), T.Literal('flop'), T.Literal('turn'), T.Literal('river'), T.Literal('done')]),
   board: T.Array(T.String()), pot: T.Integer(), currentBet: T.Integer(), minRaise: T.Integer(),
   button: T.Integer(), toActPlayerId: Nullable(T.String()),
