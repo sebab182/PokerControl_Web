@@ -108,9 +108,21 @@ export function PlayerSeat({ view, hand, playerId, offset, total }: {
   const handName = mine && !p.folded && p.hole.length + hand.board.length >= 5 && !p.hole.includes('??')
     ? evaluate([...p.hole, ...hand.board]).name : null;
   const name = seat.isYou ? 'Vos' : seat.name;
-  const avatar = stream
+  // Con cámara se ve el video; si solo transmite el micrófono se ve la inicial, con el audio sonando y un ícono de micrófono.
+  const hasPicture = !!stream && stream.getVideoTracks().length > 0;
+  const avatar = stream && hasPicture
     ? <StreamVideo stream={stream} className="pseat-video" muted={seat.isYou || video?.muteOthers} mirrored={seat.isYou} />
-    : <Avatar name={seat.name} />;
+    : (
+      <span className="pseat-face">
+        <Avatar name={seat.name} />
+        {stream && (
+          <>
+            <StreamVideo stream={stream} className="pseat-audio" muted={seat.isYou || video?.muteOthers} />
+            <span className="pseat-mic" role="img" aria-label="Micrófono activo">🎙️</span>
+          </>
+        )}
+      </span>
+    );
   const chips = (
     <>
       {p.bet > 0 && <div className="pseat-bet num">Apuesta {formatMoney(p.bet)}</div>}

@@ -734,3 +734,8 @@ input[type="text"], input[type="search"], select {
 .analysis-tabs { display: grid; grid-template-columns: repeat(2, 1fr); }
 .analysis-tabs .btn { white-space: normal; line-height: 1.2; }
 @media (min-width: 640px) { .analysis-tabs { grid-template-columns: repeat(4, 1fr); } }
+
+/* Quien transmite solo audio: el <video> suena pero no se ve. */
+.pseat-audio { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.pseat-mic { position: absolute; right: -4px; bottom: -4px; font-size: 14px; line-height: 1; background: var(--surface); border-radius: 50%; padding: 2px; }
+.pseat-face { position: relative; display: inline-flex; }

@@ -22,7 +22,7 @@ const ICE_SERVERS: RTCIceServer[] = (() => {
 
 const CAMERA: MediaTrackConstraints = { width: { ideal: 240 }, height: { ideal: 180 }, frameRate: { ideal: 12, max: 15 }, facingMode: 'user' };
 
-/** Se puede transmitir si el navegador tiene WebRTC y cámara; el contexto seguro (https/localhost) lo exige. */
+/** Se puede transmitir si el navegador tiene WebRTC y acceso a cámara o micrófono; el contexto seguro (https/localhost) lo exige. */
 export const videoSupported = () =>
   typeof RTCPeerConnection !== 'undefined' && !!navigator.mediaDevices?.getUserMedia;
 
@@ -43,25 +43,31 @@ async function onlyMicBlocked(e: unknown): Promise<boolean> {
   return camera === 'granted' && mic === 'denied';
 }
 
+/** Qué se pidió al navegador: cámara, micrófono o los dos. */
+interface MediaWanted { camera: boolean; mic: boolean }
+
 /** Mensaje para el usuario según por qué falló getUserMedia. */
-async function describeMediaError(e: unknown, withMic: boolean): Promise<string> {
+async function describeMediaError(e: unknown, want: MediaWanted): Promise<string> {
   const name = e instanceof DOMException ? e.name : '';
+  const what = want.camera && want.mic ? 'la cámara y el micrófono' : want.camera ? 'la cámara' : 'el micrófono';
   if (name === 'NotAllowedError') {
-    const [camera, mic] = await Promise.all([permissionState('camera'), withMic ? permissionState('microphone') : null]);
+    const [camera, mic] = await Promise.all([want.camera ? permissionState('camera') : null, want.mic ? permissionState('microphone') : null]);
     // "denied" sin diálogo previo: el sitio quedó bloqueado antes y el navegador ya no vuelve a preguntar.
     if (camera === 'denied') return 'La cámara está bloqueada para este sitio. ' + UNBLOCK_HINT;
     if (mic === 'denied') return 'El micrófono está bloqueado para este sitio. ' + UNBLOCK_HINT;
-    return 'No diste permiso para usar la cámara' + (withMic ? ' y el micrófono' : '') + '. Tocá "Transmitir video" para que el navegador pregunte de nuevo.';
+    return `No diste permiso para usar ${what}. Tocá "${want.camera ? 'Transmitir video' : 'Transmitir audio'}" para que el navegador pregunte de nuevo.`;
   }
-  if (name === 'NotFoundError') return withMic ? 'No se encontró una cámara o un micrófono.' : 'No se encontró una cámara.';
-  if (name === 'NotReadableError') return 'La cámara está en uso por otra aplicación o bloqueada por el sistema.';
-  return 'No se pudo iniciar la cámara.';
+  if (name === 'NotFoundError') return want.camera && want.mic ? 'No se encontró una cámara o un micrófono.' : want.camera ? 'No se encontró una cámara.' : 'No se encontró un micrófono.';
+  if (name === 'NotReadableError') return want.camera ? 'La cámara está en uso por otra aplicación o bloqueada por el sistema.' : 'El micrófono está en uso por otra aplicación o bloqueado por el sistema.';
+  return want.camera ? 'No se pudo iniciar la cámara.' : 'No se pudo iniciar el micrófono.';
 }
 
 interface VideoState {
   supported: boolean;
   /** Mi transmisión: null si no estoy transmitiendo. */
   local: MediaStream | null;
+  /** Qué estoy transmitiendo: cámara, micrófono o los dos (al menos uno mientras transmito). */
+  camOn: boolean;
   micOn: boolean;
   starting: boolean;
   error: string | null;
@@ -70,8 +76,8 @@ interface VideoState {
   /** Silencia el audio que llega de los demás (solo en este dispositivo). */
   muteOthers: boolean;
   setMuteOthers: (v: boolean) => void;
-  /** Con micrófono o sin él. Si ya transmitía, reinicia la transmisión con la nueva opción. */
-  start: (withMic: boolean) => Promise<void>;
+  /** Con cámara, micrófono o los dos (al menos uno). Si ya transmitía, reinicia la transmisión con la nueva opción. */
+  start: (want: MediaWanted) => Promise<void>;
   stop: () => void;
   /** Quién puede transmitir: solo quien tiene jugador. */
   canBroadcast: boolean;
@@ -100,6 +106,7 @@ interface Link { pc: RTCPeerConnection; playerId: string | null; pending: RTCIce
 export function useTableVideo(socket: TableSocket, myPlayerId: string | null) {
   const { live, send } = socket;
   const [local, setLocal] = useState<MediaStream | null>(null);
+  const [camOn, setCamOn] = useState(false);
   const [micOn, setMicOn] = useState(false);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -230,35 +237,37 @@ export function useTableVideo(socket: TableSocket, myPlayerId: string | null) {
     }
     for (const id of [...outgoing.current.keys()]) closeLink(outgoing.current, id);
     setLocal(null);
+    setCamOn(false);
     setMicOn(false);
   }, [closeLink]);
 
-  const start = useCallback(async (withMic: boolean) => {
-    if (!me.current) return;
+  const start = useCallback(async (want: MediaWanted) => {
+    if (!me.current || (!want.camera && !want.mic)) return;
     setError(null);
     setStarting(true);
     try {
-      // Pide el permiso en este momento: cámara y, si se eligió, micrófono en el mismo diálogo del navegador.
+      // Pide el permiso en este momento: cámara y/o micrófono en el mismo diálogo del navegador.
       let stream: MediaStream;
-      let micGranted = withMic;
+      let micGranted = want.mic;
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: CAMERA, audio: withMic });
+        stream = await navigator.mediaDevices.getUserMedia({ video: want.camera ? CAMERA : false, audio: want.mic });
       } catch (e) {
         // Sin permiso de micrófono pero con cámara habilitada: se transmite solo el video y se avisa.
-        if (!withMic || !(await onlyMicBlocked(e))) throw e;
+        if (!(want.camera && want.mic) || !(await onlyMicBlocked(e))) throw e;
         stream = await navigator.mediaDevices.getUserMedia({ video: CAMERA, audio: false });
         micGranted = false;
         setError('Sin permiso para el micrófono: se transmite solo el video. ' + UNBLOCK_HINT);
       }
-      if (localRef.current) stop(); // cambio de micrófono: se reinicia la transmisión
+      if (localRef.current) stop(); // cambio de cámara o micrófono: se reinicia la transmisión
       localRef.current = stream;
-      // Si el usuario corta desde el navegador (el indicador de cámara), se refleja acá.
-      stream.getVideoTracks()[0]?.addEventListener('ended', () => { if (localRef.current === stream) stop(); });
+      // Si el usuario corta desde el navegador (el indicador de cámara o micrófono), se refleja acá.
+      (stream.getVideoTracks()[0] ?? stream.getAudioTracks()[0])?.addEventListener('ended', () => { if (localRef.current === stream) stop(); });
       setLocal(stream);
+      setCamOn(want.camera);
       setMicOn(micGranted);
       sendRef.current({ kind: 'start' });
     } catch (e) {
-      setError(await describeMediaError(e, withMic));
+      setError(await describeMediaError(e, want));
     } finally {
       setStarting(false);
     }
@@ -284,7 +293,7 @@ export function useTableVideo(socket: TableSocket, myPlayerId: string | null) {
   }, [stop, closeAll]);
 
   const state: VideoState = {
-    supported: videoSupported(), local, micOn, starting, error, remote, muteOthers, setMuteOthers,
+    supported: videoSupported(), local, camOn, micOn, starting, error, remote, muteOthers, setMuteOthers,
     start, stop, canBroadcast: !!myPlayerId, myPlayerId,
   };
   return { state, onSignal };
@@ -310,24 +319,36 @@ export function StreamVideo({ stream, muted, mirrored, className = '' }: {
   return <video ref={ref} className={`${className} ${mirrored ? 'video-mirror' : ''}`} autoPlay playsInline muted={muted} aria-hidden="true" />;
 }
 
-/** Controles de mi transmisión. */
+/** Controles de mi transmisión: cámara y micrófono se eligen por separado (se puede transmitir solo el audio). */
 export function VideoControls() {
   const v = useVideo();
+  const [wantCam, setWantCam] = useState(true);
   const [wantMic, setWantMic] = useState(false);
   if (!v || !v.canBroadcast) return null;
   if (!v.supported) {
-    return <p className="muted small">Este navegador no permite transmitir video. Hace falta una conexión segura (https) y una cámara.</p>;
+    return <p className="muted small">Este navegador no permite transmitir video ni audio. Hace falta una conexión segura (https) y una cámara o un micrófono.</p>;
   }
   const live = !!v.local;
+  const cam = live ? v.camOn : wantCam;
+  const mic = live ? v.micOn : wantMic;
+  /** Siempre queda algo para transmitir: si se apaga lo último, se enciende lo otro. Con la transmisión en curso, se reinicia. */
+  const change = (camera: boolean, microphone: boolean) => {
+    if (!camera && !microphone) { if (cam) microphone = true; else camera = true; }
+    if (live) void v.start({ camera, mic: microphone });
+    else { setWantCam(camera); setWantMic(microphone); }
+  };
   return (
     <div className="video-controls" role="group" aria-label="Transmisión de video">
       {live
         ? <Btn variant="danger" onClick={v.stop}>Detener transmisión</Btn>
-        : <Btn busy={v.starting} onClick={() => { void v.start(wantMic); }}>Transmitir video</Btn>}
-      {/* El audio es opcional y arranca apagado. Cambiarlo con la transmisión en curso la reinicia. */}
+        : <Btn busy={v.starting} onClick={() => { void v.start({ camera: wantCam, mic: wantMic }); }}>{wantCam ? 'Transmitir video' : 'Transmitir audio'}</Btn>}
+      {/* La cámara arranca encendida y el micrófono apagado. Cambiarlos con la transmisión en curso la reinicia. */}
       <label className="video-mic">
-        <input type="checkbox" aria-label="Micrófono" checked={live ? v.micOn : wantMic} disabled={v.starting}
-          onChange={e => { if (live) void v.start(e.target.checked); else setWantMic(e.target.checked); }} />
+        <input type="checkbox" aria-label="Cámara" checked={cam} disabled={v.starting} onChange={e => change(e.target.checked, mic)} />
+        Cámara
+      </label>
+      <label className="video-mic">
+        <input type="checkbox" aria-label="Micrófono" checked={mic} disabled={v.starting} onChange={e => change(cam, e.target.checked)} />
         Micrófono
       </label>
       <label className="video-mic">

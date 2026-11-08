@@ -815,6 +815,22 @@ test.describe('mesa online: video', () => {
     await expect.poll(() => seba.evaluate((v: HTMLVideoElement) => (v.srcObject as MediaStream).getAudioTracks().length), { timeout: 15000 }).toBe(1);
     await page.getByRole('button', { name: 'Detener transmisión' }).click();
     await expect(page2.locator('.pseat-video')).toHaveCount(0, { timeout: 10000 });
+
+    // Solo micrófono, sin cámara: el otro recibe audio y ve la inicial con el ícono de micrófono, sin video.
+    await page.getByLabel('Cámara').uncheck();
+    await page.getByRole('button', { name: 'Transmitir audio' }).click();
+    await expect(page.getByRole('button', { name: 'Detener transmisión' })).toBeVisible();
+    const audio = page2.getByTestId('seat-Seba').locator('video.pseat-audio');
+    await expect(audio).toBeAttached({ timeout: 15000 });
+    await expect.poll(() => audio.evaluate((v: HTMLVideoElement) => (v.srcObject as MediaStream).getAudioTracks().length), { timeout: 15000 }).toBe(1);
+    expect(await audio.evaluate((v: HTMLVideoElement) => (v.srcObject as MediaStream).getVideoTracks().length)).toBe(0);
+    await expect(page2.getByTestId('seat-Seba').getByRole('img', { name: 'Micrófono activo' })).toBeVisible();
+    await expect(page2.locator('.pseat-video')).toHaveCount(0);
+    // Con la transmisión en curso, sumar la cámara la reinicia con video y audio.
+    await page.getByLabel('Cámara').check();
+    await expect(page2.getByTestId('seat-Seba').locator('video.pseat-video')).toBeVisible({ timeout: 15000 });
+    await page.getByRole('button', { name: 'Detener transmisión' }).click();
+    await expect(page2.locator('.pseat-audio, .pseat-video')).toHaveCount(0, { timeout: 10000 });
     await context2.close();
   });
 });
