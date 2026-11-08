@@ -827,7 +827,9 @@ test.describe('mesa online: video', () => {
     await expect(page2.getByTestId('seat-Seba').getByRole('img', { name: 'Micrófono activo' })).toBeVisible();
     await expect(page2.locator('.pseat-video')).toHaveCount(0);
     // Con la transmisión en curso, sumar la cámara la reinicia con video y audio.
-    await page.getByLabel('Cámara').check();
+    // La transmisión se reinicia: el casillero cambia cuando el navegador entrega la cámara.
+    await page.getByLabel('Cámara').click();
+    await expect(page.getByLabel('Cámara')).toBeChecked();
     await expect(page2.getByTestId('seat-Seba').locator('video.pseat-video')).toBeVisible({ timeout: 15000 });
     await page.getByRole('button', { name: 'Detener transmisión' }).click();
     await expect(page2.locator('.pseat-audio, .pseat-video')).toHaveCount(0, { timeout: 10000 });
