@@ -2093,7 +2093,9 @@ describe('mesa online', () => {
       const players = await rows('select * from poker_hand_players');
       for (const p of players) {
         expect(p.hand_class).toMatch(/^[2-9TJQKA]{2}[so]?$/);
-        expect(p.card_score).toBeGreaterThan(0);
+        // 0 es válido: la peor mano inicial (7-2 sin color) tiene fuerza 0.
+        expect(p.card_score).toBeGreaterThanOrEqual(0);
+        expect(p.card_score).toBeLessThanOrEqual(1);
         expect(p.all_in_equity).not.toBeNull();
       }
       expect(players.reduce((x, p) => x + p.all_in_equity, 0)).toBeCloseTo(1, 5);
