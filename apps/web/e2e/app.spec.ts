@@ -458,7 +458,31 @@ test('roles: master, solo lectura con nick, promoción y archivados', async ({ p
   expect((await me.json()).user.role).toBe('admin');
 });
 
+test('anular una partida cerrada la deja marcada, corrige los saldos y se puede reactivar', async ({ page }) => {
+  await login(page, 'Master', 'master');
+  await createGroup(page);
+  await importBackup(page);
+  await seedBalances(page);
+  await page.goto('/seasons');
+  await page.getByRole('link', { name: 'Ver partidas' }).click();
+  await page.getByRole('link', { name: /Noche dos/ }).click();
+  await expect(page.getByTestId('pot')).toBeVisible();
+  // Anular una partida cerrada la deja marcada y reversible.
+  await page.getByRole('button', { name: 'Anular partida' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Anular', exact: true }).click();
+  await expect(page.getByText('Partida anulada', { exact: true })).toBeVisible();
+  await checkPage(page, 'partida anulada');
+  await page.locator('main').getByRole('link', { name: /Saldos$/ }).click();
+  await expect(page.getByText('Partida anulada: estos resultados no se suman a los saldos.')).toBeVisible();
+  await page.getByRole('link', { name: '← Partida' }).click();
+  await page.getByRole('button', { name: 'Reactivar partida' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Reactivar', exact: true }).click();
+  await expect(page.getByText('✓ Partida cerrada')).toBeVisible();
+});
+
 test('accesibilidad y responsive en cada vista, en ambos temas', async ({ page }) => {
+  // Recorre todas las vistas en dos temas: crece con cada pantalla nueva.
+  test.setTimeout(90_000);
   await login(page, 'Master', 'master');
   await createGroup(page);
   await importBackup(page);
@@ -481,17 +505,6 @@ test('accesibilidad y responsive en cada vista, en ambos temas', async ({ page }
     await page.getByRole('link', { name: /Noche dos/ }).click();
     await expect(page.getByTestId('pot')).toBeVisible();
     await check('partida');
-    // Anular una partida cerrada la deja marcada y reversible.
-    await page.getByRole('button', { name: 'Anular partida' }).click();
-    await page.getByRole('dialog').getByRole('button', { name: 'Anular', exact: true }).click();
-    await expect(page.getByText('Partida anulada', { exact: true })).toBeVisible();
-    await check('partida anulada');
-    await page.locator('main').getByRole('link', { name: /Saldos$/ }).click();
-    await expect(page.getByText('Partida anulada: estos resultados no se suman a los saldos.')).toBeVisible();
-    await page.getByRole('link', { name: '← Partida' }).click();
-    await page.getByRole('button', { name: 'Reactivar partida' }).click();
-    await page.getByRole('dialog').getByRole('button', { name: 'Reactivar', exact: true }).click();
-    await expect(page.getByText('✓ Partida cerrada')).toBeVisible();
     await page.locator('main').getByRole('link', { name: /Saldos$/ }).click();
     await expect(page.getByRole('heading', { name: 'Saldos de la partida' })).toBeVisible();
     await check('saldos de partida');
