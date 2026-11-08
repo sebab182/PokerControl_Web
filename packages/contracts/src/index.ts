@@ -97,6 +97,7 @@ export const PlayersQuery = Obj({ includeArchived: T.Optional(T.Boolean()) });
 
 // ─── Temporadas ──────────────────────────────────────────────────────────────
 const Status = T.Union([T.Literal('active'), T.Literal('closed')]);
+const SessionStatus = T.Union([T.Literal('active'), T.Literal('closed'), T.Literal('voided')]);
 export const Season = Obj({
   id: T.String(), name: T.String(), createdAt: T.String(), closedAt: Nullable(T.String()), status: Status,
   sessionCount: T.Number(), openSessionCount: T.Number(),
@@ -115,11 +116,11 @@ export const SessionCalc = Obj({
   status: T.Union([T.Literal('ok'), T.Literal('faltan'), T.Literal('sobran')]),
 }, 'SessionCalc');
 export const Session = Obj({
-  id: T.String(), name: T.String(), createdAt: T.String(), closedAt: Nullable(T.String()), status: Status,
+  id: T.String(), name: T.String(), createdAt: T.String(), closedAt: Nullable(T.String()), status: SessionStatus,
   seasonId: T.String(), participants: T.Array(Participant), calc: SessionCalc, missingResults: T.Array(T.String()),
 }, 'Session');
 export const SessionSummary = Obj({
-  id: T.String(), name: T.String(), createdAt: T.String(), status: Status, pot: T.Number(), playerCount: T.Number(),
+  id: T.String(), name: T.String(), createdAt: T.String(), status: SessionStatus, pot: T.Number(), playerCount: T.Number(),
 }, 'SessionSummary');
 export const CreateSessionBody = Obj({
   name: T.Optional(T.String({ maxLength: 120 })),
@@ -188,7 +189,7 @@ export const SessionDebtsView = Obj({
     before: Nullable(T.Number()), after: Nullable(T.Number()),
   })),
   allHaveResult: T.Boolean(),
-  sessionStatus: Status,
+  sessionStatus: SessionStatus,
 }, 'SessionDebtsView');
 
 // ─── Análisis de la partida (historial de manos) ────────────────────────────
@@ -361,6 +362,8 @@ export const TableView = Obj({
   version: T.Integer(),
   /** Segundos por turno (0 = sin límite) y vencimiento del turno en curso. */
   turnSeconds: T.Integer(),
+  /** Al terminar cada mano se muestran las cartas de todos. */
+  showAllCards: T.Boolean(),
   turnDeadline: Nullable(T.String()),
   /** Hora del servidor, para calcular la cuenta regresiva sin depender del reloj del cliente. */
   serverTime: T.String(),
@@ -422,6 +425,8 @@ export const StartTableBody = Obj({
   turnSeconds: T.Optional(T.Integer({ minimum: 0, maximum: 300 })),
   /** Cada cuántos minutos se duplican las ciegas: 0 (nunca) o entre 5 y 120. */
   blindMinutes: T.Optional(T.Integer({ minimum: 0, maximum: 120 })),
+  /** Al terminar cada mano se muestran las cartas de todos, también las de quienes se retiraron. */
+  showAllCards: T.Optional(T.Boolean()),
 });
 export const TableActionBody = Obj({
   version: T.Integer(),

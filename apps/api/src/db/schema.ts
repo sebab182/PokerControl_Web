@@ -104,12 +104,13 @@ export const sessions = pgTable('sessions', {
   name: text('name').notNull(),
   createdAt: ts('created_at').notNull().defaultNow(),
   closedAt: ts('closed_at'),
-  status: text('status').notNull().$type<'active' | 'closed'>(),
+  status: text('status').notNull().$type<'active' | 'closed' | 'voided'>(),
 }, t => [
   unique('uq_sessions_group_id').on(t.groupId, t.id),
   foreignKey({ columns: [t.groupId, t.seasonId], foreignColumns: [seasons.groupId, seasons.id], name: 'fk_sessions_season' }).onDelete('restrict'),
-  check('ck_sessions_status', sql`${t.status} in ('active', 'closed')`),
-  check('ck_sessions_closed', sql`(${t.status} = 'closed') = (${t.closedAt} is not null)`),
+  // Una partida anulada fue cerrada: conserva su fecha de cierre.
+  check('ck_sessions_status', sql`${t.status} in ('active', 'closed', 'voided')`),
+  check('ck_sessions_closed', sql`(${t.status} in ('closed', 'voided')) = (${t.closedAt} is not null)`),
   index('idx_sessions_group_season').on(t.groupId, t.seasonId),
 ]);
 
@@ -230,6 +231,8 @@ export const pokerTables = pgTable('poker_tables', {
   smallBlind: integer('small_blind').notNull().default(10),
   bigBlind: integer('big_blind').notNull().default(20),
   buyIn: integer('buy_in').notNull().default(1000),
+  /** Al terminar cada mano se muestran las cartas de todos, también las de quienes se retiraron. */
+  showAllCards: boolean('show_all_cards').notNull().default(false),
   /** Cada cuántos minutos se duplican las ciegas (small_blind/big_blind son las base); 0 = nunca. */
   blindMinutes: integer('blind_minutes').notNull().default(15),
   /** Cuándo empezó la partida en curso: de acá corre el reloj de las ciegas. */

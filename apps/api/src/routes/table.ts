@@ -211,6 +211,7 @@ async function buildView(db: Conn, table: TableRow, viewer: Viewer): Promise<Api
     },
     version: table.version,
     turnSeconds: table.turnSeconds,
+    showAllCards: table.showAllCards,
     turnDeadline: live && table.turnDeadline ? table.turnDeadline.toISOString() : null,
     serverTime: new Date(now).toISOString(),
     maxRebuy: maxRebuy(seats.map(x => x.seat), live),
@@ -283,16 +284,21 @@ async function dealHand(tx: Tx, table: TableRow): Promise<void> {
 
 /** Cierra la mano: devuelve los stacks a los asientos y borra el mazo guardado. */
 async function finishHand(tx: Tx, handId: number, state: HandState): Promise<void> {
-  const [hand] = await tx.select({ tableId: schema.pokerHands.tableId, groupId: schema.pokerTables.groupId }).from(schema.pokerHands)
+  const [hand] = await tx.select({ tableId: schema.pokerHands.tableId, groupId: schema.pokerTables.groupId, showAll: schema.pokerTables.showAllCards }).from(schema.pokerHands)
     .innerJoin(schema.pokerTables, eq(schema.pokerTables.id, schema.pokerHands.tableId))
     .where(eq(schema.pokerHands.id, handId));
   for (const p of state.players) {
     await tx.update(schema.pokerSeats).set({ stack: p.stack })
       .where(and(eq(schema.pokerSeats.tableId, hand.tableId), eq(schema.pokerSeats.playerId, p.id)));
   }
+  // Con la opción de la mesa, al terminar la mano todos muestran sus cartas (también quienes se retiraron). Quien no
+  // recompró (pendiente) no ve las suyas y tampoco las muestra.
+  const revealed = hand.showAll
+    ? Object.fromEntries(state.players.filter(p => !p.pending && p.hole.length === 2).map(p => [p.id, [0, 1]]))
+    : state.revealed;
   await tx.update(schema.pokerHands)
     .set({
-      status: 'done', finishedAt: new Date(), state: { ...state, deck: [] },
+      status: 'done', finishedAt: new Date(), state: { ...state, deck: [], ...(revealed ? { revealed } : {}) },
       // Las cartas que habrían salido, para el análisis "y si no te retirabas" (solo se muestran con la partida cerrada).
       fullBoard: [...state.board, ...state.deck.slice(0, 5 - state.board.length)],
     })
@@ -667,6 +673,7 @@ export async function tableRoutes(app: FastifyInstance) {
         buyIn: req.body.buyIn ?? table.buyIn,
         turnSeconds: req.body.turnSeconds ?? table.turnSeconds,
         blindMinutes: req.body.blindMinutes ?? table.blindMinutes,
+        showAllCards: req.body.showAllCards ?? table.showAllCards,
       };
       if (cfg.blindMinutes !== 0 && cfg.blindMinutes < 5) {
         throw new ApiError(422, 'invalid_blind_time', 'Las ciegas se duplican cada 0 (nunca) o entre 5 y 120 minutos.');

@@ -222,6 +222,11 @@ describe('playerStats y ranking', () => {
     expect(playerHistory(sessions, '1', 't1').map(h => h.sessionId)).toEqual(['a']);
     expect(playerHistory(sessions, '1').map(h => h.sessionId)).toEqual(['b', 'a']);
   });
+  it('una partida anulada no cuenta en el historial ni en el ranking', () => {
+    const withVoided = [...sessions, { ...closed('v', 't1', '2026-03-01T22:00:00.000Z', [participant('1', 'Ana', [100], 900), participant('2', 'Beto', [100], 0)]), status: 'voided' as const }];
+    expect(playerHistory(withVoided, '1').map(h => h.sessionId)).toEqual(['b', 'a']);
+    expect(globalRanking(players, withVoided, [])).toEqual(globalRanking(players, sessions, []));
+  });
   it('devuelve null sin actividad', () => {
     expect(playerStats(undefined, '9', sessions, [])).toBeNull();
   });

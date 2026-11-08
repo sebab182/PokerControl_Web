@@ -9,7 +9,7 @@ import {
   Avatar, Btn, Emoji, Loading, Modal, QueryError, TextField, useAction, useFeedback,
 } from '../components/ui';
 import { useGroup } from '../context';
-import { DECKS, type Deck, type TablePrefs, useTablePrefs, useTurnAlert, useWakeLock } from '../tablePrefs';
+import { DECKS, type Deck, type TablePrefs, playHandStart, primeHandSound, useTablePrefs, useTurnAlert, useWakeLock } from '../tablePrefs';
 import { shareInvite } from '../share';
 import { EmojiFab, EmojiLayer } from '../components/emoji';
 import { useTableSocket } from '../useTableSocket';
@@ -168,6 +168,19 @@ function TableView() {
   const lastHand = useRef<number | null>(null);
   const lastBig = useRef<number | null>(null);
   const handNo = view?.hand?.handNo;
+  // Sonido al empezar una mano: no suena al abrir la página con una mano ya en curso, sí al empezar la siguiente.
+  const firstHand = useRef<number | null | undefined>(undefined);
+  const soundedHand = useRef<number | null>(null);
+  if (view && firstHand.current === undefined) firstHand.current = handNo ?? null;
+  useEffect(() => {
+    if (handNo === undefined || handNo === firstHand.current || handNo === soundedHand.current) return;
+    soundedHand.current = handNo;
+    if (prefs.handSound) playHandStart();
+  }, [handNo]);
+  useEffect(() => {
+    document.addEventListener('pointerdown', primeHandSound, { once: true });
+    return () => document.removeEventListener('pointerdown', primeHandSound);
+  }, []);
   const bigBlind = view?.bigBlind;
   const smallBlind = view?.smallBlind;
   useEffect(() => {
@@ -348,6 +361,7 @@ function Waiting({ view, canEdit, standing, busy, onJoin, onLeave, onStart, onAd
           <div><span className="xs muted">Ciegas</span><strong className="num">{formatMoney(view.smallBlind)}/{formatMoney(view.bigBlind)}</strong></div>
           <div><span className="xs muted">Turno</span><strong className="num">{view.turnSeconds ? `${view.turnSeconds} s` : 'Sin límite'}</strong></div>
           <div><span className="xs muted">Ciegas ×2</span><strong className="num">{view.blinds.minutes ? `cada ${view.blinds.minutes} min` : 'Nunca'}</strong></div>
+          <div><span className="xs muted">Cartas al terminar</span><strong className="num">{view.showAllCards ? 'Todas a la vista' : 'Se muestran a pedido'}</strong></div>
         </div>
         <p className="xs muted">Se puede cambiar al iniciar la partida.</p>
       </section>
@@ -388,7 +402,7 @@ function Waiting({ view, canEdit, standing, busy, onJoin, onLeave, onStart, onAd
 
 function StartModal({ view, open, onClose, onStart, busy }: {
   view: ApiTableView; open: boolean; onClose: () => void; busy: boolean;
-  onStart: (cfg: { buyIn: number; smallBlind: number; bigBlind: number; turnSeconds: number; blindMinutes: number }) => void;
+  onStart: (cfg: { buyIn: number; smallBlind: number; bigBlind: number; turnSeconds: number; blindMinutes: number; showAllCards: boolean }) => void;
 }) {
   const [error, setError] = useState('');
   const [buyIn, setBuyIn] = useState(String(view.buyIn));
@@ -396,6 +410,7 @@ function StartModal({ view, open, onClose, onStart, busy }: {
   const [bb, setBb] = useState(String(view.bigBlind));
   const [turn, setTurn] = useState(String(view.turnSeconds));
   const [blindMin, setBlindMin] = useState(String(view.blinds.minutes));
+  const [showAll, setShowAll] = useState(view.showAllCards);
   const submit = () => {
     const cfg = { buyIn: parseAmount(buyIn), smallBlind: parseAmount(sb), bigBlind: parseAmount(bb) };
     if ([cfg.buyIn, cfg.smallBlind, cfg.bigBlind].some(n => n === null || n <= 0 || !Number.isInteger(n))) {
@@ -410,7 +425,7 @@ function StartModal({ view, open, onClose, onStart, busy }: {
       return setError('Las ciegas se duplican cada 0 (nunca) o entre 5 y 120 minutos.');
     }
     setError('');
-    onStart({ ...cfg, turnSeconds, blindMinutes } as { buyIn: number; smallBlind: number; bigBlind: number; turnSeconds: number; blindMinutes: number });
+    onStart({ ...cfg, turnSeconds, blindMinutes, showAllCards: showAll } as { buyIn: number; smallBlind: number; bigBlind: number; turnSeconds: number; blindMinutes: number; showAllCards: boolean });
   };
   return (
     <Modal open={open} onClose={onClose} title="Iniciar partida"
@@ -425,6 +440,13 @@ function StartModal({ view, open, onClose, onStart, busy }: {
       <p className="xs muted" style={{ marginTop: -6, marginBottom: 12 }}>
         Suben entre manos y se frenan cuando la ciega grande llega a la mitad de la entrada.
       </p>
+      <label className="check-row">
+        <span className="grow">
+          <strong>Mostrar todas las cartas al terminar la mano</strong>
+          <span className="xs muted" style={{ display: 'block' }}>También las de quienes se retiraron.</span>
+        </span>
+        <input type="checkbox" role="switch" checked={showAll} onChange={e => setShowAll(e.target.checked)} />
+      </label>
       {error && <p className="notice notice-err" role="alert">{error}</p>}
       <div className="modal-actions">
         <Btn variant="ghost" onClick={onClose}>Cancelar</Btn>
@@ -962,9 +984,10 @@ const DECK_HINT: Record<Deck, string> = {
 function PrefsModal({ open, onClose, prefs, onChange }: {
   open: boolean; onClose: () => void; prefs: TablePrefs; onChange: (patch: Partial<TablePrefs>) => void;
 }) {
-  const items: { key: 'sound' | 'vibrate' | 'animations' | 'keepAwake' | 'emojis'; label: string; hint: string }[] = [
+  const items: { key: 'sound' | 'vibrate' | 'animations' | 'keepAwake' | 'handSound' | 'emojis'; label: string; hint: string }[] = [
     { key: 'sound', label: 'Sonidos', hint: 'Un tono cuando te toca jugar' },
     { key: 'vibrate', label: 'Vibrar en mi turno', hint: 'Solo en celulares que lo permiten' },
+    { key: 'handSound', label: 'Sonido al empezar la mano', hint: 'Suena al repartir cada mano nueva' },
     { key: 'animations', label: 'Animaciones', hint: 'Reparto de cartas y fichas' },
     { key: 'keepAwake', label: 'Mantener la pantalla encendida', hint: 'Mientras haya una partida en juego' },
     { key: 'emojis', label: 'Emojis', hint: 'Ver los de los demás y poder mandar los tuyos' },

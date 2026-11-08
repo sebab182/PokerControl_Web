@@ -60,7 +60,8 @@ export function SessionPage() {
   if (query.error || !query.data) return <QueryError error={query.error} onRetry={() => { void query.refetch(); }} />;
 
   const session = query.data;
-  const isClosed = session.status === 'closed';
+  const isVoided = session.status === 'voided';
+  const isClosed = session.status === 'closed' || isVoided;
   const editable = !isClosed && canEdit;
   const { totalPot, diff, status } = session.calc;
   const inSession = new Set(session.participants.map(p => p.playerId));
@@ -73,6 +74,32 @@ export function SessionPage() {
     await invalidate();
     after?.();
   });
+
+  /** Anular una partida cerrada corrige los saldos sin borrarla; reactivarla los vuelve a sumar. */
+  const voidSession = async () => {
+    const ok = await confirm({
+      title: 'Anular partida',
+      message: 'Se descuentan sus resultados de los saldos y deja de contar en el ranking y las estadísticas. La partida y sus datos se conservan y se puede reactivar. Los pagos ya registrados no se modifican.',
+      danger: true, confirmLabel: 'Anular',
+    });
+    if (!ok) return;
+    void run(async () => {
+      const res = await api<{ session: ApiSession }>(path(`/sessions/${sessionId}/void`), { method: 'POST', idempotent: true, body: {} });
+      qc.setQueryData(queryKey, res.session);
+      await invalidate();
+      notify('Partida anulada: los saldos se corrigieron.');
+    });
+  };
+  const restoreSession = async () => {
+    const ok = await confirm({ title: 'Reactivar partida', message: 'Sus resultados vuelven a sumarse a los saldos, al ranking y a las estadísticas.', confirmLabel: 'Reactivar' });
+    if (!ok) return;
+    void run(async () => {
+      const res = await api<{ session: ApiSession }>(path(`/sessions/${sessionId}/restore`), { method: 'POST', idempotent: true, body: {} });
+      qc.setQueryData(queryKey, res.session);
+      await invalidate();
+      notify('Partida reactivada: los saldos se volvieron a sumar.');
+    });
+  };
 
   const saveBuy = () => {
     if (!buyFor) return;
@@ -159,8 +186,15 @@ export function SessionPage() {
         {isClosed && Math.abs(diff) > POT_TOLERANCE && (
           <p className="badge badge-amber" style={{ marginTop: 8 }}>Cerrada con diferencia: {formatMoney(diff)}</p>
         )}
-        {isClosed && <p className="badge badge-green" style={{ marginTop: 8, marginLeft: 6 }}>✓ Partida cerrada</p>}
+        {isClosed && !isVoided && <p className="badge badge-green" style={{ marginTop: 8, marginLeft: 6 }}>✓ Partida cerrada</p>}
+        {isVoided && <p className="badge badge-red" style={{ marginTop: 8, marginLeft: 6 }}>Partida anulada</p>}
       </div>
+      {isVoided && (
+        <div className="notice notice-warn" role="status">
+          Esta partida está anulada: no suma a los saldos, al ranking ni a las estadísticas.
+          {canEdit && ' Podés reactivarla desde abajo.'}
+        </div>
+      )}
 
       {session.participants.length > 0 && (
         <div className="row" style={{ marginBottom: 12 }}>
@@ -239,6 +273,14 @@ export function SessionPage() {
           {session.participants.length > 0 && (
             <Btn variant="danger" block busy={busy} onClick={openClose}><Emoji>🏁</Emoji> Cerrar partida</Btn>
           )}
+        </div>
+      )}
+
+      {isClosed && canEdit && (
+        <div className="stack" style={{ marginTop: 8 }}>
+          {isVoided
+            ? <Btn variant="ghost" block busy={busy} onClick={() => { void restoreSession(); }}><Emoji>↩️</Emoji> Reactivar partida</Btn>
+            : <Btn variant="danger" block busy={busy} onClick={() => { void voidSession(); }}><Emoji>🚫</Emoji> Anular partida</Btn>}
         </div>
       )}
 
@@ -360,7 +402,9 @@ export function SessionDebtsPage() {
           </div>
         ))}
       </div>
-      {closed
+      {view.sessionStatus === 'voided'
+        ? <div className="notice notice-warn">Partida anulada: estos resultados no se suman a los saldos.</div>
+        : closed
         ? <p className="small muted" style={{ marginTop: 12 }}>Resultado de la partida y saldo resultante de cada uno. <Link to="/debts">Ver saldos de todos</Link></p>
         : <div className="notice notice-info">Cerrá la partida para sumar estos resultados a los saldos.</div>}
     </>

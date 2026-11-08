@@ -24,7 +24,8 @@ async function toApiSeasons(db: Conn, groupId: string, list: CoreSeason[]) {
     const top = own.length > 0 ? globalRanking(players, sessions, debts, season.id)[0] : undefined;
     return {
       ...season,
-      sessionCount: own.length,
+      // Las anuladas no cuentan.
+      sessionCount: own.filter(s => s.status !== 'voided').length,
       openSessionCount: own.filter(s => s.status === 'active').length,
       leader: top ? { playerId: top.playerId, name: top.name, sessionBalance: top.sessionBalance } : null,
     };

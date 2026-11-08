@@ -1301,6 +1301,7 @@ paths:
                   - blinds
                   - version
                   - turnSeconds
+                  - showAllCards
                   - turnDeadline
                   - serverTime
                   - seats
@@ -1359,6 +1360,8 @@ paths:
                     type: integer
                   turnSeconds:
                     type: integer
+                  showAllCards:
+                    type: boolean
                   turnDeadline:
                     type: string
                     nullable: true
@@ -1660,6 +1663,7 @@ paths:
                   - blinds
                   - version
                   - turnSeconds
+                  - showAllCards
                   - turnDeadline
                   - serverTime
                   - seats
@@ -1718,6 +1722,8 @@ paths:
                     type: integer
                   turnSeconds:
                     type: integer
+                  showAllCards:
+                    type: boolean
                   turnDeadline:
                     type: string
                     nullable: true
@@ -2019,6 +2025,7 @@ paths:
                   - blinds
                   - version
                   - turnSeconds
+                  - showAllCards
                   - turnDeadline
                   - serverTime
                   - seats
@@ -2077,6 +2084,8 @@ paths:
                     type: integer
                   turnSeconds:
                     type: integer
+                  showAllCards:
+                    type: boolean
                   turnDeadline:
                     type: string
                     nullable: true
@@ -2378,6 +2387,7 @@ paths:
                   - blinds
                   - version
                   - turnSeconds
+                  - showAllCards
                   - turnDeadline
                   - serverTime
                   - seats
@@ -2436,6 +2446,8 @@ paths:
                     type: integer
                   turnSeconds:
                     type: integer
+                  showAllCards:
+                    type: boolean
                   turnDeadline:
                     type: string
                     nullable: true
@@ -2742,6 +2754,7 @@ paths:
                   - blinds
                   - version
                   - turnSeconds
+                  - showAllCards
                   - turnDeadline
                   - serverTime
                   - seats
@@ -2800,6 +2813,8 @@ paths:
                     type: integer
                   turnSeconds:
                     type: integer
+                  showAllCards:
+                    type: boolean
                   turnDeadline:
                     type: string
                     nullable: true
@@ -3105,6 +3120,7 @@ paths:
                   - blinds
                   - version
                   - turnSeconds
+                  - showAllCards
                   - turnDeadline
                   - serverTime
                   - seats
@@ -3163,6 +3179,8 @@ paths:
                     type: integer
                   turnSeconds:
                     type: integer
+                  showAllCards:
+                    type: boolean
                   turnDeadline:
                     type: string
                     nullable: true
@@ -3481,6 +3499,7 @@ paths:
                   - blinds
                   - version
                   - turnSeconds
+                  - showAllCards
                   - turnDeadline
                   - serverTime
                   - seats
@@ -3539,6 +3558,8 @@ paths:
                     type: integer
                   turnSeconds:
                     type: integer
+                  showAllCards:
+                    type: boolean
                   turnDeadline:
                     type: string
                     nullable: true
@@ -3843,6 +3864,8 @@ paths:
                   minimum: 0
                   maximum: 120
                   type: integer
+                showAllCards:
+                  type: boolean
       parameters:
         - schema:
             type: string
@@ -3868,6 +3891,7 @@ paths:
                   - blinds
                   - version
                   - turnSeconds
+                  - showAllCards
                   - turnDeadline
                   - serverTime
                   - seats
@@ -3926,6 +3950,8 @@ paths:
                     type: integer
                   turnSeconds:
                     type: integer
+                  showAllCards:
+                    type: boolean
                   turnDeadline:
                     type: string
                     nullable: true
@@ -4227,6 +4253,7 @@ paths:
                   - blinds
                   - version
                   - turnSeconds
+                  - showAllCards
                   - turnDeadline
                   - serverTime
                   - seats
@@ -4285,6 +4312,8 @@ paths:
                     type: integer
                   turnSeconds:
                     type: integer
+                  showAllCards:
+                    type: boolean
                   turnDeadline:
                     type: string
                     nullable: true
@@ -4653,6 +4682,7 @@ paths:
                   - blinds
                   - version
                   - turnSeconds
+                  - showAllCards
                   - turnDeadline
                   - serverTime
                   - seats
@@ -4711,6 +4741,8 @@ paths:
                     type: integer
                   turnSeconds:
                     type: integer
+                  showAllCards:
+                    type: boolean
                   turnDeadline:
                     type: string
                     nullable: true
@@ -5031,6 +5063,7 @@ paths:
                   - blinds
                   - version
                   - turnSeconds
+                  - showAllCards
                   - turnDeadline
                   - serverTime
                   - seats
@@ -5089,6 +5122,8 @@ paths:
                     type: integer
                   turnSeconds:
                     type: integer
+                  showAllCards:
+                    type: boolean
                   turnDeadline:
                     type: string
                     nullable: true
@@ -5402,6 +5437,7 @@ paths:
                   - blinds
                   - version
                   - turnSeconds
+                  - showAllCards
                   - turnDeadline
                   - serverTime
                   - seats
@@ -5460,6 +5496,8 @@ paths:
                     type: integer
                   turnSeconds:
                     type: integer
+                  showAllCards:
+                    type: boolean
                   turnDeadline:
                     type: string
                     nullable: true
@@ -5771,6 +5809,7 @@ paths:
                       - blinds
                       - version
                       - turnSeconds
+                      - showAllCards
                       - turnDeadline
                       - serverTime
                       - seats
@@ -5829,6 +5868,8 @@ paths:
                         type: integer
                       turnSeconds:
                         type: integer
+                      showAllCards:
+                        type: boolean
                       turnDeadline:
                         type: string
                         nullable: true
@@ -8088,6 +8129,9 @@ paths:
                         - type: string
                           enum:
                             - closed
+                        - type: string
+                          enum:
+                            - voided
                     pot:
                       type: number
                     playerCount:
@@ -8194,6 +8238,9 @@ paths:
                       - type: string
                         enum:
                           - closed
+                      - type: string
+                        enum:
+                          - voided
                   seasonId:
                     type: string
                   participants:
@@ -8330,6 +8377,9 @@ paths:
                       - type: string
                         enum:
                           - closed
+                      - type: string
+                        enum:
+                          - voided
                   seasonId:
                     type: string
                   participants:
@@ -8521,6 +8571,9 @@ paths:
                       - type: string
                         enum:
                           - closed
+                      - type: string
+                        enum:
+                          - voided
                   seasonId:
                     type: string
                   participants:
@@ -8662,6 +8715,9 @@ paths:
                       - type: string
                         enum:
                           - closed
+                      - type: string
+                        enum:
+                          - voided
                   seasonId:
                     type: string
                   participants:
@@ -8816,6 +8872,9 @@ paths:
                       - type: string
                         enum:
                           - closed
+                      - type: string
+                        enum:
+                          - voided
                   seasonId:
                     type: string
                   participants:
@@ -8969,6 +9028,9 @@ paths:
                       - type: string
                         enum:
                           - closed
+                      - type: string
+                        enum:
+                          - voided
                   seasonId:
                     type: string
                   participants:
@@ -9110,6 +9172,9 @@ paths:
                       - type: string
                         enum:
                           - closed
+                      - type: string
+                        enum:
+                          - voided
                   seasonId:
                     type: string
                   participants:
@@ -9278,6 +9343,301 @@ paths:
                           - type: string
                             enum:
                               - closed
+                          - type: string
+                            enum:
+                              - voided
+                      seasonId:
+                        type: string
+                      participants:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          title: Participant
+                          type: object
+                          required:
+                            - playerId
+                            - name
+                            - buys
+                            - finalAmount
+                          properties:
+                            playerId:
+                              type: string
+                            name:
+                              type: string
+                            buys:
+                              type: array
+                              items:
+                                additionalProperties: false
+                                title: Buy
+                                type: object
+                                required:
+                                  - id
+                                  - amount
+                                  - timestamp
+                                properties:
+                                  id:
+                                    type: string
+                                  amount:
+                                    type: number
+                                  timestamp:
+                                    type: string
+                            finalAmount:
+                              type: number
+                              nullable: true
+                      calc:
+                        additionalProperties: false
+                        title: SessionCalc
+                        type: object
+                        required:
+                          - totalPot
+                          - totalOut
+                          - diff
+                          - status
+                        properties:
+                          totalPot:
+                            type: number
+                          totalOut:
+                            type: number
+                          diff:
+                            type: number
+                          status:
+                            anyOf:
+                              - type: string
+                                enum:
+                                  - ok
+                              - type: string
+                                enum:
+                                  - faltan
+                              - type: string
+                                enum:
+                                  - sobran
+                      missingResults:
+                        type: array
+                        items:
+                          type: string
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /api/v1/groups/{groupId}/sessions/{id}/void:
+    post:
+      tags: *a6
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+        - schema:
+            type: string
+          in: path
+          name: id
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: CloseSessionResponse
+                type: object
+                required:
+                  - session
+                properties:
+                  session:
+                    additionalProperties: false
+                    title: Session
+                    type: object
+                    required:
+                      - id
+                      - name
+                      - createdAt
+                      - closedAt
+                      - status
+                      - seasonId
+                      - participants
+                      - calc
+                      - missingResults
+                    properties:
+                      id:
+                        type: string
+                      name:
+                        type: string
+                      createdAt:
+                        type: string
+                      closedAt:
+                        type: string
+                        nullable: true
+                      status:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - active
+                          - type: string
+                            enum:
+                              - closed
+                          - type: string
+                            enum:
+                              - voided
+                      seasonId:
+                        type: string
+                      participants:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          title: Participant
+                          type: object
+                          required:
+                            - playerId
+                            - name
+                            - buys
+                            - finalAmount
+                          properties:
+                            playerId:
+                              type: string
+                            name:
+                              type: string
+                            buys:
+                              type: array
+                              items:
+                                additionalProperties: false
+                                title: Buy
+                                type: object
+                                required:
+                                  - id
+                                  - amount
+                                  - timestamp
+                                properties:
+                                  id:
+                                    type: string
+                                  amount:
+                                    type: number
+                                  timestamp:
+                                    type: string
+                            finalAmount:
+                              type: number
+                              nullable: true
+                      calc:
+                        additionalProperties: false
+                        title: SessionCalc
+                        type: object
+                        required:
+                          - totalPot
+                          - totalOut
+                          - diff
+                          - status
+                        properties:
+                          totalPot:
+                            type: number
+                          totalOut:
+                            type: number
+                          diff:
+                            type: number
+                          status:
+                            anyOf:
+                              - type: string
+                                enum:
+                                  - ok
+                              - type: string
+                                enum:
+                                  - faltan
+                              - type: string
+                                enum:
+                                  - sobran
+                      missingResults:
+                        type: array
+                        items:
+                          type: string
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /api/v1/groups/{groupId}/sessions/{id}/restore:
+    post:
+      tags: *a6
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+        - schema:
+            type: string
+          in: path
+          name: id
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: CloseSessionResponse
+                type: object
+                required:
+                  - session
+                properties:
+                  session:
+                    additionalProperties: false
+                    title: Session
+                    type: object
+                    required:
+                      - id
+                      - name
+                      - createdAt
+                      - closedAt
+                      - status
+                      - seasonId
+                      - participants
+                      - calc
+                      - missingResults
+                    properties:
+                      id:
+                        type: string
+                      name:
+                        type: string
+                      createdAt:
+                        type: string
+                      closedAt:
+                        type: string
+                        nullable: true
+                      status:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - active
+                          - type: string
+                            enum:
+                              - closed
+                          - type: string
+                            enum:
+                              - voided
                       seasonId:
                         type: string
                       participants:
@@ -9426,6 +9786,9 @@ paths:
                       - type: string
                         enum:
                           - closed
+                      - type: string
+                        enum:
+                          - voided
         4XX:
           description: Default Response
           content:
