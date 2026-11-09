@@ -927,6 +927,8 @@ test.describe('conexión remota', () => {
       await expect(page2.getByTestId(`slot-${street}`).getByRole('img')).toBeVisible({ timeout: 15000 });
     }
     await page.getByRole('button', { name: 'Listo' }).click();
+    // Con todas las fotos cargadas, la pantalla de la mesa no se ensancha ni tiene scroll horizontal.
+    await checkPage(page, 'conexión remota: en la mesa con las fotos cargadas');
     // El flop ocupa 3/5 del ancho de la mesa; el turn y el river, 1/5 cada uno.
     const flopW = (await page2.getByTestId('slot-flop').boundingBox())!.width;
     const turnW = (await page2.getByTestId('slot-turn').boundingBox())!.width;

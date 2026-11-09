@@ -89,12 +89,14 @@ export function ShotCamera({ steps, initial, onShot, onClose }: {
           <>
             <video ref={video} className="shot-video" autoPlay playsInline muted aria-label="Vista de la cámara"
               onLoadedData={() => setReady(true)} />
-            <Btn block busy={sending} disabled={!ready || !current} onClick={() => { const el = video.current; if (el) void send(() => frameToJpeg(el)); }} data-testid="shot-button">
-              Sacar y enviar{current ? `: ${current.label}` : ''}
-            </Btn>
-            <div className="row">
-              <Btn variant="ghost" className="grow" onClick={() => setFacing(f => (f === 'environment' ? 'user' : 'environment'))}>Cambiar de cámara</Btn>
-              <Btn variant="ghost" className="grow" onClick={onClose}>Listo</Btn>
+            <div className="shot-actions">
+              <Btn block busy={sending} disabled={!ready || !current} onClick={() => { const el = video.current; if (el) void send(() => frameToJpeg(el)); }} data-testid="shot-button">
+                Sacar y enviar{current ? `: ${current.label}` : ''}
+              </Btn>
+              <div className="row">
+                <Btn variant="ghost" className="grow" onClick={() => setFacing(f => (f === 'environment' ? 'user' : 'environment'))}>Cambiar de cámara</Btn>
+                <Btn variant="ghost" className="grow" onClick={onClose}>Listo</Btn>
+              </div>
             </div>
           </>
         )}

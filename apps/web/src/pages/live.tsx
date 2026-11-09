@@ -289,7 +289,7 @@ export function LiveRoom({ code, screenMode = false }: { code: string; screenMod
           <div className="card stack" aria-label="Cargar las cartas">
             <p className="small muted">Primero las cartas de cada jugador remoto (las ve solo él) y después el flop, el turn y el river, a medida que salen. La foto se envía al sacarla.</p>
             <Btn busy={busy} onClick={() => setShot({ step: steps.find(x => !x.done)?.id ?? steps[0]?.id ?? 'board:flop' })} data-testid="open-shot"><Emoji>📷</Emoji> Abrir la cámara</Btn>
-            <div className="row" role="group" aria-label="Estado de las fotos">
+            <div className="live-steps" role="group" aria-label="Estado de las fotos">
               {steps.map(x => (
                 <Btn key={x.id} variant={x.done ? 'ghost' : 'primary'} onClick={() => setShot({ step: x.id })} data-testid={`step-${x.id}`}>{x.done ? '✅ ' : ''}{x.label}</Btn>
               ))}
