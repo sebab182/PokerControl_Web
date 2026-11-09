@@ -44,3 +44,22 @@ export async function frameToJpeg(video: HTMLVideoElement): Promise<string> {
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
   return canvasToBase64(canvas);
 }
+
+/** Junta las cartas recortadas del video, de izquierda a derecha, en una sola imagen JPEG (base64). */
+export async function cardsToJpeg(cards: { width: number; height: number; data: Uint8ClampedArray }[]): Promise<string> {
+  const gap = 10;
+  const h = Math.max(...cards.map(c => c.height));
+  const canvas = document.createElement('canvas');
+  canvas.width = cards.reduce((w, c) => w + c.width, 0) + gap * (cards.length - 1);
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('No se pudo procesar la foto.');
+  ctx.fillStyle = '#14301f';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  let x = 0;
+  for (const c of cards) {
+    ctx.putImageData(new ImageData(new Uint8ClampedArray(c.data), c.width, c.height), x, 0);
+    x += c.width + gap;
+  }
+  return canvasToBase64(canvas);
+}

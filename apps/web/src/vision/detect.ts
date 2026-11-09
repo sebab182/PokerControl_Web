@@ -15,7 +15,12 @@ export interface CardBox {
   /** Esquinas del rectángulo en coordenadas de la imagen original. */
   corners: Pt[];
   center: Pt;
-  /** Dos esquinas listas para clasificar: [arriba-izquierda, abajo-derecha], NCHW 3x56x40 en 0..1. */
+  /**
+   * Marco de la carta enderezada: `o` es la esquina de arriba a la izquierda y `u`, `v` los lados completos (ancho y alto),
+   * en coordenadas de la imagen original. Se orienta con el alto hacia abajo en la imagen (carta "derecha" para quien mira).
+   */
+  frame: { o: Pt; u: Pt; v: Pt };
+  /** Dos esquinas listas para clasificar: [arriba-izquierda, abajo-derecha], NCHW 3x56x40 en 0..1. Vacías si `corners` es false. */
   crops: [Float32Array, Float32Array];
 }
 
@@ -117,6 +122,8 @@ export interface DetectOptions {
   /** Mínimo de área de la mancha como fracción del cuadro. */
   minArea?: number;
   maxArea?: number;
+  /** Si es false no se recortan las esquinas para el clasificador (más rápido). Por defecto true. */
+  corners?: boolean;
 }
 
 export function detectCards(src: ImageData, opts: DetectOptions = {}): CardBox[] {
@@ -192,11 +199,62 @@ export function detectCards(src: ImageData, opts: DetectOptions = {}): CardBox[]
     const corner = (sa: number, sb: number): Pt => toFull({ x: c.x + a.x * hs * sa + b.x * hl2 * sb, y: c.y + a.y * hs * sa + b.y * hl2 * sb });
     const tl = corner(-1, -1), br = corner(1, 1);
     const u = { x: (a.x * 2 * hs) / k, y: (a.y * 2 * hs) / k }, v = { x: (b.x * 2 * hl2) / k, y: (b.y * 2 * hl2) / k };
+    const neg = (p: Pt): Pt => ({ x: -p.x, y: -p.y });
+    // La carta enderezada se muestra con su alto hacia abajo en la imagen; el giro de 180° es indistinguible sin leerla.
+    const frame = v.y >= 0 ? { o: tl, u, v } : { o: br, u: neg(u), v: neg(v) };
+    const withCorners = opts.corners !== false;
     found.push({
       corners: [corner(-1, -1), corner(1, -1), corner(1, 1), corner(-1, 1)],
       center: toFull(c),
-      crops: [sampleCorner(src, tl, u, v), sampleCorner(src, br, { x: -u.x, y: -u.y }, { x: -v.x, y: -v.y })],
+      frame,
+      crops: withCorners
+        ? [sampleCorner(src, tl, u, v), sampleCorner(src, br, neg(u), neg(v))]
+        : [new Float32Array(0), new Float32Array(0)],
     });
   }
   return found;
+}
+
+export interface CardPixels { width: number; height: number; data: Uint8ClampedArray }
+
+/**
+ * Recorta la carta enderezada (vertical, con el alto hacia abajo) en `width`x`height`. `box` viene de una imagen de trabajo
+ * más chica que `src` (la foto completa): `scale` convierte las coordenadas de una a otra.
+ */
+export function extractCard(src: ImageData, box: CardBox, scale: number, width = 160, height = 224): CardPixels {
+  const out = new Uint8ClampedArray(width * height * 4);
+  const { data, width: sw, height: sh } = src;
+  const { o, u, v } = box.frame;
+  for (let y = 0; y < height; y++) {
+    const t = (y + 0.5) / height;
+    for (let x = 0; x < width; x++) {
+      const s = (x + 0.5) / width;
+      const px = (o.x + u.x * s + v.x * t) * scale, py = (o.y + u.y * s + v.y * t) * scale;
+      const x0 = Math.max(0, Math.min(sw - 2, Math.floor(px))), y0 = Math.max(0, Math.min(sh - 2, Math.floor(py)));
+      const fx = Math.max(0, Math.min(1, px - x0)), fy = Math.max(0, Math.min(1, py - y0));
+      const i00 = (y0 * sw + x0) * 4, i10 = i00 + 4, i01 = i00 + sw * 4, i11 = i01 + 4;
+      const j = (y * width + x) * 4;
+      for (let ch = 0; ch < 3; ch++) {
+        const top = data[i00 + ch] * (1 - fx) + data[i10 + ch] * fx;
+        const bot = data[i01 + ch] * (1 - fx) + data[i11 + ch] * fx;
+        out[j + ch] = top * (1 - fy) + bot * fy;
+      }
+      out[j + 3] = 255;
+    }
+  }
+  return { width, height, data: out };
+}
+
+/** Nitidez: promedio del gradiente de los grises (0 = lisa; una carta con texto nítido da bastante más). */
+export function sharpness(p: CardPixels): number {
+  const { width: w, height: h, data } = p;
+  const g = (x: number, y: number): number => { const i = (y * w + x) * 4; return (data[i] * 77 + data[i + 1] * 150 + data[i + 2] * 29) >> 8; };
+  let sum = 0, n = 0;
+  for (let y = 1; y < h - 1; y += 2) {
+    for (let x = 1; x < w - 1; x += 2) {
+      sum += Math.abs(g(x + 1, y) - g(x - 1, y)) + Math.abs(g(x, y + 1) - g(x, y - 1));
+      n++;
+    }
+  }
+  return n ? sum / n : 0;
 }

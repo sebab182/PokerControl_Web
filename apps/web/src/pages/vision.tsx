@@ -9,6 +9,8 @@ import { Stabilizer, type Stable } from '../vision/stabilize';
 
 const FRAME_MAX = 640;
 const EVERY_MS = 120;
+/** Debajo de esto la lectura se descarta: casi siempre es una mancha clara que no es una carta. */
+const MIN_CONFIDENCE = 0.35;
 
 interface Stats { ms: number; fps: number; found: number }
 
@@ -68,13 +70,13 @@ export function VisionPage() {
     try {
       const img = cv.getContext('2d', { willReadFrequently: true })?.getImageData(0, 0, cv.width, cv.height);
       if (!img) return;
-      const boxes = detectCards(img);
+      const boxes = detectCards(img, { minArea: 0.02 });
       const readings = await readCards(boxes);
       draw(boxes, readings, cv.width, cv.height);
       if (!frozen.current) {
         setLive(readings);
-        if (smooth) setStable(stabilizer.current.update(boxes.map((b, i) => ({ center: b.center, reading: readings[i] }))));
-        else setStable(readings.map((r, i) => ({ id: i, card: r.card, confidence: r.confidence, votes: 1, center: boxes[i].center })));
+        if (smooth) setStable(stabilizer.current.update(boxes.map((b, i) => ({ center: b.center, reading: readings[i] })).filter(it => it.reading.confidence >= MIN_CONFIDENCE)));
+        else setStable(readings.map((r, i) => ({ id: i, card: r.card, confidence: r.confidence, votes: 1, center: boxes[i].center })).filter(s => s.confidence >= MIN_CONFIDENCE));
       }
       const ms = performance.now() - t0;
       setStats({ ms: Math.round(ms), fps: Math.round(1000 / Math.max(ms, EVERY_MS)), found: boxes.length });
