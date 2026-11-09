@@ -786,3 +786,13 @@ input[type="text"], input[type="search"], select {
 /* Los pasos de la carga de cartas: envuelven en el celular (con muchos remotos no caben en una fila). */
 .live-steps { display: flex; flex-wrap: wrap; gap: 8px; }
 .live-steps .btn { min-width: 0; padding: 0 12px; font-size: 14px; white-space: normal; }
+
+/* Pantalla de prueba del reconocimiento de cartas (admins) */
+.vision-actions { flex-wrap: wrap; gap: 8px; }
+.vision-file { position: relative; overflow: hidden; cursor: pointer; }
+.vision-file input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.vision-stage { position: relative; width: 100%; max-width: 640px; margin: 12px 0; background: #000; border-radius: 12px; overflow: hidden; }
+.vision-video, .vision-work { display: block; width: 100%; height: auto; }
+.vision-overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.vision-cards { list-style: none; padding: 0; display: flex; flex-wrap: wrap; gap: 12px; }
+.vision-cards li { display: flex; flex-direction: column; align-items: center; gap: 4px; }

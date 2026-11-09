@@ -14,6 +14,7 @@ import { SessionAnalysisPage } from './pages/analysis';
 import { LivePage } from './pages/live';
 import { SessionDebtsPage, SessionPage } from './pages/session';
 import { SettingsPage } from './pages/settings';
+import { VisionPage } from './pages/vision';
 import { TablePage } from './pages/table';
 import './styles.css';
 
@@ -123,6 +124,7 @@ function App() {
           <Route path="/ranking" element={<RankingPage />} />
           <Route path="/debts" element={<PendingDebtsPage />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/admin/vision" element={<VisionPage />} />
           <Route path="*" element={<Empty icon="🔍" title="Página no encontrada" />} />
         </Route>
       </Routes>

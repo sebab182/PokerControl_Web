@@ -1,6 +1,7 @@
 import type { ApiAdminOverview, ApiGroup, ApiImportResult, ApiPlayer } from '@pokercontrol/contracts';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../api';
 import { Avatar, Btn, Emoji, Loading, Modal, QueryError, TextField, useAction, useFeedback } from '../components/ui';
 import { useGroup, useSession, useTheme, type Theme } from '../context';
@@ -300,6 +301,7 @@ export function SettingsPage() {
       </div>
 
       {canEdit && <BackupCard />}
+      {canEdit && <section className="card"><h2>Reconocimiento de cartas</h2><p className="muted">Prueba del modelo con la cámara (solo administradores).</p><Link className="btn btn-ghost" to="/admin/vision">Abrir prueba</Link></section>}
 
       <div className="card">
         <h2><Emoji>♠</Emoji> PokerControl</h2>

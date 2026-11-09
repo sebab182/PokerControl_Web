@@ -17,6 +17,7 @@
     "@react-oauth/google": "^0.12.1",
     "@tanstack/react-query": "^5.60.0",
     "lottie-web": "5.13.0",
+    "onnxruntime-web": "1.22.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.0.0"

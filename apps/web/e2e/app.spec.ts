@@ -458,6 +458,40 @@ test('roles: master, solo lectura con nick, promoción y archivados', async ({ p
   expect((await me.json()).user.role).toBe('admin');
 });
 
+test('reconocimiento de cartas: solo administradores; una imagen se lee y se dibuja', async ({ page, browser }) => {
+  await login(page, 'Master', 'master');
+  const code = await createGroup(page);
+
+  // Un lector no ve el enlace ni la pantalla.
+  const context2 = await browser.newContext();
+  const reader = await context2.newPage();
+  await login(reader, 'Caro', 'reader');
+  await reader.goto('/');
+  await reader.getByLabel('Código de invitación').fill(code);
+  await reader.getByRole('button', { name: 'Unirme' }).click();
+  await reader.getByLabel('Tu nick').fill('Caro');
+  await reader.getByRole('button', { name: 'Crear mi jugador' }).click();
+  await expect(reader.getByRole('heading', { name: 'Ranking', exact: true })).toBeVisible();
+  await reader.goto('/settings');
+  await expect(reader.getByRole('link', { name: 'Abrir prueba' })).toHaveCount(0);
+  await reader.goto('/admin/vision');
+  await expect(reader.getByText('Solo para administradores')).toBeVisible();
+  await context2.close();
+
+  // El administrador llega desde Ajustes, sube la imagen y ve las dos cartas dibujadas.
+  await page.goto('/settings');
+  await page.getByRole('link', { name: 'Abrir prueba' }).click();
+  await expect(page.getByTestId('vision-model')).toHaveText('Modelo listo', { timeout: 30_000 });
+  await checkPage(page, 'prueba de reconocimiento');
+  await page.getByTestId('vision-file').setInputFiles('e2e/fixtures/cards.png');
+  const cards = page.getByTestId('vision-cards').getByRole('img');
+  await expect(cards).toHaveCount(2, { timeout: 15_000 });
+  await expect(page.getByTestId('vision-cards').getByRole('img', { name: 'rey de picas' })).toBeVisible();
+  await expect(page.getByTestId('vision-cards').getByRole('img', { name: '10 de diamantes' })).toBeVisible();
+  await expect(page.getByTestId('vision-stats')).toContainText('2 carta(s) detectada(s)');
+  await checkPage(page, 'prueba de reconocimiento con resultado');
+});
+
 test('anular una partida cerrada la deja marcada, corrige los saldos y se puede reactivar', async ({ page }) => {
   await login(page, 'Master', 'master');
   await createGroup(page);
