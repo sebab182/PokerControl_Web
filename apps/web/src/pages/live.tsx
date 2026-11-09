@@ -6,7 +6,7 @@ import { ApiRequestError, api, apiBlob } from '../api';
 import { EmojiFab, EmojiLayer } from '../components/emoji';
 import { Avatar, Btn, Emoji, Empty, Loading, QueryError, useAction, useFeedback } from '../components/ui';
 import { useGroup } from '../context';
-import { resizeToJpeg } from '../photo';
+import { ShotCamera, type ShotStep } from '../components/ShotCamera';
 import { shareText } from '../share';
 import { useTablePrefs } from '../tablePrefs';
 import { useTableSocket } from '../useTableSocket';
@@ -57,33 +57,6 @@ function MyCards({ code, photo }: { code: string; photo: ApiLivePhotoMeta | unde
     </div>
   );
 }
-
-/** Botón que abre la cámara del celular, reduce la foto y la sube. */
-function PhotoButton({ label, busy, onPhoto, done, testId }: { label: string; busy: boolean; onPhoto: (base64: string) => Promise<void>; done?: boolean; testId: string }) {
-  const input = useRef<HTMLInputElement>(null);
-  const { notify } = useFeedback();
-  const [working, setWorking] = useState(false);
-  const pick = async (file: File | undefined) => {
-    if (!file) return;
-    setWorking(true);
-    try {
-      await onPhoto(await resizeToJpeg(file));
-    } catch (e) {
-      notify(e instanceof ApiRequestError ? e.message : 'No se pudo mandar la foto.');
-    } finally {
-      setWorking(false);
-      if (input.current) input.current.value = '';
-    }
-  };
-  return (
-    <>
-      <input ref={input} type="file" accept="image/*" capture="environment" className="sr-only" tabIndex={-1} aria-hidden="true"
-        data-testid={testId} onChange={e => { void pick(e.target.files?.[0]); }} />
-      <Btn variant={done ? 'ghost' : 'primary'} busy={busy || working} onClick={() => input.current?.click()}><Emoji>{done ? '✅' : '📷'}</Emoji> {label}</Btn>
-    </>
-  );
-}
-
 
 /** La mesa «como en la mesa online»: un paño con el flop, el turn y el river, y tus cartas debajo. */
 function Felt({ code, view }: { code: string; view: ApiLiveView }) {
@@ -153,6 +126,8 @@ export function LiveRoom({ code, screenMode = false }: { code: string; screenMod
   const [joinError, setJoinError] = useState<string | null>(null);
   const [chosen, setChosen] = useState<ApiLiveMode | null>(screenMode ? 'table' : null);
   const [cameraOn, setCameraOn] = useState(true);
+  // La cámara de la app para cargar las cartas (null = cerrada); `step` es el paso con el que se abre.
+  const [shot, setShot] = useState<{ step: string } | null>(null);
 
   const query = useQuery({
     queryKey,
@@ -238,6 +213,17 @@ export function LiveRoom({ code, screenMode = false }: { code: string; screenMod
     const ok = await confirm({ title: 'Cerrar la conexión remota', message: 'Los remotos se desconectan y se borran todas las fotos. La partida sigue abierta.', danger: true, confirmLabel: 'Cerrar' });
     if (ok) void post('close');
   };
+  /** Los pasos de la carga: cartas de cada remoto y después flop, turn y river. */
+  const steps: ShotStep[] = [
+    ...remotes.map(m => ({ id: `hole:${m.playerId}`, label: `Cartas de ${m.name}`, done: !!view.sent[m.playerId] })),
+    ...STREETS.map(st => ({ id: `board:${st.id}`, label: st.label, done: view.board.some(p => p.street === st.id) })),
+  ];
+  const onShot = async (stepId: string, image: string) => {
+    const [kind, value] = stepId.split(':');
+    await sendPhoto(kind === 'hole'
+      ? { kind: 'hole', playerId: value, image }
+      : { kind: 'board', street: value as ApiLiveStreet, image });
+  };
   const switchMode = (next: ApiLiveMode) => {
     if (next === 'table' && state.local && state.source === 'face') state.stop();
     startedVoice.current = false;
@@ -301,18 +287,11 @@ export function LiveRoom({ code, screenMode = false }: { code: string; screenMod
         <>
           <h2 className="section-title">Cargar las cartas</h2>
           <div className="card stack" aria-label="Cargar las cartas">
-            <p className="small muted">Primero las cartas de cada jugador remoto (las ve solo él) y después el flop, el turn y el river, a medida que salen.</p>
-            <h3 className="xs muted strong">1 · Cartas de los jugadores</h3>
-            {remotes.length === 0 && <p className="muted small">Todavía no hay jugadores a distancia conectados.</p>}
-            {remotes.map(m => (
-              <PhotoButton key={m.userId} testId={`photo-hole-${m.name}`} label={`Cartas de ${m.name}`} done={!!view.sent[m.playerId]} busy={busy}
-                onPhoto={image => sendPhoto({ kind: 'hole', playerId: m.playerId, image })} />
-            ))}
-            <h3 className="xs muted strong">2 · La mesa</h3>
-            <div className="row">
-              {STREETS.map(st => (
-                <PhotoButton key={st.id} testId={`photo-${st.id}`} label={st.label} done={view.board.some(p => p.street === st.id)} busy={busy}
-                  onPhoto={image => sendPhoto({ kind: 'board', street: st.id, image })} />
+            <p className="small muted">Primero las cartas de cada jugador remoto (las ve solo él) y después el flop, el turn y el river, a medida que salen. La foto se envía al sacarla.</p>
+            <Btn busy={busy} onClick={() => setShot({ step: steps.find(x => !x.done)?.id ?? steps[0]?.id ?? 'board:flop' })} data-testid="open-shot"><Emoji>📷</Emoji> Abrir la cámara</Btn>
+            <div className="row" role="group" aria-label="Estado de las fotos">
+              {steps.map(x => (
+                <Btn key={x.id} variant={x.done ? 'ghost' : 'primary'} onClick={() => setShot({ step: x.id })} data-testid={`step-${x.id}`}>{x.done ? '✅ ' : ''}{x.label}</Btn>
               ))}
             </div>
             <Btn variant="ghost" busy={busy} onClick={() => { void newHand(); }}>Nueva mano (borra las fotos)</Btn>
@@ -379,6 +358,7 @@ export function LiveRoom({ code, screenMode = false }: { code: string; screenMod
         </>
       )}
 
+      {shot && mode === 'table' && <ShotCamera steps={steps} initial={shot.step} onShot={onShot} onClose={() => setShot(null)} />}
       <EmojiLayer handler={emojiHandler} enabled={prefs.emojis} sound={prefs.emojiSound} />
       {prefs.emojis && me && !screenMode && <EmojiFab placement="page" live={socket.live} onSend={socket.sendEmoji} />}
     </VideoProvider>

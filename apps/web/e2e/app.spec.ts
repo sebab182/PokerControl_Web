@@ -901,19 +901,39 @@ test.describe('conexión remota', () => {
     // El remoto también se ve y se oye: el host ve su cara.
     await expect(page.getByTestId('face-Nico').locator('video.live-face-video')).toBeVisible({ timeout: 20000 });
 
-    // Primero las cartas del remoto; luego flop, turn y river.
-    const jpeg = Buffer.from(execJpeg(), 'base64');
-    const file = { name: 'cartas.jpg', mimeType: 'image/jpeg', buffer: jpeg };
-    await page.getByTestId('photo-hole-Nico').setInputFiles(file);
+    // Primero las cartas del remoto; luego flop, turn y river. La foto sale al tocar «Sacar y enviar»: sin confirmación.
+    await page.getByTestId('open-shot').click();
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await expect(page.getByTestId('shot-button')).toBeEnabled({ timeout: 15000 });
+    await checkPage(page, 'conexión remota: cámara para cargar las cartas');
+    await expect(page.getByTestId('shot-button')).toContainText('Cartas de Nico');
+    await page.getByTestId('shot-button').click();
+    await expect(page.getByTestId('shot-status')).toHaveText('Enviado: Cartas de Nico ✓', { timeout: 15000 });
     await expect(page2.getByRole('button', { name: 'Ver mis cartas' })).toBeVisible({ timeout: 15000 });
     await expect(page2.getByRole('img', { name: 'Tus cartas' })).toBeHidden();
     await page2.getByRole('button', { name: 'Ver mis cartas' }).click();
-    await expect(page2.getByRole('img', { name: 'Tus cartas' })).toBeVisible();
-    for (const street of ['flop', 'turn', 'river']) {
+    const mine = page2.getByRole('img', { name: 'Tus cartas' });
+    await expect(mine).toBeVisible();
+    // «Tus cartas» es una sección compacta: no ocupa todo el ancho.
+    const feltBox = (await page2.getByTestId('live-felt').boundingBox())!;
+    const mineBox = (await mine.boundingBox())!;
+    expect(mineBox.width).toBeLessThan(feltBox.width * 0.6);
+    // El paso avanzó solo al flop: se envía el flop, el turn y el river con un toque cada uno.
+    for (const [street, label] of [['flop', 'Flop'], ['turn', 'Turn'], ['river', 'River']] as const) {
+      await expect(page.getByTestId('shot-button')).toContainText(label);
       await page.waitForTimeout(1100);
-      await page.getByTestId(`photo-${street}`).setInputFiles(file);
+      await page.getByTestId('shot-button').click();
+      await expect(page.getByTestId('shot-status')).toHaveText(`Enviado: ${label} ✓`, { timeout: 15000 });
       await expect(page2.getByTestId(`slot-${street}`).getByRole('img')).toBeVisible({ timeout: 15000 });
     }
+    await page.getByRole('button', { name: 'Listo' }).click();
+    // El flop ocupa 3/5 del ancho de la mesa; el turn y el river, 1/5 cada uno.
+    const flopW = (await page2.getByTestId('slot-flop').boundingBox())!.width;
+    const turnW = (await page2.getByTestId('slot-turn').boundingBox())!.width;
+    const riverW = (await page2.getByTestId('slot-river').boundingBox())!.width;
+    expect(flopW / turnW).toBeGreaterThan(2.6);
+    expect(flopW / turnW).toBeLessThan(3.4);
+    expect(Math.abs(turnW - riverW)).toBeLessThan(3);
     await checkPage(page2, 'conexión remota: con cartas');
 
     // Un segundo transmisor no puede: de la mesa transmite una sola persona.
@@ -926,11 +946,6 @@ test.describe('conexión remota', () => {
     await context2.close();
   });
 });
-
-/** Un JPEG de 32x24 (en base64) para las fotos de prueba; el navegador lo reduce y lo vuelve a codificar. */
-function execJpeg(): string {
-  return '/9j/4AAQSkZJRgABAgAAAQABAAD//gAQTGF2YzYwLjMxLjEwMgD/2wBDAAgEBAQEBAUFBQUFBQYGBgYGBgYGBgYGBgYHBwcICAgHBwcGBgcHCAgICAkJCQgICAgJCQoKCgwMCwsODg4RERT/xABNAAEBAAAAAAAAAAAAAAAAAAAABgEBAQEAAAAAAAAAAAAAAAAAAAYHEAEAAAAAAAAAAAAAAAAAAAAAEQEAAAAAAAAAAAAAAAAAAAAA/8AAEQgAGAAgAwEiAAIRAAMRAP/aAAwDAQACEQMRAD8AiwEo38AAAAAB/9k=';
-}
 
 test.describe('mesa online: video', () => {
   // Cámara y micrófono falsos del navegador (ver launchOptions en playwright.config.ts).
