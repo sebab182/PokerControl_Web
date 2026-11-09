@@ -6239,6 +6239,7 @@ paths:
                     type: string
                   message:
                     type: string
+  /api/v1/groups/{groupId}/live/current:
     get:
       tags: *a4
       parameters:
@@ -6247,11 +6248,6 @@ paths:
           in: path
           name: groupId
           required: true
-        - schema:
-            type: string
-          in: path
-          name: id
-          required: true
       responses:
         "200":
           description: Default Response
@@ -6259,11 +6255,24 @@ paths:
             application/json:
               schema:
                 additionalProperties: false
-                title: LiveRoomRefResponse
+                title: LiveCurrent
                 type: object
                 required:
+                  - session
                   - room
                 properties:
+                  session:
+                    additionalProperties: false
+                    type: object
+                    required:
+                      - id
+                      - name
+                    properties:
+                      id:
+                        type: string
+                      name:
+                        type: string
+                    nullable: true
                   room:
                     additionalProperties: false
                     title: LiveRoomRef
@@ -6368,15 +6377,21 @@ paths:
                     required:
                       - userId
                       - playerId
-                      - operator
+                      - mode
                     properties:
                       userId:
                         type: string
                       playerId:
                         type: string
                         nullable: true
-                      operator:
-                        type: boolean
+                      mode:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - table
+                          - type: string
+                            enum:
+                              - remote
                     nullable: true
                   canManage:
                     type: boolean
@@ -6384,13 +6399,13 @@ paths:
                     type: array
                     items:
                       additionalProperties: false
-                      title: LiveRemote
+                      title: LiveMember
                       type: object
                       required:
                         - playerId
                         - name
                         - online
-                        - operator
+                        - mode
                         - userId
                       properties:
                         playerId:
@@ -6399,8 +6414,14 @@ paths:
                           type: string
                         online:
                           type: boolean
-                        operator:
-                          type: boolean
+                        mode:
+                          anyOf:
+                            - type: string
+                              enum:
+                                - table
+                            - type: string
+                              enum:
+                                - remote
                         userId:
                           type: string
                   board:
@@ -6413,6 +6434,7 @@ paths:
                         - id
                         - at
                         - handNo
+                        - street
                       properties:
                         id:
                           type: string
@@ -6420,6 +6442,22 @@ paths:
                           type: string
                         handNo:
                           type: integer
+                        street:
+                          anyOf:
+                            - anyOf:
+                                - type: string
+                                  enum:
+                                    - flop
+                                - type: string
+                                  enum:
+                                    - turn
+                                - type: string
+                                  enum:
+                                    - river
+                            - type: object
+                              nullable: true
+                              enum:
+                                - null
                   myCards:
                     type: array
                     items:
@@ -6430,6 +6468,7 @@ paths:
                         - id
                         - at
                         - handNo
+                        - street
                       properties:
                         id:
                           type: string
@@ -6437,6 +6476,22 @@ paths:
                           type: string
                         handNo:
                           type: integer
+                        street:
+                          anyOf:
+                            - anyOf:
+                                - type: string
+                                  enum:
+                                    - flop
+                                - type: string
+                                  enum:
+                                    - turn
+                                - type: string
+                                  enum:
+                                    - river
+                            - type: object
+                              nullable: true
+                              enum:
+                                - null
                   sent:
                     type: object
                     additionalProperties:
@@ -6460,174 +6515,23 @@ paths:
   /api/v1/groups/{groupId}/live/{code}/join:
     post:
       tags: *a4
-      parameters:
-        - schema:
-            type: string
-          in: path
-          name: groupId
-          required: true
-        - schema:
-            minLength: 4
-            maxLength: 16
-            type: string
-          in: path
-          name: code
-          required: true
-      responses:
-        "200":
-          description: Default Response
-          content:
-            application/json:
-              schema:
-                additionalProperties: false
-                title: LiveView
-                type: object
-                required:
-                  - id
-                  - code
-                  - status
-                  - sessionId
-                  - sessionName
-                  - version
-                  - handNo
-                  - me
-                  - canManage
-                  - members
-                  - board
-                  - myCards
-                  - sent
-                properties:
-                  id:
-                    type: string
-                  code:
-                    type: string
-                  status:
-                    anyOf:
-                      - type: string
-                        enum:
-                          - open
-                      - type: string
-                        enum:
-                          - closed
-                  sessionId:
-                    type: string
-                  sessionName:
-                    type: string
-                  version:
-                    type: integer
-                  handNo:
-                    type: integer
-                  me:
-                    additionalProperties: false
-                    type: object
-                    required:
-                      - userId
-                      - playerId
-                      - operator
-                    properties:
-                      userId:
-                        type: string
-                      playerId:
-                        type: string
-                        nullable: true
-                      operator:
-                        type: boolean
-                    nullable: true
-                  canManage:
-                    type: boolean
-                  members:
-                    type: array
-                    items:
-                      additionalProperties: false
-                      title: LiveRemote
-                      type: object
-                      required:
-                        - playerId
-                        - name
-                        - online
-                        - operator
-                        - userId
-                      properties:
-                        playerId:
-                          type: string
-                        name:
-                          type: string
-                        online:
-                          type: boolean
-                        operator:
-                          type: boolean
-                        userId:
-                          type: string
-                  board:
-                    type: array
-                    items:
-                      additionalProperties: false
-                      title: LivePhotoMeta
-                      type: object
-                      required:
-                        - id
-                        - at
-                        - handNo
-                      properties:
-                        id:
-                          type: string
-                        at:
-                          type: string
-                        handNo:
-                          type: integer
-                  myCards:
-                    type: array
-                    items:
-                      additionalProperties: false
-                      title: LivePhotoMeta
-                      type: object
-                      required:
-                        - id
-                        - at
-                        - handNo
-                      properties:
-                        id:
-                          type: string
-                        at:
-                          type: string
-                        handNo:
-                          type: integer
-                  sent:
-                    type: object
-                    additionalProperties:
-                      type: integer
-        4XX:
-          description: Default Response
-          content:
-            application/json:
-              schema:
-                additionalProperties: true
-                title: Error
-                type: object
-                required:
-                  - error
-                  - message
-                properties:
-                  error:
-                    type: string
-                  message:
-                    type: string
-  /api/v1/groups/{groupId}/live/{code}/operators/{userId}:
-    post:
-      tags: *a4
       requestBody:
         required: true
         content:
           application/json:
             schema:
               additionalProperties: false
-              title: LiveOperatorBody
+              title: LiveJoinBody
               type: object
-              required:
-                - operator
               properties:
-                operator:
-                  type: boolean
+                mode:
+                  anyOf:
+                    - type: string
+                      enum:
+                        - table
+                    - type: string
+                      enum:
+                        - remote
       parameters:
         - schema:
             type: string
@@ -6640,11 +6544,6 @@ paths:
             type: string
           in: path
           name: code
-          required: true
-        - schema:
-            type: string
-          in: path
-          name: userId
           required: true
       responses:
         "200":
@@ -6696,15 +6595,21 @@ paths:
                     required:
                       - userId
                       - playerId
-                      - operator
+                      - mode
                     properties:
                       userId:
                         type: string
                       playerId:
                         type: string
                         nullable: true
-                      operator:
-                        type: boolean
+                      mode:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - table
+                          - type: string
+                            enum:
+                              - remote
                     nullable: true
                   canManage:
                     type: boolean
@@ -6712,13 +6617,13 @@ paths:
                     type: array
                     items:
                       additionalProperties: false
-                      title: LiveRemote
+                      title: LiveMember
                       type: object
                       required:
                         - playerId
                         - name
                         - online
-                        - operator
+                        - mode
                         - userId
                       properties:
                         playerId:
@@ -6727,8 +6632,14 @@ paths:
                           type: string
                         online:
                           type: boolean
-                        operator:
-                          type: boolean
+                        mode:
+                          anyOf:
+                            - type: string
+                              enum:
+                                - table
+                            - type: string
+                              enum:
+                                - remote
                         userId:
                           type: string
                   board:
@@ -6741,6 +6652,7 @@ paths:
                         - id
                         - at
                         - handNo
+                        - street
                       properties:
                         id:
                           type: string
@@ -6748,6 +6660,22 @@ paths:
                           type: string
                         handNo:
                           type: integer
+                        street:
+                          anyOf:
+                            - anyOf:
+                                - type: string
+                                  enum:
+                                    - flop
+                                - type: string
+                                  enum:
+                                    - turn
+                                - type: string
+                                  enum:
+                                    - river
+                            - type: object
+                              nullable: true
+                              enum:
+                                - null
                   myCards:
                     type: array
                     items:
@@ -6758,6 +6686,7 @@ paths:
                         - id
                         - at
                         - handNo
+                        - street
                       properties:
                         id:
                           type: string
@@ -6765,6 +6694,22 @@ paths:
                           type: string
                         handNo:
                           type: integer
+                        street:
+                          anyOf:
+                            - anyOf:
+                                - type: string
+                                  enum:
+                                    - flop
+                                - type: string
+                                  enum:
+                                    - turn
+                                - type: string
+                                  enum:
+                                    - river
+                            - type: object
+                              nullable: true
+                              enum:
+                                - null
                   sent:
                     type: object
                     additionalProperties:
@@ -6808,6 +6753,17 @@ paths:
                     - type: string
                       enum:
                         - hole
+                street:
+                  anyOf:
+                    - type: string
+                      enum:
+                        - flop
+                    - type: string
+                      enum:
+                        - turn
+                    - type: string
+                      enum:
+                        - river
                 playerId:
                   type: string
                 image:
@@ -6840,6 +6796,7 @@ paths:
                   - id
                   - at
                   - handNo
+                  - street
                 properties:
                   id:
                     type: string
@@ -6847,6 +6804,22 @@ paths:
                     type: string
                   handNo:
                     type: integer
+                  street:
+                    anyOf:
+                      - anyOf:
+                          - type: string
+                            enum:
+                              - flop
+                          - type: string
+                            enum:
+                              - turn
+                          - type: string
+                            enum:
+                              - river
+                      - type: object
+                        nullable: true
+                        enum:
+                          - null
         4XX:
           description: Default Response
           content:
@@ -6967,15 +6940,21 @@ paths:
                     required:
                       - userId
                       - playerId
-                      - operator
+                      - mode
                     properties:
                       userId:
                         type: string
                       playerId:
                         type: string
                         nullable: true
-                      operator:
-                        type: boolean
+                      mode:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - table
+                          - type: string
+                            enum:
+                              - remote
                     nullable: true
                   canManage:
                     type: boolean
@@ -6983,13 +6962,13 @@ paths:
                     type: array
                     items:
                       additionalProperties: false
-                      title: LiveRemote
+                      title: LiveMember
                       type: object
                       required:
                         - playerId
                         - name
                         - online
-                        - operator
+                        - mode
                         - userId
                       properties:
                         playerId:
@@ -6998,8 +6977,14 @@ paths:
                           type: string
                         online:
                           type: boolean
-                        operator:
-                          type: boolean
+                        mode:
+                          anyOf:
+                            - type: string
+                              enum:
+                                - table
+                            - type: string
+                              enum:
+                                - remote
                         userId:
                           type: string
                   board:
@@ -7012,6 +6997,7 @@ paths:
                         - id
                         - at
                         - handNo
+                        - street
                       properties:
                         id:
                           type: string
@@ -7019,6 +7005,22 @@ paths:
                           type: string
                         handNo:
                           type: integer
+                        street:
+                          anyOf:
+                            - anyOf:
+                                - type: string
+                                  enum:
+                                    - flop
+                                - type: string
+                                  enum:
+                                    - turn
+                                - type: string
+                                  enum:
+                                    - river
+                            - type: object
+                              nullable: true
+                              enum:
+                                - null
                   myCards:
                     type: array
                     items:
@@ -7029,6 +7031,7 @@ paths:
                         - id
                         - at
                         - handNo
+                        - street
                       properties:
                         id:
                           type: string
@@ -7036,6 +7039,22 @@ paths:
                           type: string
                         handNo:
                           type: integer
+                        street:
+                          anyOf:
+                            - anyOf:
+                                - type: string
+                                  enum:
+                                    - flop
+                                - type: string
+                                  enum:
+                                    - turn
+                                - type: string
+                                  enum:
+                                    - river
+                            - type: object
+                              nullable: true
+                              enum:
+                                - null
                   sent:
                     type: object
                     additionalProperties:
@@ -7122,15 +7141,21 @@ paths:
                     required:
                       - userId
                       - playerId
-                      - operator
+                      - mode
                     properties:
                       userId:
                         type: string
                       playerId:
                         type: string
                         nullable: true
-                      operator:
-                        type: boolean
+                      mode:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - table
+                          - type: string
+                            enum:
+                              - remote
                     nullable: true
                   canManage:
                     type: boolean
@@ -7138,13 +7163,13 @@ paths:
                     type: array
                     items:
                       additionalProperties: false
-                      title: LiveRemote
+                      title: LiveMember
                       type: object
                       required:
                         - playerId
                         - name
                         - online
-                        - operator
+                        - mode
                         - userId
                       properties:
                         playerId:
@@ -7153,8 +7178,14 @@ paths:
                           type: string
                         online:
                           type: boolean
-                        operator:
-                          type: boolean
+                        mode:
+                          anyOf:
+                            - type: string
+                              enum:
+                                - table
+                            - type: string
+                              enum:
+                                - remote
                         userId:
                           type: string
                   board:
@@ -7167,6 +7198,7 @@ paths:
                         - id
                         - at
                         - handNo
+                        - street
                       properties:
                         id:
                           type: string
@@ -7174,6 +7206,22 @@ paths:
                           type: string
                         handNo:
                           type: integer
+                        street:
+                          anyOf:
+                            - anyOf:
+                                - type: string
+                                  enum:
+                                    - flop
+                                - type: string
+                                  enum:
+                                    - turn
+                                - type: string
+                                  enum:
+                                    - river
+                            - type: object
+                              nullable: true
+                              enum:
+                                - null
                   myCards:
                     type: array
                     items:
@@ -7184,6 +7232,7 @@ paths:
                         - id
                         - at
                         - handNo
+                        - street
                       properties:
                         id:
                           type: string
@@ -7191,6 +7240,22 @@ paths:
                           type: string
                         handNo:
                           type: integer
+                        street:
+                          anyOf:
+                            - anyOf:
+                                - type: string
+                                  enum:
+                                    - flop
+                                - type: string
+                                  enum:
+                                    - turn
+                                - type: string
+                                  enum:
+                                    - river
+                            - type: object
+                              nullable: true
+                              enum:
+                                - null
                   sent:
                     type: object
                     additionalProperties:

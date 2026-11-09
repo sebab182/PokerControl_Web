@@ -86,6 +86,10 @@ export class TableHub {
     if (msg.kind === 'start') {
       // La cámara de la mesa de una sala remota no tiene jugador; la cara de cada uno, sí.
       if (!sender.playerId && msg.source !== 'table') return false;
+      // De la mesa transmite una sola persona a la vez: si ya hay otra, no se cursa (el cliente avisa que está ocupada).
+      if (msg.source === 'table') {
+        for (const [socket, peer] of peers) if (socket !== from && peer.broadcasting && peer.source === 'table') return false;
+      }
       sender.source = msg.source === 'table' ? 'table' : 'face';
       sender.broadcasting = true;
     } else if (msg.kind === 'stop') {

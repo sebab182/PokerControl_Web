@@ -1,4 +1,4 @@
-import type { ApiEmojiServerMessage, ApiGroup, ApiPlayer, ApiRtcServerMessage, ApiTableAction, ApiTableView } from '@pokercontrol/contracts';
+import type { ApiEmojiServerMessage, ApiGroup, ApiLiveCurrent, ApiLiveRoomRef, ApiPlayer, ApiRtcServerMessage, ApiTableAction, ApiTableView } from '@pokercontrol/contracts';
 import { formatMoney, parseAmount } from '@pokercontrol/core';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
@@ -9,6 +9,7 @@ import {
   Avatar, Btn, Emoji, Loading, Modal, QueryError, TextField, useAction, useFeedback,
 } from '../components/ui';
 import { useGroup } from '../context';
+import { LiveRoom } from './live';
 import { useTableSounds, useTickTock } from '../tableSounds';
 import { DECKS, type Deck, type TablePrefs, primeHandSound, useTablePrefs, useTurnAlert, useWakeLock } from '../tablePrefs';
 import { shareInvite } from '../share';
@@ -108,7 +109,40 @@ function TableBar({ view, hand, updatedAt, live, onPrefs }: {
   );
 }
 
+/**
+ * «Mesa»: si hay una partida presencial abierta, la conexión remota reemplaza a la mesa online (salvo que se esté jugando
+ * una mano online en ese momento). Sin partida presencial, es la mesa online de siempre.
+ */
 export function TablePage() {
+  const { path, key } = useGroup();
+  const current = useQuery({
+    queryKey: key('live-current'),
+    queryFn: () => api<ApiLiveCurrent>(path('/live/current')),
+    refetchInterval: 15_000,
+  });
+  const sessionId = current.data?.session?.id;
+  // Solo hace falta saber si la mesa online está en juego cuando hay una partida presencial.
+  const online = useQuery({
+    queryKey: key('table-status'),
+    queryFn: () => api<ApiTableView>(path('/table')),
+    enabled: !!sessionId,
+  });
+  const room = useQuery({
+    queryKey: key('live-ensure', sessionId ?? ''),
+    queryFn: () => api<ApiLiveRoomRef>(path(`/sessions/${sessionId}/live`), { method: 'POST', body: {} }),
+    enabled: !!sessionId && online.data !== undefined && online.data.status !== 'playing',
+    staleTime: 5 * 60_000,
+  });
+  if (current.isLoading || (sessionId && online.isLoading)) return <Loading />;
+  if (sessionId && online.data && online.data.status !== 'playing') {
+    if (room.data) return <LiveRoom code={room.data.code} />;
+    if (room.error) return <QueryError error={room.error} onRetry={() => { void room.refetch(); }} />;
+    return <Loading />;
+  }
+  return <OnlineTablePage />;
+}
+
+function OnlineTablePage() {
   const { group, canEdit } = useGroup();
   // Un administrador puede manejar la mesa sin tener jugador propio.
   if (!group.playerId && !canEdit) {

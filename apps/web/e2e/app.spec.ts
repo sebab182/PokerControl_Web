@@ -830,12 +830,12 @@ test('mesa online: al terminar, los jugadores que manejás se muestran juntos y 
   await expect(page.locator('.felt .pseat .pcard:not(.pcard-own)')).toHaveCount(6);
 });
 
-test.describe('sala remota', () => {
+test.describe('conexión remota', () => {
   // Cámara y micrófono falsos del navegador (ver launchOptions en playwright.config.ts).
   test.use({ permissions: ['camera', 'microphone'] });
 
-  test('el host arma la sala; el remoto ve el video de la mesa, las fotos y sus cartas (solo él)', async ({ page, browser }) => {
-    test.setTimeout(90000);
+  test('partida presencial: el remoto entra desde «Mesa», recibe cartas y mesa, escucha siempre y elige ver la transmisión', async ({ page, browser }) => {
+    test.setTimeout(120000);
     const hostToken = await login(page, 'Seba');
     const code = await createGroup(page);
     const auth = { authorization: `Bearer ${hostToken}` };
@@ -850,7 +850,7 @@ test.describe('sala remota', () => {
     await page2.getByLabel('Tu nick').fill('Nico');
     await page2.getByRole('button', { name: 'Crear mi jugador' }).click();
 
-    // La partida presencial: Nico (remoto) y Ana en la mesa.
+    // Partida presencial: Nico (remoto) y Ana en la mesa.
     const groupId = (await (await page.request.get(`${API}/groups`, { headers: auth })).json())[0].id;
     const ana = (await (await page.request.post(`${API}/groups/${groupId}/players`, { headers: auth, data: { name: 'Ana' } })).json()).id;
     const nico = (await (await page.request.get(`${API}/groups/${groupId}/players`, { headers: auth })).json()).find((p: { name: string }) => p.name === 'Nico').id;
@@ -859,68 +859,78 @@ test.describe('sala remota', () => {
       headers: { ...auth, 'idempotency-key': `e2e-live-${Date.now()}` }, data: { playerIds: [ana, nico], initialBuyIn: 100 },
     })).json();
 
-    // Antes de abrirla, un lector no ve el botón; el host sí lo ve y la abre.
-    await page2.goto(`/sessions/${session.id}`);
-    await expect(page2.getByRole('button', { name: 'Abrir sala remota' })).toBeHidden();
+    // No hay que «abrir» nada: la partida ya tiene su conexión remota, para todos, desde la partida...
     await page.goto(`/sessions/${session.id}`);
-    await page.getByRole('button', { name: 'Abrir sala remota' }).click();
-    await expect(page.getByRole('heading', { name: /^Sala remota · / })).toBeVisible();
+    await expect(page.getByTestId('live-enter')).toBeVisible();
+    await page2.goto(`/sessions/${session.id}`);
+    await expect(page2.getByTestId('live-enter')).toBeVisible();
+    // ... y desde «Mesa», que reemplaza a la mesa online mientras haya una partida presencial abierta.
+    await nav(page2, 'Mesa');
+    await expect(page2.getByRole('heading', { name: '¿Dónde estás?' })).toBeVisible({ timeout: 15000 });
+    await checkPage(page2, 'conexión remota: elegir dónde estás');
+    await page2.getByRole('button', { name: /Juego a distancia/ }).click();
+    await expect(page2.getByRole('heading', { name: /^Jugás a distancia · / })).toBeVisible();
+    // El micrófono se prende solo y no hay botón para apagarlo.
+    await expect(page2.getByText('Tu micrófono está activo: la mesa te escucha siempre.')).toBeVisible({ timeout: 15000 });
+    await expect(page2.getByRole('checkbox', { name: /Micrófono/ })).toHaveCount(0);
+    await expect(page2.getByRole('switch', { name: /Micrófono/ })).toHaveCount(0);
 
-    // El remoto la encuentra desde la partida (aviso) y entra.
-    await page2.reload();
-    await page2.getByTestId('live-banner').click();
-    await expect(page2.getByRole('heading', { name: /^Sala remota · / })).toBeVisible();
-    await expect(page2.getByText('Esperando la cámara de la mesa…')).toBeVisible();
+    // El host entra a la conexión de la partida y elige «Estoy en la mesa».
+    await page.getByTestId('live-enter').click();
+    await page.getByRole('button', { name: /Estoy en la mesa/ }).first().click();
+    await expect(page.getByRole('heading', { name: /^En la mesa · / })).toBeVisible();
     await expect(page.getByTestId('face-Nico')).toBeVisible({ timeout: 15000 });
-    await checkPage(page2, 'sala remota: remoto');
-    await checkPage(page, 'sala remota: host');
+    await checkPage(page, 'conexión remota: en la mesa');
+    await checkPage(page2, 'conexión remota: a distancia');
 
-    // El host transmite la cámara de la mesa: el remoto la recibe por WebRTC (frames reales).
-    await page.getByRole('button', { name: /Transmitir la mesa/ }).click();
+    // En la mesa transmite uno solo, con audio: el remoto escucha siempre y elige ver el video.
+    await page.getByRole('button', { name: /Cámara trasera/ }).click();
+    await expect(page.getByText(/Estás transmitiendo con la cámara trasera/)).toBeVisible({ timeout: 15000 });
+    await expect(page2.getByText(/transmite la mesa\./)).toBeVisible({ timeout: 15000 });
+    await expect(page2.locator('video.live-table-video')).toHaveCount(0); // el video no se ve hasta elegirlo
+    const audio = page2.locator('video.pseat-audio').first();
+    await expect.poll(() => audio.evaluate((v: HTMLVideoElement) => (v.srcObject as MediaStream)?.getAudioTracks().length ?? 0), { timeout: 20000 }).toBe(1);
+    expect(await audio.evaluate((v: HTMLVideoElement) => (v.srcObject as MediaStream).getVideoTracks().length)).toBe(0);
+    await page2.getByRole('button', { name: 'Ver la transmisión' }).click();
     const tableVideo = page2.locator('video.live-table-video');
     await expect(tableVideo).toBeVisible({ timeout: 20000 });
     await expect.poll(() => tableVideo.evaluate((v: HTMLVideoElement) => v.videoWidth), { timeout: 20000 }).toBeGreaterThan(0);
+    await page2.getByRole('button', { name: /Dejar de ver la transmisión/ }).click();
+    await expect(tableVideo).toHaveCount(0, { timeout: 10000 });
 
-    // El remoto enciende su cámara: el host ve su cara.
-    await page2.getByRole('button', { name: 'Transmitir video' }).click();
-    const face = page.getByTestId('face-Nico').locator('video.live-face-video');
-    await expect(face).toBeVisible({ timeout: 20000 });
+    // El remoto también se ve y se oye: el host ve su cara.
+    await expect(page.getByTestId('face-Nico').locator('video.live-face-video')).toBeVisible({ timeout: 20000 });
 
-    // Fotos: un JPEG chico que el navegador reduce y vuelve a codificar.
-    const jpegPixel = Buffer.from('/9j/4AAQSkZJRgABAgAAAQABAAD//gAQTGF2YzYwLjMxLjEwMgD/2wBDAAgEBAQEBAUFBQUFBQYGBgYGBgYGBgYGBgYHBwcICAgHBwcGBgcHCAgICAkJCQgICAgJCQoKCgwMCwsODg4RERT/xABNAAEBAAAAAAAAAAAAAAAAAAAABgEBAQEAAAAAAAAAAAAAAAAAAAYHEAEAAAAAAAAAAAAAAAAAAAAAEQEAAAAAAAAAAAAAAAAAAAAA/8AAEQgAGAAgAwEiAAIRAAMRAP/aAAwDAQACEQMRAD8AiwEo38AAAAAB/9k=', 'base64');
-    const photo = { name: 'cartas.jpg', mimeType: 'image/jpeg', buffer: jpegPixel };
-    await page.getByTestId('photo-input').nth(0).setInputFiles(photo); // mesa
-    await expect(page2.getByRole('img', { name: 'Cartas de la mesa' })).toBeVisible({ timeout: 15000 });
-    // Las cartas del remoto: tapadas hasta que las toca; solo él las recibe.
-    await expect(page2.getByText('Todavía no te mandaron tus cartas en esta mano.')).toBeVisible();
-    await page.waitForTimeout(1200); // el servidor pide una pausa entre fotos de la misma persona
-    await page.getByTestId('photo-input').nth(1).setInputFiles(photo); // Nico
+    // Primero las cartas del remoto; luego flop, turn y river.
+    const jpeg = Buffer.from(execJpeg(), 'base64');
+    const file = { name: 'cartas.jpg', mimeType: 'image/jpeg', buffer: jpeg };
+    await page.getByTestId('photo-hole-Nico').setInputFiles(file);
     await expect(page2.getByRole('button', { name: 'Ver mis cartas' })).toBeVisible({ timeout: 15000 });
     await expect(page2.getByRole('img', { name: 'Tus cartas' })).toBeHidden();
     await page2.getByRole('button', { name: 'Ver mis cartas' }).click();
     await expect(page2.getByRole('img', { name: 'Tus cartas' })).toBeVisible();
-    await checkPage(page2, 'sala remota: con fotos');
+    for (const street of ['flop', 'turn', 'river']) {
+      await page.waitForTimeout(1100);
+      await page.getByTestId(`photo-${street}`).setInputFiles(file);
+      await expect(page2.getByTestId(`slot-${street}`).getByRole('img')).toBeVisible({ timeout: 15000 });
+    }
+    await checkPage(page2, 'conexión remota: con cartas');
 
-    // Cualquiera de la sala puede mandar fotos: el remoto le manda al host la foto de la mesa y sus cartas.
-    await page2.waitForTimeout(1200);
-    await page2.getByTestId('photo-input').nth(0).setInputFiles(photo);
-    await expect(page.getByRole('img', { name: 'Cartas de la mesa' })).toBeVisible({ timeout: 15000 });
-    // Y transmite la cámara de la mesa (todos pueden).
-    await expect(page2.getByRole('button', { name: /Transmitir la mesa/ })).toBeVisible();
-
-    // Mano nueva: se borran las fotos.
-    await page.getByRole('button', { name: 'Nueva mano' }).click();
+    // Un segundo transmisor no puede: de la mesa transmite una sola persona.
+    await expect(page.getByRole('button', { name: 'Detener' })).toBeVisible();
+    // Nueva mano: se borran las fotos.
+    await page.getByRole('button', { name: /Nueva mano/ }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Nueva mano' }).click();
-    await expect(page2.getByText('Todavía no mandaron fotos de la mesa en esta mano.')).toBeVisible({ timeout: 15000 });
-
-    // Pantalla de la mesa: muestra la cara del remoto en grande.
-    await page.goto(`/live/${(await page.evaluate(() => location.pathname)).split('/').pop() ?? ''}?mesa`);
-    await expect(page.getByRole('heading', { name: /^Pantalla de la mesa · / })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Activar sonido' })).toBeVisible();
-    await checkPage(page, 'sala remota: pantalla de la mesa');
+    await expect(page2.getByTestId('slot-flop').getByRole('img')).toBeHidden({ timeout: 15000 });
+    await expect(page2.getByText('Todavía no te mandaron tus cartas en esta mano.')).toBeVisible();
     await context2.close();
   });
 });
+
+/** Un JPEG de 32x24 (en base64) para las fotos de prueba; el navegador lo reduce y lo vuelve a codificar. */
+function execJpeg(): string {
+  return '/9j/4AAQSkZJRgABAgAAAQABAAD//gAQTGF2YzYwLjMxLjEwMgD/2wBDAAgEBAQEBAUFBQUFBQYGBgYGBgYGBgYGBgYHBwcICAgHBwcGBgcHCAgICAkJCQgICAgJCQoKCgwMCwsODg4RERT/xABNAAEBAAAAAAAAAAAAAAAAAAAABgEBAQEAAAAAAAAAAAAAAAAAAAYHEAEAAAAAAAAAAAAAAAAAAAAAEQEAAAAAAAAAAAAAAAAAAAAA/8AAEQgAGAAgAwEiAAIRAAMRAP/aAAwDAQACEQMRAD8AiwEo38AAAAAB/9k=';
+}
 
 test.describe('mesa online: video', () => {
   // Cámara y micrófono falsos del navegador (ver launchOptions en playwright.config.ts).

@@ -24,9 +24,11 @@ export function useTableSocket(
   groupId: string, onChanged: () => void, onSignal?: (msg: ApiRtcServerMessage) => void,
   onEmoji?: (msg: ApiEmojiServerMessage) => void,
   /** Con `room` el socket es el de una sala remota (canal propio); con `enabled: false` no se conecta todavía. */
-  opts: { room?: string; enabled?: boolean } = {},
+  opts: { room?: string; enabled?: boolean; onBusy?: () => void } = {},
 ): TableSocket {
   const { room, enabled = true } = opts;
+  const busyCallback = useRef(opts.onBusy);
+  busyCallback.current = opts.onBusy;
   const [live, setLive] = useState(false);
   const callback = useRef(onChanged);
   callback.current = onChanged;
@@ -60,6 +62,8 @@ export function useTableSocket(
             callback.current();
           } else if (msg.type === 'rtc') {
             signalCallback.current?.(msg as ApiRtcServerMessage);
+          } else if (msg.type === 'table-busy') {
+            busyCallback.current?.();
           } else if (msg.type === 'emoji') {
             emojiCallback.current?.(msg as ApiEmojiServerMessage);
           }

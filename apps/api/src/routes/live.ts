@@ -1,22 +1,23 @@
 /**
- * Sala remota de una partida presencial. Los jugadores que no están en la mesa entran (con el link o desde la partida),
- * ven el video de la mesa, mandan su cara y audio por el video de siempre y reciben **fotos** de las cartas que alguien
- * de la mesa les saca en el momento: las de la mesa las ven todos los de la sala; las cartas de cada remoto, solo él.
- * Las apuestas son por voz. Las fotos viven en la base solo mientras dura la mano (o la sala) y nunca van en URLs con token.
+ * Conexión remota de una partida presencial. Toda partida abierta que no se juega en la mesa online tiene su sala (se arma
+ * sola al primer uso). Los jugadores que no están en la mesa entran (desde la partida, por invitación o desde «Mesa»),
+ * escuchan la mesa, hablan por el audio de siempre y reciben **fotos**: primero las cartas de cada remoto (solo las ve
+ * él) y después el flop, el turn y el river (las ve toda la sala). Las apuestas son por voz. Las fotos viven en la base
+ * solo mientras dura la mano (o la sala) y nunca van en URLs con token.
  */
 
 import { randomBytes, randomUUID } from 'node:crypto';
 import {
-  ErrorResponse, IdParams, LiveCodeParams, LiveOperatorBody, LiveOperatorParams, LivePhotoBody, LivePhotoMeta, LivePhotoParams,
-  LiveRoomRef, LiveRoomRefResponse, LiveView, type ApiLiveView,
+  ErrorResponse, GroupParams, IdParams, LiveCodeParams, LiveCurrent, LiveJoinBody, LivePhotoBody, LivePhotoMeta, LivePhotoParams,
+  LiveRoomRef, LiveView, type ApiLiveView,
 } from '@pokercontrol/contracts';
 import { type Static } from '@sinclair/typebox';
-import { and, asc, eq, inArray, lt, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, lt, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import * as schema from '../db/schema';
 import { ApiError, notFound } from '../errors';
 import type { Conn, Tx } from '../repo';
-import { isEditor, requireEditor } from './groups';
+import { isEditor } from './groups';
 
 const tags = ['live'];
 const err = { '4xx': ErrorResponse };
@@ -72,6 +73,7 @@ export function decodeJpeg(image: string): Buffer {
 export async function liveRoutes(app: FastifyInstance) {
   type C = { Params: Static<typeof LiveCodeParams> };
   const lastPhoto = new Map<string, number>();
+  const STREETS = ['flop', 'turn', 'river'] as const;
 
   async function roomByCode(db: Conn, groupId: string, code: string): Promise<RoomRow> {
     const [room] = await db.select().from(schema.liveRooms)
@@ -101,64 +103,75 @@ export async function liveRoutes(app: FastifyInstance) {
       .leftJoin(schema.players, eq(schema.players.id, schema.liveMembers.playerId))
       .where(eq(schema.liveMembers.roomId, room.id)).orderBy(asc(schema.liveMembers.userId));
     const mine = members.find(x => x.m.userId === userId)?.m ?? null;
-    const operator = canOperate({ role }, mine);
-    const joined = !!mine || isEditor(role);
+    const joined = canOperate({ role }, mine);
     const photos = joined
       ? await db.select({
         id: schema.livePhotos.id, at: schema.livePhotos.createdAt, handNo: schema.livePhotos.handNo, kind: schema.livePhotos.kind,
-        playerId: schema.livePhotos.playerId,
+        street: schema.livePhotos.street, playerId: schema.livePhotos.playerId,
       }).from(schema.livePhotos).where(and(eq(schema.livePhotos.roomId, room.id), eq(schema.livePhotos.handNo, room.handNo)))
         .orderBy(asc(schema.livePhotos.createdAt))
       : [];
-    const meta = (p: typeof photos[number]) => ({ id: p.id, at: p.at.toISOString(), handNo: p.handNo });
+    const meta = (p: typeof photos[number]) => ({ id: p.id, at: p.at.toISOString(), handNo: p.handNo, street: p.street });
     const sent: Record<string, number> = {};
-    if (operator) for (const p of photos) if (p.kind === 'hole' && p.playerId) sent[p.playerId] = (sent[p.playerId] ?? 0) + 1;
+    if (joined) for (const p of photos) if (p.kind === 'hole' && p.playerId) sent[p.playerId] = (sent[p.playerId] ?? 0) + 1;
     const now = Date.now();
     return {
       id: room.id, code: room.code, status: room.status, sessionId: room.sessionId, sessionName: session?.name ?? '',
       version: room.version, handNo: room.handNo,
-      me: mine ? { userId, playerId: mine.playerId, operator } : null,
+      me: mine ? { userId, playerId: mine.playerId, mode: mine.role } : null,
       canManage: room.createdBy === userId || isEditor(role),
       members: members.filter(x => x.m.playerId).map(x => ({
-        playerId: x.m.playerId as string, name: x.name ?? 'Jugador', userId: x.m.userId, operator: x.m.role === 'operator',
+        playerId: x.m.playerId as string, name: x.name ?? 'Jugador', userId: x.m.userId, mode: x.m.role,
         online: now - x.m.lastSeenAt.getTime() < ONLINE_MS,
       })),
-      board: photos.filter(p => p.kind === 'board').map(meta),
+      board: STREETS.flatMap(street => photos.filter(p => p.kind === 'board' && p.street === street).slice(-1)).map(meta),
       myCards: mine?.playerId ? photos.filter(p => p.kind === 'hole' && p.playerId === mine.playerId).map(meta) : [],
       sent,
     };
   }
 
-  // ─── Abrir y encontrar la sala de una partida ──────────────────────────────
+  /** La partida presencial abierta del grupo: la más reciente que no se juega en la mesa online. */
+  async function presentialSession(db: Conn, groupId: string): Promise<{ id: string; name: string } | null> {
+    const [session] = await db.select({ id: schema.sessions.id, name: schema.sessions.name }).from(schema.sessions)
+      .where(and(
+        eq(schema.sessions.groupId, groupId), eq(schema.sessions.status, 'active'),
+        sql`not exists (select 1 from poker_tables t where t.session_id = ${schema.sessions.id})`,
+      )).orderBy(desc(schema.sessions.createdAt)).limit(1);
+    return session ?? null;
+  }
+
+  async function ensureRoom(tx: Tx, groupId: string, sessionId: string, userId: string): Promise<RoomRow> {
+    const [session] = await tx.select().from(schema.sessions)
+      .where(and(eq(schema.sessions.groupId, groupId), eq(schema.sessions.id, sessionId))).for('update');
+    if (!session) throw notFound('Partida');
+    if (session.status !== 'active') throw new ApiError(409, 'session_closed', 'La partida ya terminó: no tiene conexión remota.');
+    const [inTable] = await tx.select({ id: schema.pokerTables.id }).from(schema.pokerTables).where(eq(schema.pokerTables.sessionId, sessionId));
+    if (inTable) throw new ApiError(409, 'online_session', 'Esta partida se juega en la mesa online: no necesita conexión remota.');
+    const [existing] = await tx.select().from(schema.liveRooms).where(eq(schema.liveRooms.sessionId, sessionId));
+    if (existing) return existing;
+    await purgeStaleRooms(tx);
+    const [room] = await tx.insert(schema.liveRooms)
+      .values({ id: randomUUID(), groupId, sessionId, code: newCode(), createdBy: userId }).returning();
+    return room;
+  }
+
+  // ─── Conexión remota de una partida presencial ─────────────────────────────
+  /** Toda partida presencial abierta tiene su sala: se arma sola la primera vez que alguien la pide. */
   app.post<{ Params: Static<typeof IdParams> }>('/sessions/:id/live', {
     schema: { tags, params: IdParams, response: { 200: LiveRoomRef, ...err } },
   }, async req => {
-    await requireEditor(req);
-    const groupId = req.group.id;
-    return app.db.transaction(async tx => {
-      const [session] = await tx.select().from(schema.sessions)
-        .where(and(eq(schema.sessions.groupId, groupId), eq(schema.sessions.id, req.params.id))).for('update');
-      if (!session) throw notFound('Partida');
-      if (session.status !== 'active') throw new ApiError(409, 'session_closed', 'Solo se abre una sala en una partida en juego.');
-      await purgeStaleRooms(tx);
-      const [existing] = await tx.select().from(schema.liveRooms).where(eq(schema.liveRooms.sessionId, session.id));
-      if (existing) return { id: existing.id, code: existing.code, status: existing.status };
-      const [room] = await tx.insert(schema.liveRooms)
-        .values({ id: randomUUID(), groupId, sessionId: session.id, code: newCode(), createdBy: req.user.sub }).returning();
-      // Quien la arma entra como operador.
-      const [mine] = await tx.select({ id: schema.players.id }).from(schema.players)
-        .where(and(eq(schema.players.groupId, groupId), eq(schema.players.userId, req.user.sub)));
-      await tx.insert(schema.liveMembers).values({ roomId: room.id, userId: req.user.sub, playerId: mine?.id ?? null, role: 'operator' });
-      return { id: room.id, code: room.code, status: room.status };
-    });
+    const room = await app.db.transaction(tx => ensureRoom(tx, req.group.id, req.params.id, req.user.sub));
+    return { id: room.id, code: room.code, status: room.status };
   });
 
-  app.get<{ Params: Static<typeof IdParams> }>('/sessions/:id/live', {
-    schema: { tags, params: IdParams, response: { 200: LiveRoomRefResponse, ...err } },
+  /** ¿Hay una partida presencial abierta? Sirve a «Mesa» para reemplazar la mesa online por la conexión remota. */
+  app.get<{ Params: Static<typeof GroupParams> }>('/live/current', {
+    schema: { tags, params: GroupParams, response: { 200: LiveCurrent, ...err } },
   }, async req => {
-    const [room] = await app.db.select().from(schema.liveRooms)
-      .where(and(eq(schema.liveRooms.groupId, req.group.id), eq(schema.liveRooms.sessionId, req.params.id), eq(schema.liveRooms.status, 'open')));
-    return { room: room ? { id: room.id, code: room.code, status: room.status } : null };
+    const session = await presentialSession(app.db, req.group.id);
+    if (!session) return { session: null, room: null };
+    const [room] = await app.db.select().from(schema.liveRooms).where(eq(schema.liveRooms.sessionId, session.id));
+    return { session, room: room ? { id: room.id, code: room.code, status: room.status } : null };
   });
 
   // ─── La sala ───────────────────────────────────────────────────────────────
@@ -166,9 +179,9 @@ export async function liveRoutes(app: FastifyInstance) {
     schema: { tags, params: LiveCodeParams, response: { 200: LiveView, ...err } },
   }, async req => viewOf(app.db, await roomByCode(app.db, req.group.id, req.params.code), req.user.sub, req.role));
 
-  /** Entrar a la sala; se repite cada ~20 s como latido de presencia. */
-  app.post<C>('/live/:code/join', {
-    schema: { tags, params: LiveCodeParams, response: { 200: LiveView, ...err } },
+  /** Entrar a la sala (`mode`: en la mesa o a distancia); se repite cada ~20 s como latido de presencia. */
+  app.post<C & { Body: Static<typeof LiveJoinBody> }>('/live/:code/join', {
+    schema: { tags, params: LiveCodeParams, body: LiveJoinBody, response: { 200: LiveView, ...err } },
   }, async req => {
     const room = await roomByCode(app.db, req.group.id, req.params.code);
     if (room.status !== 'open') throw new ApiError(409, 'room_closed', 'La sala ya se cerró.');
@@ -177,31 +190,21 @@ export async function liveRoutes(app: FastifyInstance) {
     if (!player && !isEditor(req.role)) {
       throw new ApiError(409, 'no_player', 'Elegí tu jugador del grupo antes de entrar a la sala.');
     }
+    const mode = req.body?.mode;
     const before = await memberOf(app.db, room.id, req.user.sub);
     if (before) {
-      await app.db.update(schema.liveMembers).set({ lastSeenAt: new Date(), playerId: player?.id ?? before.playerId })
+      await app.db.update(schema.liveMembers)
+        .set({ lastSeenAt: new Date(), playerId: player?.id ?? before.playerId, ...(mode ? { role: mode } : {}) })
         .where(and(eq(schema.liveMembers.roomId, room.id), eq(schema.liveMembers.userId, req.user.sub)));
+      if (mode && mode !== before.role) await bump(app.db, room);
     } else {
+      // Sin elegir, un administrador sin jugador entra a la mesa y los demás, a distancia.
       await app.db.insert(schema.liveMembers).values({
-        roomId: room.id, userId: req.user.sub, playerId: player?.id ?? null, role: isEditor(req.role) ? 'operator' : 'remote',
+        roomId: room.id, userId: req.user.sub, playerId: player?.id ?? null, role: mode ?? (player ? 'remote' : 'table'),
       });
       await bump(app.db, room); // aviso a los demás: alguien entró
     }
-    return viewOf(app.db, (await roomByCode(app.db, req.group.id, req.params.code)), req.user.sub, req.role);
-  });
-
-  /** El host (o un administrador) habilita o saca a alguien de operador (puede sacar fotos). */
-  app.post<{ Params: Static<typeof LiveOperatorParams>; Body: Static<typeof LiveOperatorBody> }>('/live/:code/operators/:userId', {
-    schema: { tags, params: LiveOperatorParams, body: LiveOperatorBody, response: { 200: LiveView, ...err } },
-  }, async req => {
-    const room = await roomByCode(app.db, req.group.id, req.params.code);
-    if (room.createdBy !== req.user.sub && !isEditor(req.role)) throw new ApiError(403, 'not_host', 'Lo decide quien armó la sala o un administrador.');
-    const target = await memberOf(app.db, room.id, req.params.userId);
-    if (!target) throw notFound('Participante');
-    await app.db.update(schema.liveMembers).set({ role: req.body.operator ? 'operator' : 'remote' })
-      .where(and(eq(schema.liveMembers.roomId, room.id), eq(schema.liveMembers.userId, req.params.userId)));
-    await bump(app.db, room);
-    return viewOf(app.db, room, req.user.sub, req.role);
+    return viewOf(app.db, await roomByCode(app.db, req.group.id, req.params.code), req.user.sub, req.role);
   });
 
   // ─── Fotos ─────────────────────────────────────────────────────────────────
@@ -217,29 +220,41 @@ export async function liveRoutes(app: FastifyInstance) {
     if (now - (lastPhoto.get(req.user.sub) ?? 0) < photoMinMs()) throw new ApiError(429, 'too_fast', 'Esperá un segundo entre fotos.');
     lastPhoto.set(req.user.sub, now);
     const bytes = decodeJpeg(req.body.image);
-    const { kind, playerId } = req.body;
+    const { kind, playerId, street } = req.body;
     if ((kind === 'hole') !== (playerId !== undefined)) {
       throw new ApiError(422, 'invalid_photo', kind === 'hole' ? 'Indicá de quién son las cartas.' : 'La foto de la mesa no lleva jugador.');
     }
+    if ((kind === 'board') !== (street !== undefined)) {
+      throw new ApiError(422, 'invalid_photo', kind === 'board' ? 'Indicá si es el flop, el turn o el river.' : 'Las cartas de un jugador no llevan calle.');
+    }
     return app.db.transaction(async tx => {
       if (kind === 'hole') {
-        const [owner] = await tx.select().from(schema.liveMembers)
-          .where(and(eq(schema.liveMembers.roomId, room.id), eq(schema.liveMembers.playerId, playerId as string)));
-        if (!owner) throw new ApiError(422, 'not_in_room', 'Ese jugador no está conectado a la sala.');
+        // Solo se mandan cartas a quien juega a distancia.
+        const [owner] = await tx.select().from(schema.liveMembers).where(and(
+          eq(schema.liveMembers.roomId, room.id), eq(schema.liveMembers.playerId, playerId as string), eq(schema.liveMembers.role, 'remote'),
+        ));
+        if (!owner) throw new ApiError(422, 'not_in_room', 'Ese jugador no está conectado a distancia.');
         // Las cartas de un jugador se reemplazan: queda la última foto de la mano.
         await tx.delete(schema.livePhotos).where(and(
           eq(schema.livePhotos.roomId, room.id), eq(schema.livePhotos.handNo, room.handNo),
           eq(schema.livePhotos.kind, 'hole'), eq(schema.livePhotos.playerId, playerId as string),
+        ));
+      } else {
+        // Una foto por calle: la nueva reemplaza a la anterior.
+        await tx.delete(schema.livePhotos).where(and(
+          eq(schema.livePhotos.roomId, room.id), eq(schema.livePhotos.handNo, room.handNo),
+          eq(schema.livePhotos.kind, 'board'), eq(schema.livePhotos.street, street as 'flop' | 'turn' | 'river'),
         ));
       }
       const [{ n }] = await tx.select({ n: sql<number>`count(*)::int` }).from(schema.livePhotos)
         .where(and(eq(schema.livePhotos.roomId, room.id), eq(schema.livePhotos.handNo, room.handNo)));
       if (n >= MAX_PHOTOS_PER_HAND) throw new ApiError(409, 'too_many_photos', 'Ya hay muchas fotos en esta mano: pasá a la siguiente.');
       const [photo] = await tx.insert(schema.livePhotos).values({
-        id: randomUUID(), roomId: room.id, handNo: room.handNo, kind, playerId: playerId ?? null, bytes, createdBy: req.user.sub,
+        id: randomUUID(), roomId: room.id, handNo: room.handNo, kind, street: street ?? null, playerId: playerId ?? null,
+        bytes, createdBy: req.user.sub,
       }).returning();
       await bump(tx, room);
-      return { id: photo.id, at: photo.createdAt.toISOString(), handNo: photo.handNo };
+      return { id: photo.id, at: photo.createdAt.toISOString(), handNo: photo.handNo, street: photo.street };
     });
   });
 

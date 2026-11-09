@@ -1,4 +1,4 @@
-import type { ApiEmojiServerMessage, ApiLivePhotoMeta, ApiLiveView, ApiRtcServerMessage } from '@pokercontrol/contracts';
+import type { ApiEmojiServerMessage, ApiLiveMode, ApiLivePhotoMeta, ApiLiveStreet, ApiLiveView, ApiRtcServerMessage } from '@pokercontrol/contracts';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
@@ -10,9 +10,10 @@ import { resizeToJpeg } from '../photo';
 import { shareText } from '../share';
 import { useTablePrefs } from '../tablePrefs';
 import { useTableSocket } from '../useTableSocket';
-import { StreamVideo, TABLE_KEY, VideoControls, VideoProvider, useTableVideo } from '../video';
+import { StreamVideo, TABLE_KEY, VideoProvider, useTableVideo } from '../video';
 
 type Member = ApiLiveView['members'][number];
+const STREETS: { id: ApiLiveStreet; label: string }[] = [{ id: 'flop', label: 'Flop' }, { id: 'turn', label: 'Turn' }, { id: 'river', label: 'River' }];
 
 /** Una foto protegida: se baja con el token en un header y se muestra como blob (sin tokens en la URL). */
 function PhotoImg({ code, photo, alt, className }: { code: string; photo: ApiLivePhotoMeta; alt: string; className?: string }) {
@@ -57,27 +58,8 @@ function MyCards({ code, photo }: { code: string; photo: ApiLivePhotoMeta | unde
   );
 }
 
-function Board({ code, photos }: { code: string; photos: ApiLivePhotoMeta[] }) {
-  const [picked, setPicked] = useState<string | null>(null);
-  if (photos.length === 0) return <p className="muted small">Todavía no mandaron fotos de la mesa en esta mano.</p>;
-  const latest = photos[photos.length - 1];
-  const current = photos.find(p => p.id === picked) ?? latest;
-  return (
-    <div>
-      <PhotoImg code={code} photo={current} alt="Cartas de la mesa" className="live-photo" />
-      {photos.length > 1 && (
-        <div className="live-thumbs" role="group" aria-label="Fotos de la mesa de esta mano">
-          {photos.map((p, i) => (
-            <Btn key={p.id} variant="ghost" aria-pressed={p.id === current.id} onClick={() => setPicked(p.id)}>{i === photos.length - 1 ? `Última (${i + 1})` : String(i + 1)}</Btn>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 /** Botón que abre la cámara del celular, reduce la foto y la sube. */
-function PhotoButton({ label, busy, onPhoto, primary }: { label: string; busy: boolean; onPhoto: (base64: string) => Promise<void>; primary?: boolean }) {
+function PhotoButton({ label, busy, onPhoto, done, testId }: { label: string; busy: boolean; onPhoto: (base64: string) => Promise<void>; done?: boolean; testId: string }) {
   const input = useRef<HTMLInputElement>(null);
   const { notify } = useFeedback();
   const [working, setWorking] = useState(false);
@@ -96,16 +78,72 @@ function PhotoButton({ label, busy, onPhoto, primary }: { label: string; busy: b
   return (
     <>
       <input ref={input} type="file" accept="image/*" capture="environment" className="sr-only" tabIndex={-1} aria-hidden="true"
-        data-testid="photo-input" onChange={e => { void pick(e.target.files?.[0]); }} />
-      <Btn variant={primary ? 'primary' : 'ghost'} busy={busy || working} onClick={() => input.current?.click()}><Emoji>📷</Emoji> {label}</Btn>
+        data-testid={testId} onChange={e => { void pick(e.target.files?.[0]); }} />
+      <Btn variant={done ? 'ghost' : 'primary'} busy={busy || working} onClick={() => input.current?.click()}><Emoji>{done ? '✅' : '📷'}</Emoji> {label}</Btn>
     </>
   );
 }
 
-export function LivePage() {
-  const { code = '' } = useParams();
-  const [search] = useSearchParams();
-  const screenMode = search.has('mesa');
+
+/** La mesa «como en la mesa online»: un paño con el flop, el turn y el river, y tus cartas debajo. */
+function Felt({ code, view }: { code: string; view: ApiLiveView }) {
+  const myCards = view.myCards[view.myCards.length - 1];
+  return (
+    <section className="live-felt" aria-label="Mesa" data-testid="live-felt">
+      <div className="live-felt-board">
+        {STREETS.map(st => {
+          const photo = view.board.find(p => p.street === st.id);
+          return (
+            <figure key={st.id} className="live-slot" data-testid={`slot-${st.id}`}>
+              {photo
+                ? <PhotoImg code={code} photo={photo} alt={`${st.label} de la mesa`} className="live-slot-photo" />
+                : <div className="live-slot-empty" aria-hidden="true">·</div>}
+              <figcaption>{st.label}{photo ? '' : ' (todavía no)'}</figcaption>
+            </figure>
+          );
+        })}
+      </div>
+      {view.me?.mode === 'remote' && <MyCards code={code} photo={myCards} />}
+    </section>
+  );
+}
+
+/** Una carita (video o inicial con el audio sonando) de alguien de la sala. */
+function Face({ m, stream, muted, big }: { m: Member; stream: MediaStream | undefined; muted: boolean; big?: boolean }) {
+  return (
+    <div className={`live-face${big ? ' live-face-big' : ''}`} data-testid={`face-${m.name}`}>
+      {stream && stream.getVideoTracks().length > 0
+        ? <StreamVideo stream={stream} className="live-face-video" muted={muted} />
+        : (
+          <span className="live-face-avatar">
+            <Avatar name={m.name} large />
+            {stream && <StreamVideo stream={stream} className="pseat-audio" muted={muted} />}
+          </span>
+        )}
+      <span className="live-face-name"><span className={`dot ${m.online ? 'dot-on' : 'dot-off'}`} aria-hidden="true" /> {m.name}{m.mode === 'table' ? ' (en la mesa)' : ''}{m.online ? '' : ' (sin conexión)'}</span>
+    </div>
+  );
+}
+
+/** Pantalla de entrada: ¿estás en la mesa o jugás a distancia? */
+function ChooseMode({ onChoose }: { onChoose: (mode: ApiLiveMode) => void }) {
+  return (
+    <section className="card stack" aria-label="¿Dónde estás?">
+      <h2>¿Dónde estás?</h2>
+      <Btn block onClick={() => onChoose('remote')}><Emoji>📱</Emoji> Juego a distancia</Btn>
+      <p className="xs muted" style={{ marginTop: -4 }}>Recibís tus cartas y las de la mesa, y se te oye siempre. Las apuestas se dicen en voz alta.</p>
+      <Btn block variant="ghost" onClick={() => onChoose('table')}><Emoji>🃏</Emoji> Estoy en la mesa</Btn>
+      <p className="xs muted" style={{ marginTop: -4 }}>Cargás las fotos de las cartas y podés transmitir la mesa con la cámara.</p>
+    </section>
+  );
+}
+
+/**
+ * La conexión remota de una partida presencial. Quien juega a distancia ve «la mesa» con sus cartas y las comunitarias,
+ * escucha la mesa y, si quiere, ve la transmisión; quien está en la mesa carga las fotos y puede transmitir con la cámara
+ * (de a uno). Se usa desde el link de invitación, desde la partida y desde «Mesa».
+ */
+export function LiveRoom({ code, screenMode = false }: { code: string; screenMode?: boolean }) {
   const { group, path, key } = useGroup();
   const qc = useQueryClient();
   const { notify, confirm } = useFeedback();
@@ -113,6 +151,8 @@ export function LivePage() {
   const [prefs] = useTablePrefs();
   const queryKey = key('live', code);
   const [joinError, setJoinError] = useState<string | null>(null);
+  const [chosen, setChosen] = useState<ApiLiveMode | null>(screenMode ? 'table' : null);
+  const [cameraOn, setCameraOn] = useState(true);
 
   const query = useQuery({
     queryKey,
@@ -120,13 +160,16 @@ export function LivePage() {
     refetchInterval: 20_000,
     retry: false,
   });
+  const view = query.data;
+  const mode: ApiLiveMode | null = chosen ?? view?.me?.mode ?? null;
 
-  // Entrar a la sala y renovar la presencia cada ~20 s.
+  // Entrar a la sala (con el modo elegido) y renovar la presencia cada ~20 s.
   useEffect(() => {
+    if (!mode) return;
     let stopped = false;
     const join = async () => {
       try {
-        const v = await api<ApiLiveView>(path(`/live/${code}/join`), { method: 'POST' });
+        const v = await api<ApiLiveView>(path(`/live/${code}/join`), { method: 'POST', body: { mode } });
         if (!stopped) { qc.setQueryData(queryKey, v); setJoinError(null); }
       } catch (e) {
         if (!stopped && e instanceof ApiRequestError) setJoinError(e.code);
@@ -135,47 +178,55 @@ export function LivePage() {
     void join();
     const id = setInterval(() => { if (document.visibilityState === 'visible') void join(); }, 20_000);
     return () => { stopped = true; clearInterval(id); };
-  }, [code, group.id]);
+  }, [code, group.id, mode]);
 
-  const view = query.data;
   const signal = useRef<(m: ApiRtcServerMessage) => void>(() => {});
+  const busyHandler = useRef<() => void>(() => {});
   const emojiHandler = useRef<(m: ApiEmojiServerMessage) => void>(() => {});
   const socket = useTableSocket(group.id, () => { void qc.invalidateQueries({ queryKey }); }, m => signal.current(m), m => emojiHandler.current(m), {
-    room: view?.id, enabled: !!view?.me && view.status === 'open',
+    room: view?.id, enabled: !!view?.me && view.status === 'open', onBusy: () => busyHandler.current(),
   });
-  const video = useTableVideo(socket, group.playerId);
+  // La transmisión de la mesa se escucha siempre; el video, solo si se elige verlo.
+  const video = useTableVideo(socket, group.playerId, { viewTableByDefault: false });
   signal.current = video.onSignal;
+  busyHandler.current = video.onBusy;
+  const state = video.state;
+
+  // Quien juega a distancia habla siempre: el micrófono se prende al entrar y no tiene botón de apagado.
+  const startedVoice = useRef(false);
+  useEffect(() => {
+    if (mode !== 'remote' || !view?.me?.playerId || !socket.live || startedVoice.current) return;
+    startedVoice.current = true;
+    void state.start({ camera: cameraOn, mic: true });
+  }, [mode, view?.me?.playerId, socket.live]);
 
   if (query.isLoading) return <Loading />;
   if (query.error instanceof ApiRequestError && query.error.status === 404) {
-    return <Empty icon="🔍" title="Sala no encontrada"><p>Revisá el link o pedile uno nuevo a quien armó la sala.</p></Empty>;
+    return <Empty icon="🔍" title="Sala no encontrada"><p>Revisá el link o pedile uno nuevo a quien lo compartió.</p></Empty>;
   }
   if (query.error || !view) return <QueryError error={query.error} onRetry={() => { void query.refetch(); }} />;
   if (view.status === 'closed') {
-    return <Empty icon="🏁" title="La sala se cerró"><p>La partida terminó. <Link to={`/sessions/${view.sessionId}`}>Ver la partida</Link></p></Empty>;
+    return <Empty icon="🏁" title="La conexión remota terminó"><p>La partida se cerró. <Link to={`/sessions/${view.sessionId}`}>Ver la partida</Link></p></Empty>;
   }
   if (joinError === 'no_player') {
-    return (
-      <Empty icon="🙋" title="Elegí tu jugador">
-        <p>Para entrar a la sala tenés que elegir quién sos en el grupo. <Link to="/">Elegir mi jugador</Link></p>
-      </Empty>
-    );
+    return <Empty icon="🙋" title="Elegí tu jugador"><p>Para entrar tenés que elegir quién sos en el grupo. <Link to="/">Elegir mi jugador</Link></p></Empty>;
   }
+  if (!mode) return <><h1 style={{ marginBottom: 12 }}>Conexión remota · {view.sessionName}</h1><ChooseMode onChoose={setChosen} /></>;
 
   const me = view.me;
-  // Todos los que entraron a la sala pueden mandar fotos, pasar de mano y transmitir la mesa.
-  const canSend = !!me;
-  const state = video.state;
-  const tableStream = state.remote.get(TABLE_KEY) ?? (state.source === 'table' ? state.local : null);
   const others = view.members.filter(m => m.userId !== me?.userId);
-  const remotes = others;
+  const remotes = view.members.filter(m => m.mode === 'remote' && m.userId !== me?.userId);
   const link = `${window.location.origin}/live/${view.code}`;
+  const tableStream = state.remote.get(TABLE_KEY);
+  const tableHasVideo = !!tableStream && tableStream.getVideoTracks().length > 0;
+  const broadcaster = state.tableBy ? view.members.find(m => m.playerId === state.tableBy?.playerId) : null;
+  const iTransmit = state.source === 'table' && !!state.local;
 
   const post = (suffix: string, body?: unknown) => run(async () => {
     const next = await api<ApiLiveView>(path(`/live/${view.code}/${suffix}`), { method: 'POST', body });
     qc.setQueryData(queryKey, next);
   });
-  const sendPhoto = async (body: { kind: 'board' | 'hole'; playerId?: string; image: string }) => {
+  const sendPhoto = async (body: { kind: 'board' | 'hole'; street?: ApiLiveStreet; playerId?: string; image: string }) => {
     await api(path(`/live/${view.code}/photos`), { method: 'POST', body });
     await qc.invalidateQueries({ queryKey });
   };
@@ -184,106 +235,159 @@ export function LivePage() {
     if (ok) void post('new-hand');
   };
   const closeRoom = async () => {
-    const ok = await confirm({ title: 'Cerrar la sala', message: 'Los remotos se desconectan y se borran todas las fotos. La partida sigue abierta.', danger: true, confirmLabel: 'Cerrar sala' });
+    const ok = await confirm({ title: 'Cerrar la conexión remota', message: 'Los remotos se desconectan y se borran todas las fotos. La partida sigue abierta.', danger: true, confirmLabel: 'Cerrar' });
     if (ok) void post('close');
   };
-  const face = (m: Member) => {
-    const stream = state.remote.get(m.playerId);
-    return (
-      <div key={m.playerId} className={`live-face${screenMode ? ' live-face-big' : ''}`} data-player={m.playerId} data-testid={`face-${m.name}`}>
-        {stream && stream.getVideoTracks().length > 0
-          ? <StreamVideo stream={stream} className="live-face-video" muted={state.muteOthers} />
-          : <span className="live-face-avatar">
-            <Avatar name={m.name} large />
-            {stream && <StreamVideo stream={stream} className="pseat-audio" muted={state.muteOthers} />}
-          </span>}
-        <span className="live-face-name"><span className={`dot ${m.online ? 'dot-on' : 'dot-off'}`} aria-hidden="true" /> {m.name}{m.online ? '' : ' (sin conexión)'}</span>
-      </div>
-    );
+  const switchMode = (next: ApiLiveMode) => {
+    if (next === 'table' && state.local && state.source === 'face') state.stop();
+    startedVoice.current = false;
+    setChosen(next);
   };
+  const toggleCamera = (on: boolean) => { setCameraOn(on); void state.start({ camera: on, mic: true }); };
 
   return (
     <VideoProvider state={state}>
       <Link className="breadcrumb" to={`/sessions/${view.sessionId}`}>← Partida</Link>
-      <h1 style={{ marginBottom: 4 }}>{screenMode ? 'Pantalla de la mesa' : 'Sala remota'} · {view.sessionName}</h1>
+      <h1 style={{ marginBottom: 4 }}>{screenMode ? 'Pantalla de la mesa' : mode === 'remote' ? 'Jugás a distancia' : 'En la mesa'} · {view.sessionName}</h1>
       <p className="small muted" style={{ marginBottom: 12 }}>
         <span role="img" aria-label={socket.live ? 'En vivo' : 'Sin conexión en vivo'}>{socket.live ? '🟢' : '🟠'}</span> Mano {view.handNo}
-        {!screenMode && me && ' · Las apuestas se dicen por voz.'}
+        {' · '}<button type="button" className="link-btn" onClick={() => switchMode(mode === 'remote' ? 'table' : 'remote')}>
+          {mode === 'remote' ? 'Estoy en la mesa' : 'Juego a distancia'}
+        </button>
       </p>
 
-      <section className="card live-stage" aria-label="Video de la mesa">
-        {tableStream
-          ? <StreamVideo stream={tableStream} className="live-table-video" muted={state.source === 'table' || state.muteOthers} />
-          : <div className="live-table-empty"><Emoji>📹</Emoji><p className="muted small">Esperando la cámara de la mesa…</p></div>}
+      {/* La transmisión de la mesa: el audio llega siempre; el video, si se elige verlo. */}
+      {tableStream && !tableHasVideo && <StreamVideo stream={tableStream} className="pseat-audio" muted={false} />}
+      <section className="card live-stage" aria-label="Transmisión de la mesa">
+        {(mode === 'remote' && state.viewTable && tableHasVideo) || screenMode || iTransmit
+          ? (iTransmit && state.local
+            ? <StreamVideo stream={state.local} className="live-table-video" muted />
+            : tableStream && tableHasVideo
+              ? <StreamVideo stream={tableStream} className="live-table-video" muted={false} />
+              : <div className="live-table-empty"><Emoji>📹</Emoji><p className="muted small">Esperando la transmisión de la mesa…</p></div>)
+          : (
+            <div className="live-table-empty">
+              <Emoji>📹</Emoji>
+              <p className="small">{state.tableBy ? `${broadcaster?.name ?? 'Alguien'} transmite la mesa.` : 'Nadie transmite la mesa todavía.'} {mode === 'remote' && tableStream ? 'La escuchás en vivo.' : ''}</p>
+              {mode === 'remote' && state.tableBy && (
+                <Btn variant="ghost" aria-pressed={state.viewTable} onClick={() => state.setViewTable(true)}>Ver la transmisión</Btn>
+              )}
+            </div>
+          )}
+        {mode === 'remote' && state.viewTable && tableHasVideo && (
+          <Btn variant="ghost" block onClick={() => state.setViewTable(false)}>Dejar de ver la transmisión (sigo escuchando)</Btn>
+        )}
       </section>
 
-      {screenMode ? (
-        <section aria-label="Remotos" className="live-faces live-faces-big">
-          {remotes.length === 0 ? <p className="muted">Todavía no entró ningún jugador remoto.</p> : remotes.map(face)}
-          <Btn variant="ghost" onClick={() => document.querySelectorAll('video').forEach(v => { v.muted = false; void v.play().catch(() => {}); })}>
-            <Emoji>🔊</Emoji> Activar sonido
-          </Btn>
-        </section>
-      ) : (
+      {mode === 'remote' && !screenMode && (
         <>
-          {others.length > 0 && <section aria-label="Jugadores conectados" className="live-faces">{others.map(face)}</section>}
-          <h2 className="section-title">Mesa</h2>
-          <div className="card"><Board code={view.code} photos={view.board} /></div>
-          {me?.playerId && (
-            <>
-              <h2 className="section-title">Tus cartas</h2>
-              <div className="card"><MyCards code={view.code} photo={view.myCards[view.myCards.length - 1]} /></div>
-            </>
-          )}
-        </>
-      )}
-
-      {me?.playerId && (
-        <>
-          <h2 className="section-title">Tu cámara y micrófono</h2>
-          <div className="card"><VideoControls /></div>
-        </>
-      )}
-
-      {canSend && (
-        <>
-          <h2 className="section-title">Compartir fotos y video</h2>
-          <div className="card stack" aria-label="Operador">
-            <p className="small muted">Cualquiera puede mandar la foto de la mesa, la de las cartas de un jugador (la recibe solo él) o la cámara de la mesa. Sacá las fotos con las cartas bien a la vista.</p>
-            <PhotoButton primary label="Foto de la mesa" busy={busy} onPhoto={image => sendPhoto({ kind: 'board', image })} />
-            {remotes.length === 0 && <p className="muted small">Cuando entre otro jugador vas a poder mandarle sus cartas.</p>}
-            {remotes.map(m => (
-              <div key={m.userId} className="row-between">
-                <PhotoButton label={`Cartas de ${m.name}${view.sent[m.playerId] ? ' ✓' : ''}`} busy={busy} onPhoto={image => sendPhoto({ kind: 'hole', playerId: m.playerId, image })} />
-              </div>
-            ))}
-            <div className="row">
-              {state.source === 'table' && state.local
-                ? <Btn variant="danger" className="grow" onClick={state.stop}>Detener cámara de la mesa</Btn>
-                : <Btn variant="ghost" className="grow" busy={state.starting} onClick={() => { void state.startTable(); }}><Emoji>🎥</Emoji> Transmitir la mesa</Btn>}
-              <Btn variant="ghost" className="grow" busy={busy} onClick={() => { void newHand(); }}>Nueva mano</Btn>
-            </div>
+          <Felt code={view.code} view={view} />
+          <h2 className="section-title">Tu audio y tu cámara</h2>
+          <div className="card stack">
+            <p className="small"><span role="img" aria-label="Micrófono">🎙️</span> {state.local ? 'Tu micrófono está activo: la mesa te escucha siempre.' : 'Activando tu micrófono…'}</p>
+            {!state.local && !state.starting && (
+              <Btn onClick={() => { void state.start({ camera: cameraOn, mic: true }); }}>Activar micrófono</Btn>
+            )}
+            <label className="check-row">
+              <span className="grow">Mostrar mi cámara</span>
+              <input type="checkbox" role="switch" aria-label="Mostrar mi cámara" checked={cameraOn} disabled={state.starting} onChange={e => toggleCamera(e.target.checked)} />
+            </label>
             {state.error && <div className="notice notice-err" role="alert">{state.error}</div>}
           </div>
         </>
       )}
 
-      {view.canManage && (
+      {mode === 'table' && !screenMode && (
         <>
-          <h2 className="section-title">Invitar y administrar</h2>
+          <h2 className="section-title">Cargar las cartas</h2>
+          <div className="card stack" aria-label="Cargar las cartas">
+            <p className="small muted">Primero las cartas de cada jugador remoto (las ve solo él) y después el flop, el turn y el river, a medida que salen.</p>
+            <h3 className="xs muted strong">1 · Cartas de los jugadores</h3>
+            {remotes.length === 0 && <p className="muted small">Todavía no hay jugadores a distancia conectados.</p>}
+            {remotes.map(m => (
+              <PhotoButton key={m.userId} testId={`photo-hole-${m.name}`} label={`Cartas de ${m.name}`} done={!!view.sent[m.playerId]} busy={busy}
+                onPhoto={image => sendPhoto({ kind: 'hole', playerId: m.playerId, image })} />
+            ))}
+            <h3 className="xs muted strong">2 · La mesa</h3>
+            <div className="row">
+              {STREETS.map(st => (
+                <PhotoButton key={st.id} testId={`photo-${st.id}`} label={st.label} done={view.board.some(p => p.street === st.id)} busy={busy}
+                  onPhoto={image => sendPhoto({ kind: 'board', street: st.id, image })} />
+              ))}
+            </div>
+            <Btn variant="ghost" busy={busy} onClick={() => { void newHand(); }}>Nueva mano (borra las fotos)</Btn>
+          </div>
+        </>
+      )}
+
+      {mode === 'table' && (
+        <>
+          <h2 className="section-title">Transmitir la mesa</h2>
+          <div className="card stack" aria-label="Transmitir la mesa">
+            <p className="small muted">De la mesa transmite una sola persona, con audio. Los remotos eligen si ven el video; el audio lo escuchan siempre.</p>
+            {iTransmit
+              ? (
+                <>
+                  <p className="small"><span role="img" aria-label="En vivo">🔴</span> Estás transmitiendo con la cámara {state.tableFacing === 'user' ? 'frontal' : 'trasera'}.</p>
+                  <div className="row">
+                    <Btn variant="ghost" className="grow" busy={state.starting}
+                      onClick={() => { void state.startTable(state.tableFacing === 'user' ? 'environment' : 'user'); }}>Cambiar de cámara</Btn>
+                    <Btn variant="danger" className="grow" onClick={state.stop}>Detener</Btn>
+                  </div>
+                </>
+              )
+              : state.tableBy
+                ? <p className="small" data-testid="table-busy">{broadcaster?.name ?? 'Otra persona'} ya está transmitiendo la mesa.</p>
+                : (
+                  <div className="row">
+                    <Btn className="grow" busy={state.starting} onClick={() => { void state.startTable('environment'); }}><Emoji>🎥</Emoji> Cámara trasera</Btn>
+                    <Btn variant="ghost" className="grow" busy={state.starting} onClick={() => { void state.startTable('user'); }}>Cámara frontal</Btn>
+                  </div>
+                )}
+            {state.error && <div className="notice notice-err" role="alert">{state.error}</div>}
+          </div>
+        </>
+      )}
+
+      {others.length > 0 && (
+        <>
+          <h2 className="section-title">{mode === 'table' ? 'Jugadores a distancia' : 'En la sala'}</h2>
+          <section aria-label="Jugadores conectados" className={`live-faces${screenMode ? ' live-faces-big' : ''}`}>
+            {others.filter(m => mode === 'table' ? m.mode === 'remote' : true).map(m => (
+              <Face key={m.playerId} m={m} stream={state.remote.get(m.playerId)} muted={state.muteOthers} big={screenMode} />
+            ))}
+            {screenMode && (
+              <Btn variant="ghost" onClick={() => document.querySelectorAll('video').forEach(v => { v.muted = false; void v.play().catch(() => {}); })}>
+                <Emoji>🔊</Emoji> Activar sonido
+              </Btn>
+            )}
+          </section>
+        </>
+      )}
+
+      {view.canManage && !screenMode && (
+        <>
+          <h2 className="section-title">Invitar</h2>
           <div className="card stack">
             <div className="row">
               <Btn variant="ghost" className="grow" onClick={() => { void shareText(`Sumate a la partida a distancia: ${link}`, notify); }}><Emoji>📤</Emoji> Compartir link</Btn>
               <Btn variant="ghost" className="grow" onClick={() => { void navigator.clipboard?.writeText(link).then(() => notify('Link copiado.')).catch(() => notify(link)); }}>Copiar</Btn>
             </div>
             <p className="xs muted">Pantalla para la mesa (tablet o celular fijo): <a href={`${link}?mesa`}>{`${link}?mesa`}</a></p>
-            <Btn variant="danger" busy={busy} onClick={() => { void closeRoom(); }}>Cerrar la sala</Btn>
+            <Btn variant="danger" busy={busy} onClick={() => { void closeRoom(); }}>Cerrar la conexión remota</Btn>
           </div>
         </>
       )}
 
       <EmojiLayer handler={emojiHandler} enabled={prefs.emojis} sound={prefs.emojiSound} />
-      {prefs.emojis && me && <EmojiFab placement="page" live={socket.live} onSend={socket.sendEmoji} />}
+      {prefs.emojis && me && !screenMode && <EmojiFab placement="page" live={socket.live} onSend={socket.sendEmoji} />}
     </VideoProvider>
   );
+}
+
+/** Ruta /live/:code (link de invitación): `?mesa` la deja como pantalla de la mesa. */
+export function LivePage() {
+  const { code = '' } = useParams();
+  const [search] = useSearchParams();
+  return <LiveRoom code={code} screenMode={search.has('mesa')} />;
 }

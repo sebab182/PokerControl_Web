@@ -424,17 +424,17 @@ export const liveRooms = pgTable('live_rooms', {
   check('ck_live_rooms_status', sql`${t.status} in ('open', 'closed')`),
 ]);
 
-/** Quién está en la sala: remotos (con jugador) y operadores (sacan las fotos). */
+/** Quién está en la sala: remotos (juegan a distancia) y gente en la mesa física (`table`). */
 export const liveMembers = pgTable('live_members', {
   roomId: text('room_id').notNull().references(() => liveRooms.id, { onDelete: 'cascade' }),
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   /** Su jugador en el grupo; null para un administrador que mira o saca fotos sin jugar. */
   playerId: text('player_id'),
-  role: text('role').notNull().default('remote').$type<'remote' | 'operator'>(),
+  role: text('role').notNull().default('remote').$type<'remote' | 'table'>(),
   lastSeenAt: ts('last_seen_at').notNull().defaultNow(),
 }, t => [
   primaryKey({ columns: [t.roomId, t.userId] }),
-  check('ck_live_members_role', sql`${t.role} in ('remote', 'operator')`),
+  check('ck_live_members_role', sql`${t.role} in ('remote', 'table')`),
 ]);
 
 /** Fotos de cartas, solo mientras dura la mano. `hole`: de las cartas de un remoto (solo él la ve); `board`: de la mesa. */
@@ -443,6 +443,8 @@ export const livePhotos = pgTable('live_photos', {
   roomId: text('room_id').notNull().references(() => liveRooms.id, { onDelete: 'cascade' }),
   handNo: integer('hand_no').notNull(),
   kind: text('kind').notNull().$type<'board' | 'hole'>(),
+  /** Qué parte de la mesa muestra una foto `board`: flop, turn o river (una por calle; la nueva reemplaza a la anterior). */
+  street: text('street').$type<'flop' | 'turn' | 'river'>(),
   playerId: text('player_id'),
   bytes: bytea('bytes').notNull(),
   createdBy: text('created_by').notNull(),
@@ -450,5 +452,6 @@ export const livePhotos = pgTable('live_photos', {
 }, t => [
   index('idx_live_photos_room').on(t.roomId),
   check('ck_live_photos_kind', sql`${t.kind} in ('board', 'hole')`),
+  check('ck_live_photos_street', sql`${t.street} is null or ${t.street} in ('flop', 'turn', 'river')`),
   check('ck_live_photos_owner', sql`(${t.kind} = 'hole') = (${t.playerId} is not null)`),
 ]);

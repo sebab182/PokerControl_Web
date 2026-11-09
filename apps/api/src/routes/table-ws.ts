@@ -101,7 +101,11 @@ export async function tableSocketRoutes(app: FastifyInstance) {
         try { app.tableHub.setPlayer(channel, socket, await playerOf()); } catch { return; }
         if (socket.readyState !== socket.OPEN) return;
       }
-      app.tableHub.relay(channel, socket, msg);
+      const ok = app.tableHub.relay(channel, socket, msg);
+      // Otra persona ya transmite la mesa: se le avisa a quien lo intentó.
+      if (!ok && msg.kind === 'start' && msg.source === 'table' && socket.readyState === socket.OPEN) {
+        socket.send(JSON.stringify({ type: 'table-busy' }));
+      }
     };
 
     socket.on('message', async (raw: Buffer) => {

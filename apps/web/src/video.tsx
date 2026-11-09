@@ -85,8 +85,15 @@ interface VideoState {
   start: (want: MediaWanted) => Promise<void>;
   /** Qué estoy transmitiendo: mi cara, o la cámara de la mesa (solo en una sala remota). */
   source: 'face' | 'table';
-  /** Transmite la cámara trasera como «video de la mesa» (sala remota; no hace falta tener jugador). */
-  startTable: () => Promise<void>;
+  /** Transmite la cámara como «video de la mesa» (sala remota), con audio; no hace falta tener jugador. */
+  startTable: (facing: 'user' | 'environment') => Promise<void>;
+  /** Con qué cámara se está transmitiendo la mesa (null si no). */
+  tableFacing: 'user' | 'environment' | null;
+  /** Quién transmite la mesa ahora (de la mesa transmite una sola persona); null si nadie. */
+  tableBy: { from: string; playerId: string | null } | null;
+  /** ¿Estoy viendo el video de la mesa? El audio de la mesa llega siempre; el video solo si se elige verlo. */
+  viewTable: boolean;
+  setViewTable: (on: boolean) => void;
   stop: () => void;
   /** Quién puede transmitir: solo quien tiene jugador. */
   canBroadcast: boolean;
@@ -112,11 +119,16 @@ interface Link { pc: RTCPeerConnection; playerId: string | null; pending: RTCIce
  * Maneja las conexiones. `onSignal` va conectado al WebSocket: se asigna por ref porque el socket se
  * crea antes que este hook (el socket necesita el callback y el hook necesita `send`).
  */
-export function useTableVideo(socket: TableSocket, myPlayerId: string | null) {
+export function useTableVideo(socket: TableSocket, myPlayerId: string | null, opts: { viewTableByDefault?: boolean } = {}) {
   const { live, send } = socket;
   const [local, setLocal] = useState<MediaStream | null>(null);
   const [camOn, setCamOn] = useState(false);
   const [source, setSource] = useState<'face' | 'table'>('face');
+  const [tableFacing, setTableFacing] = useState<'user' | 'environment' | null>(null);
+  const [tableBy, setTableBy] = useState<{ from: string; playerId: string | null } | null>(null);
+  const [viewTable, setViewTableState] = useState(opts.viewTableByDefault ?? true);
+  const viewTableRef = useRef(opts.viewTableByDefault ?? true);
+  const tableFrom = useRef<string | null>(null);
   const [micOn, setMicOn] = useState(false);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -180,17 +192,27 @@ export function useTableVideo(socket: TableSocket, myPlayerId: string | null) {
       try {
         switch (msg.kind) {
           case 'start':
-            // Aparece alguien transmitiendo: se le pide el video.
-            sendRef.current({ kind: 'watch', to: from });
+            if (msg.source === 'table') {
+              // La mesa: el audio llega siempre y el video solo si se eligió verlo (así no se gastan datos de más).
+              tableFrom.current = from;
+              setTableBy({ from, playerId });
+              sendRef.current({ kind: 'watch', to: from, data: { audioOnly: !viewTableRef.current } });
+            } else {
+              // Aparece alguien transmitiendo: se le pide el video.
+              sendRef.current({ kind: 'watch', to: from });
+            }
             break;
           case 'stop':
             closeLink(incoming.current, from);
+            if (tableFrom.current === from) { tableFrom.current = null; setTableBy(null); }
             break;
           case 'watch': {
             const stream = localRef.current;
             if (!stream) break; // ya corté
             const { pc } = newLink(outgoing.current, from, playerId);
-            for (const track of stream.getTracks()) pc.addTrack(track, stream);
+            // Quien solo quiere escuchar la mesa recibe el audio y no el video.
+            const audioOnly = (msg.data as { audioOnly?: boolean } | undefined)?.audioOnly === true;
+            for (const track of stream.getTracks()) if (!audioOnly || track.kind === 'audio') pc.addTrack(track, stream);
             await pc.setLocalDescription(await pc.createOffer());
             sendRef.current({ kind: 'offer', to: from, data: pc.localDescription?.toJSON() });
             // Tope de bitrate: con una malla se sube N-1 veces, así que el video tiene que ser liviano.
@@ -253,6 +275,7 @@ export function useTableVideo(socket: TableSocket, myPlayerId: string | null) {
     setCamOn(false);
     setMicOn(false);
     setSource('face');
+    setTableFacing(null);
     sourceRef.current = 'face';
   }, [closeLink]);
 
@@ -290,27 +313,53 @@ export function useTableVideo(socket: TableSocket, myPlayerId: string | null) {
     }
   }, [stop]);
 
-  /** Cámara de la mesa de una sala remota: cámara trasera en mejor calidad, sin audio, y no hace falta tener jugador. */
-  const startTable = useCallback(async () => {
+  /** Cámara de la mesa de una sala remota (frontal o trasera) con audio; no hace falta tener jugador. */
+  const startTable = useCallback(async (facing: 'user' | 'environment') => {
     setError(null);
     setStarting(true);
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: TABLE_CAMERA, audio: false });
+      const video: MediaTrackConstraints = { ...TABLE_CAMERA, facingMode: { ideal: facing } };
+      let stream: MediaStream;
+      let micGranted = true;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video, audio: true });
+      } catch (e) {
+        if (!(await onlyMicBlocked(e))) throw e;
+        stream = await navigator.mediaDevices.getUserMedia({ video, audio: false });
+        micGranted = false;
+        setError('Sin permiso para el micrófono: se transmite solo el video. ' + UNBLOCK_HINT);
+      }
       if (localRef.current) stop();
       localRef.current = stream;
       sourceRef.current = 'table';
       setSource('table');
+      setTableFacing(facing);
       stream.getVideoTracks()[0]?.addEventListener('ended', () => { if (localRef.current === stream) stop(); });
       setLocal(stream);
       setCamOn(true);
-      setMicOn(false);
+      setMicOn(micGranted);
       sendRef.current({ kind: 'start', source: 'table' });
     } catch (e) {
-      setError(await describeMediaError(e, { camera: true, mic: false }));
+      setError(await describeMediaError(e, { camera: true, mic: true }));
     } finally {
       setStarting(false);
     }
   }, [stop]);
+
+  /** El servidor avisó que otra persona ya transmite la mesa: se corta la propia y se explica. */
+  const onBusy = useCallback(() => {
+    if (sourceRef.current === 'table' && localRef.current) {
+      stop();
+      setError('Otra persona ya está transmitiendo la mesa. De la mesa transmite una sola a la vez.');
+    }
+  }, [stop]);
+
+  /** Elegir ver (o no) el video de la mesa: se vuelve a pedir la conexión solo con audio o con audio y video. */
+  const setViewTable = useCallback((on: boolean) => {
+    viewTableRef.current = on;
+    setViewTableState(on);
+    if (tableFrom.current) sendRef.current({ kind: 'watch', to: tableFrom.current, data: { audioOnly: !on } });
+  }, []);
 
   // Si se corta el WebSocket, el servidor ya avisó que dejé de transmitir y las conexiones quedaron huérfanas:
   // se descartan, y al volver se anuncia otra vez (el servidor informa a su vez quién transmite).
@@ -333,9 +382,9 @@ export function useTableVideo(socket: TableSocket, myPlayerId: string | null) {
 
   const state: VideoState = {
     supported: videoSupported(), local, camOn, micOn, starting, error, remote, muteOthers, setMuteOthers,
-    start, source, startTable, stop, canBroadcast: !!myPlayerId, myPlayerId,
+    start, source, startTable, tableFacing, tableBy, viewTable, setViewTable, stop, canBroadcast: !!myPlayerId, myPlayerId,
   };
-  return { state, onSignal };
+  return { state, onSignal, onBusy };
 }
 
 export function VideoProvider({ state, children }: { state: VideoState; children: ReactNode }) {

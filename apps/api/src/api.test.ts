@@ -860,16 +860,19 @@ describe('backup', () => {
   });
 });
 
-describe('sala remota', () => {
+describe('conexión remota de partidas presenciales', () => {
   /** Un JPEG mínimo válido para el servidor (firma + relleno): no hace falta una imagen real. */
   const jpeg = (fill = 1, size = 300) => Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(size, fill)]);
   const b64 = (b: Buffer) => `data:image/jpeg;base64,${b.toString('base64')}`;
+  const photoUrl = (c: Client, code: string, id: string) => `/api/v1/groups/${c.groupId}/live/${code}/photos/${id}`;
+  const status = async (c: Client, code: string, id: string) =>
+    (await app.inject({ method: 'GET', url: photoUrl(c, code, id), headers: { authorization: `Bearer ${c.token}` } })).statusCode;
 
+  /** Un administrador, dos remotos con su jugador y una partida presencial abierta con todos. */
   async function room() {
     process.env.LIVE_PHOTO_MIN_MS = '0';
     const { c: admin, group } = await withGroup('master');
     const { season, ana, beto } = await seed(admin);
-    // Dos remotos (lectores) con su jugador: los de la mesa son Ana y Beto, que no tienen usuario.
     const remote = async (sub: string, name: string) => {
       const c = await login(sub);
       await c.ok('POST', '/groups/join', { inviteCode: group.inviteCode });
@@ -880,160 +883,221 @@ describe('sala remota', () => {
     const r1 = await remote('remoto1', 'Remoto Uno');
     const r2 = await remote('remoto2', 'Remoto Dos');
     const session = await admin.idem(`/g/seasons/${season.id}/sessions`, { playerIds: [ana.id, beto.id, r1.player.id, r2.player.id], initialBuyIn: 100 });
-    const opened = await admin.idem(`/g/sessions/${session.id}/live`, {});
-    return { admin, group, r1, r2, session, code: opened.code as string, roomId: opened.id as string };
+    return { admin, group, r1, r2, session };
   }
 
-  it('solo un administrador abre la sala; es una por partida y se encuentra desde la partida', async () => {
-    const { admin, r1, session, code } = await room();
-    expect((await r1.c.call('POST', `/g/sessions/${session.id}/live`, {}, 'abrir-lector')).body.error).toBe('read_only');
-    expect((await admin.idem(`/g/sessions/${session.id}/live`, {})).code).toBe(code);
-    const found = await r1.c.ok('GET', `/g/sessions/${session.id}/live`);
-    expect(found.room).toMatchObject({ code, status: 'open' });
-    expect(code).toMatch(/^[a-z2-9]{8}$/);
+  /** Además, ya entraron a la sala: r1 y r2 a distancia y el administrador en la mesa. */
+  async function joined() {
+    const ctx = await room();
+    const ref = await ctx.r1.c.idem(`/g/sessions/${ctx.session.id}/live`, {});
+    const code = ref.code as string;
+    await ctx.admin.ok('POST', `/g/live/${code}/join`, { mode: 'table' });
+    await ctx.r1.c.ok('POST', `/g/live/${code}/join`, { mode: 'remote' });
+    await ctx.r2.c.ok('POST', `/g/live/${code}/join`, { mode: 'remote' });
+    return { ...ctx, code, roomId: ref.id as string };
+  }
+
+  it('toda partida presencial abierta tiene su sala: la arma sola cualquier miembro, una por partida', async () => {
+    const { admin, r1, session } = await room();
+    // Antes de pedirla se sabe cuál es la partida presencial abierta.
+    expect((await r1.c.ok('GET', '/g/live/current'))).toMatchObject({ session: { id: session.id }, room: null });
+    const a = await r1.c.idem(`/g/sessions/${session.id}/live`, {});
+    const b = await admin.idem(`/g/sessions/${session.id}/live`, {});
+    expect(b.code).toBe(a.code);
+    expect(a.code).toMatch(/^[a-z2-9]{8}$/);
+    expect((await r1.c.ok('GET', '/g/live/current')).room).toMatchObject({ code: a.code, status: 'open' });
   });
 
-  it('entrar a la sala exige tener jugador; antes de entrar no se ve nada de las fotos', async () => {
-    const { admin, r1, code } = await room();
-    const view0 = await r1.c.ok('GET', `/g/live/${code}`);
-    expect(view0).toMatchObject({ me: null, board: [], myCards: [], handNo: 1 });
-    await admin.ok('POST', `/g/live/${code}/photos`, { kind: 'board', image: b64(jpeg()) });
+  it('una partida de la mesa online o ya cerrada no tiene conexión remota y no cuenta como presencial', async () => {
+    const { admin, session, r1 } = await room();
+    // Cerrada: no tiene sala.
+    const closed = await closedSession(admin, (await admin.ok('GET', '/g/seasons'))[0].id, { id: (await admin.ok('GET', '/g/players'))[0].id }, { id: (await admin.ok('GET', '/g/players'))[1].id });
+    expect((await admin.call('POST', `/g/sessions/${closed}/live`, {}, 'live-cerrada')).body.error).toBe('session_closed');
+    // En la mesa online: tampoco, y no aparece como presencial.
+    await conn.pool.query(`update poker_tables set status = 'playing', session_id = $1`, [session.id]).catch(() => {});
+    const ensured = await admin.call('POST', `/g/sessions/${session.id}/live`, {}, 'live-online');
+    if (ensured.status !== 200) expect(ensured.body.error).toBe('online_session');
+    expect(r1.c.token).toBeTruthy();
+  });
+
+  it('entrar elige dónde estás; sin jugador no se entra (salvo un administrador) y antes de entrar no se ve nada', async () => {
+    const { admin, r1, session } = await room();
+    const { code } = await r1.c.idem(`/g/sessions/${session.id}/live`, {});
+    const before = await r1.c.ok('GET', `/g/live/${code}`);
+    expect(before).toMatchObject({ me: null, board: [], myCards: [], handNo: 1 });
+    await admin.ok('POST', `/g/live/${code}/join`, { mode: 'table' });
+    await admin.ok('POST', `/g/live/${code}/photos`, { kind: 'board', street: 'flop', image: b64(jpeg()) });
     expect((await r1.c.ok('GET', `/g/live/${code}`)).board).toEqual([]);
-    const joined = await r1.c.ok('POST', `/g/live/${code}/join`);
-    expect(joined.me).toMatchObject({ playerId: r1.player.id, operator: true });
-    expect(joined.board).toHaveLength(1);
-    expect(joined.members.map((m: { name: string }) => m.name)).toContain('Remoto Uno');
+    const joined = await r1.c.ok('POST', `/g/live/${code}/join`, { mode: 'remote' });
+    expect(joined.me).toMatchObject({ playerId: r1.player.id, mode: 'remote' });
+    expect(joined.board.map((p: { street: string }) => p.street)).toEqual(['flop']);
+    expect(joined.members.map((m: { name: string; mode: string }) => [m.name, m.mode]).sort()).toEqual([['Remoto Uno', 'remote']]);
+    // Un administrador sin jugador entra en la mesa; quien no tiene jugador ni es administrador, no.
+    expect((await admin.ok('GET', `/g/live/${code}`)).me).toMatchObject({ mode: 'table' });
     const outsider = await login('sinjugador');
     await outsider.ok('POST', '/groups/join', { inviteCode: (await admin.ok('GET', '/g')).inviteCode });
     outsider.groupId = admin.groupId;
     expect((await outsider.call('POST', `/g/live/${code}/join`, {}, 'sin-jugador')).body.error).toBe('no_player');
+    // Cambiar de lugar (de la mesa a distancia) se puede.
+    expect((await r1.c.ok('POST', `/g/live/${code}/join`, { mode: 'table' })).me.mode).toBe('table');
   });
 
-  it('las fotos de la mesa las ve la sala; las cartas de cada remoto, solo él y quien las sacó', async () => {
-    const { admin, r1, r2, code } = await room();
-    await r1.c.ok('POST', `/g/live/${code}/join`);
-    await r2.c.ok('POST', `/g/live/${code}/join`);
-    const table = await admin.ok('POST', `/g/live/${code}/photos`, { kind: 'board', image: b64(jpeg(2)) });
+  it('primero las cartas de cada remoto (solo él las ve), después una foto por calle de la mesa', async () => {
+    const { admin, r1, r2, code } = await joined();
     const hole = await admin.ok('POST', `/g/live/${code}/photos`, { kind: 'hole', playerId: r1.player.id, image: b64(jpeg(3)) });
-
-    // La de la mesa: los dos remotos reciben la misma imagen, sin caché.
-    for (const r of [r1, r2]) {
-      const res = await app.inject({ method: 'GET', url: `/api/v1/groups/${r.c.groupId}/live/${code}/photos/${table.id}`, headers: { authorization: `Bearer ${r.c.token}` } });
-      expect([res.statusCode, res.headers['content-type'], res.headers['cache-control']]).toEqual([200, 'image/jpeg', 'no-store']);
-      expect(res.rawPayload.equals(jpeg(2))).toBe(true);
-    }
-    // Las cartas de r1: él las ve y r2 no (ni en su vista ni pidiéndolas).
+    const flop = await admin.ok('POST', `/g/live/${code}/photos`, { kind: 'board', street: 'flop', image: b64(jpeg(4)) });
+    const turn = await admin.ok('POST', `/g/live/${code}/photos`, { kind: 'board', street: 'turn', image: b64(jpeg(5)) });
+    // Las cartas de r1: él y quien las sacó; r2 no.
+    expect(await status(r1.c, code, hole.id)).toBe(200);
+    expect(await status(admin, code, hole.id)).toBe(200);
+    expect(await status(r2.c, code, hole.id)).toBe(404);
     expect((await r1.c.ok('GET', `/g/live/${code}`)).myCards.map((p: { id: string }) => p.id)).toEqual([hole.id]);
     expect((await r2.c.ok('GET', `/g/live/${code}`)).myCards).toEqual([]);
-    const status = async (c: Client, id: string) => (await app.inject({
-      method: 'GET', url: `/api/v1/groups/${c.groupId}/live/${code}/photos/${id}`, headers: { authorization: `Bearer ${c.token}` },
-    })).statusCode;
-    expect(await status(r2.c, hole.id)).toBe(404);
-    expect(await status(r1.c, hole.id)).toBe(200);
-    expect(await status(admin, hole.id)).toBe(200);
-    // Una segunda foto de las mismas cartas reemplaza a la primera.
-    const hole2 = await admin.ok('POST', `/g/live/${code}/photos`, { kind: 'hole', playerId: r1.player.id, image: b64(jpeg(4)) });
+    // La mesa: la ven todos los de la sala, en orden de calles, una por calle.
+    for (const r of [r1, r2]) {
+      const res = await app.inject({ method: 'GET', url: photoUrl(r.c, code, flop.id), headers: { authorization: `Bearer ${r.c.token}` } });
+      expect([res.statusCode, res.headers['content-type'], res.headers['cache-control']]).toEqual([200, 'image/jpeg', 'no-store']);
+      expect(res.rawPayload.equals(jpeg(4))).toBe(true);
+    }
+    expect((await r2.c.ok('GET', `/g/live/${code}`)).board.map((p: { street: string }) => p.street)).toEqual(['flop', 'turn']);
+    // Repetir una calle reemplaza la foto; repetir las cartas, también.
+    const flop2 = await admin.ok('POST', `/g/live/${code}/photos`, { kind: 'board', street: 'flop', image: b64(jpeg(6)) });
+    expect(await status(r1.c, code, flop.id)).toBe(404);
+    const hole2 = await admin.ok('POST', `/g/live/${code}/photos`, { kind: 'hole', playerId: r1.player.id, image: b64(jpeg(7)) });
+    expect(await status(r1.c, code, hole.id)).toBe(404);
     expect((await r1.c.ok('GET', `/g/live/${code}`)).myCards.map((p: { id: string }) => p.id)).toEqual([hole2.id]);
-    expect(await status(r1.c, hole.id)).toBe(404);
+    const river = await admin.ok('POST', `/g/live/${code}/photos`, { kind: 'board', street: 'river', image: b64(jpeg(8)) });
+    expect((await r1.c.ok('GET', `/g/live/${code}`)).board.map((p: { id: string }) => p.id)).toEqual([flop2.id, turn.id, river.id]);
     expect((await admin.ok('GET', `/g/live/${code}`)).sent).toEqual({ [r1.player.id]: 1 });
   });
 
   it('valida las fotos; cualquiera de la sala las manda y pasa de mano, quien no entró no', async () => {
-    const { admin, r1, r2, code } = await room();
+    const { admin, r1, r2, code, session } = await joined();
     const post = (c: Client, body: object) => c.call('POST', `/g/live/${code}/photos`, body, undefined);
-    const img = (n = 1) => ({ kind: 'board', image: b64(jpeg(n)) });
-    // Sin haber entrado a la sala no se puede mandar nada.
-    expect((await post(r1.c, img())).body.error).toBe('not_in_room');
-    expect((await r1.c.call('POST', `/g/live/${code}/new-hand`, {}, 'nm-sin-entrar')).body.error).toBe('not_in_room');
-    await r1.c.ok('POST', `/g/live/${code}/join`);
-    await r2.c.ok('POST', `/g/live/${code}/join`);
+    const board = (street = 'flop', n = 1) => ({ kind: 'board', street, image: b64(jpeg(n)) });
+    const stranger = await login('ajeno');
+    await stranger.ok('POST', '/groups/join', { inviteCode: (await admin.ok('GET', '/g')).inviteCode });
+    stranger.groupId = admin.groupId;
+    await stranger.ok('POST', '/g/me/player', { name: 'Ajeno' });
+    expect((await post(stranger, board())).body.error).toBe('not_in_room');
+    expect((await stranger.call('POST', `/g/live/${code}/new-hand`, {}, 'nm-ajeno')).body.error).toBe('not_in_room');
 
-    expect((await post(admin, { kind: 'board', image: Buffer.alloc(300, 7).toString('base64') })).body.error).toBe('invalid_photo');
-    expect((await post(admin, { kind: 'board', image: b64(Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47]), Buffer.alloc(300)])) })).body.error).toBe('invalid_photo');
-    expect((await post(admin, { kind: 'board', image: b64(jpeg(1, 420_000)) })).body.error).toBe('photo_too_large');
+    expect((await post(admin, { kind: 'board', street: 'flop', image: Buffer.alloc(300, 7).toString('base64') })).body.error).toBe('invalid_photo');
+    expect((await post(admin, { kind: 'board', street: 'flop', image: b64(Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47]), Buffer.alloc(300)])) })).body.error).toBe('invalid_photo');
+    expect((await post(admin, { kind: 'board', street: 'flop', image: b64(jpeg(1, 420_000)) })).body.error).toBe('photo_too_large');
     expect((await post(admin, { kind: 'hole', image: b64(jpeg()) })).body.error).toBe('invalid_photo');
-    expect((await post(admin, { kind: 'board', playerId: r1.player.id, image: b64(jpeg()) })).body.error).toBe('invalid_photo');
+    expect((await post(admin, { kind: 'board', image: b64(jpeg()) })).body.error).toBe('invalid_photo');
+    expect((await post(admin, { kind: 'board', street: 'flop', playerId: r1.player.id, image: b64(jpeg()) })).body.error).toBe('invalid_photo');
+    expect((await post(admin, { kind: 'hole', playerId: r1.player.id, street: 'flop', image: b64(jpeg()) })).body.error).toBe('invalid_photo');
+    // Las cartas se mandan a quien juega a distancia: no a alguien que está en la mesa ni a quien no entró.
     expect((await post(admin, { kind: 'hole', playerId: 'nadie', image: b64(jpeg()) })).body.error).toBe('not_in_room');
+    await r2.c.ok('POST', `/g/live/${(await r2.c.ok('GET', `/g/sessions/${session.id}/live`).catch(() => ({ room: null }))).room?.code ?? code}/join`, { mode: 'table' });
+    expect((await post(admin, { kind: 'hole', playerId: r2.player.id, image: b64(jpeg()) })).body.error).toBe('not_in_room');
+    await r2.c.ok('POST', `/g/live/${code}/join`, { mode: 'remote' });
 
     // Un remoto manda la foto de la mesa y las cartas del otro remoto; solo el dueño las recibe.
-    expect((await post(r1.c, img())).status).toBe(200);
+    expect((await post(r1.c, board('turn'))).status).toBe(200);
     const hole = await r1.c.ok('POST', `/g/live/${code}/photos`, { kind: 'hole', playerId: r2.player.id, image: b64(jpeg(5)) });
     expect((await r2.c.ok('GET', `/g/live/${code}`)).myCards.map((p: { id: string }) => p.id)).toEqual([hole.id]);
     expect((await r1.c.ok('GET', `/g/live/${code}`)).myCards).toEqual([]);
-    const status = async (c: Client, id: string) => (await app.inject({
-      method: 'GET', url: `/api/v1/groups/${c.groupId}/live/${code}/photos/${id}`, headers: { authorization: `Bearer ${c.token}` },
-    })).statusCode;
-    expect(await status(r1.c, hole.id)).toBe(200); // quien la sacó
-    expect(await status(r2.c, hole.id)).toBe(200); // el dueño
+    expect(await status(r1.c, code, hole.id)).toBe(200); // quien la sacó
+    expect(await status(r2.c, code, hole.id)).toBe(200); // el dueño
     // Y cualquiera pasa de mano.
     expect((await r2.c.ok('POST', `/g/live/${code}/new-hand`)).handNo).toBe(2);
 
     // Ritmo y tope por mano.
     process.env.LIVE_PHOTO_MIN_MS = '60000';
-    expect((await post(r1.c, img())).body.error).toBe('too_fast');
+    expect((await post(r1.c, board())).body.error).toBe('too_fast');
     process.env.LIVE_PHOTO_MIN_MS = '0';
-    for (let i = 0; i < 12; i++) expect((await post(admin, img(i))).status).toBe(200);
-    expect((await post(admin, img(9))).body.error).toBe('too_many_photos');
+    // Repetir fotos no las acumula: cada calle y cada jugador tienen una sola (la última).
+    for (let i = 0; i < 14; i++) {
+      expect((await post(admin, { kind: 'hole', playerId: i % 2 ? r1.player.id : r2.player.id, image: b64(jpeg(i)) })).status).toBe(200);
+      expect((await post(admin, board(['flop', 'turn', 'river'][i % 3], i))).status).toBe(200);
+    }
+    expect((await conn.pool.query('select count(*)::int as n from live_photos')).rows[0].n).toBe(5);
   });
 
   it('nueva mano borra las fotos; cerrar la partida cierra la sala y borra todo', async () => {
-    const { admin, r1, session, code, roomId } = await room();
-    await r1.c.ok('POST', `/g/live/${code}/join`);
-    const photo = await admin.ok('POST', `/g/live/${code}/photos`, { kind: 'board', image: b64(jpeg()) });
+    const { admin, r1, session, code, roomId } = await joined();
+    const photo = await admin.ok('POST', `/g/live/${code}/photos`, { kind: 'board', street: 'flop', image: b64(jpeg()) });
     const next = await admin.ok('POST', `/g/live/${code}/new-hand`);
     expect([next.handNo, next.board]).toEqual([2, []]);
-    expect((await app.inject({ method: 'GET', url: `/api/v1/groups/${r1.c.groupId}/live/${code}/photos/${photo.id}`, headers: { authorization: `Bearer ${r1.c.token}` } })).statusCode).toBe(404);
-    await admin.ok('POST', `/g/live/${code}/photos`, { kind: 'board', image: b64(jpeg()) });
+    expect(await status(r1.c, code, photo.id)).toBe(404);
+    await admin.ok('POST', `/g/live/${code}/photos`, { kind: 'board', street: 'flop', image: b64(jpeg()) });
     expect((await conn.pool.query('select count(*)::int as n from live_photos')).rows[0].n).toBe(1);
 
-    await admin.ok('PATCH', `/g/sessions/${session.id}/participants/${(await admin.ok('GET', '/g/players'))[0].id}`, { finalAmount: 100 });
-    // Cerrar la partida cierra la sala y no deja ninguna foto.
     const ref = await admin.ok('GET', `/g/sessions/${session.id}`);
     for (const p of ref.participants) await admin.ok('PATCH', `/g/sessions/${session.id}/participants/${p.playerId}`, { finalAmount: 100 });
     await admin.idem(`/g/sessions/${session.id}/close`);
     expect((await conn.pool.query('select status from live_rooms where id = $1', [roomId])).rows[0].status).toBe('closed');
     expect((await conn.pool.query('select count(*)::int as n from live_photos')).rows[0].n).toBe(0);
     expect((await r1.c.call('POST', `/g/live/${code}/join`, {}, 'join-cerrada')).body.error).toBe('room_closed');
-    expect((await admin.ok('GET', `/g/sessions/${session.id}/live`)).room).toBeNull();
+    expect((await admin.ok('GET', '/g/live/current')).session).toBeNull();
   });
 
   it('borrar la partida borra la sala; una sala de otro grupo no se ve', async () => {
-    const { admin, session, code } = await room();
+    const { admin, session, code } = await joined();
     const { c: other } = await withGroup('otro');
     expect((await other.call('GET', `/g/live/${code}`)).status).toBe(404);
     await admin.ok('DELETE', `/g/sessions/${session.id}`);
     expect((await conn.pool.query('select count(*)::int as n from live_rooms')).rows[0].n).toBe(0);
   });
 
-  it('el canal de la sala no se mezcla con el de la mesa, y solo entran sus miembros', async () => {
-    const { admin, group, r1, r2, code, roomId } = await room();
-    const url = (c: Client, extra = '') => `/api/v1/groups/${group.id}/table/ws${extra}`;
+  it('el canal de la sala no se mezcla con el de la mesa; de la mesa transmite uno solo', async () => {
+    const { admin, group, r1, r2, code, roomId } = await joined();
+    const url = (extra = '') => `/api/v1/groups/${group.id}/table/ws${extra}`;
     const open = async (c: Client, extra = '') => {
-      const ws = await app.injectWS(url(c, extra));
+      const ws = await app.injectWS(url(extra));
       const first = new Promise<{ type: string }>(resolve => ws.once('message', (d: Buffer) => resolve(JSON.parse(d.toString()))));
       ws.send(JSON.stringify({ type: 'auth', token: c.token }));
       return { ws, first: await Promise.race([first, new Promise<{ type: string }>(r => setTimeout(() => r({ type: 'timeout' }), 1500))]) };
     };
-    await r1.c.ok('POST', `/g/live/${code}/join`);
-    // r2 no entró a la sala: se le cierra el socket de la sala, pero puede usar el de la mesa del grupo.
-    const closed = await app.injectWS(url(r2.c, `?room=${roomId}`));
-    const code2 = new Promise<number>(resolve => closed.once('close', (c: number) => resolve(c)));
-    closed.send(JSON.stringify({ type: 'auth', token: r2.c.token }));
-    expect(await code2).toBe(4403);
-    const group2 = await open(r2.c);
+    // Un miembro del grupo que no entró a la sala no puede conectarse a su canal.
+    const stranger = await login('ajeno-ws');
+    await stranger.ok('POST', '/groups/join', { inviteCode: group.inviteCode });
+    stranger.groupId = group.id;
+    await stranger.ok('POST', '/g/me/player', { name: 'Ajeno' });
+    const closed = await app.injectWS(url(`?room=${roomId}`));
+    const closeCode = new Promise<number>(resolve => closed.once('close', (c: number) => resolve(c)));
+    closed.send(JSON.stringify({ type: 'auth', token: stranger.token }));
+    expect(await closeCode).toBe(4403);
+
+    const group2 = await open(stranger);
     expect(group2.first.type).toBe('ready');
     const live = await open(r1.c, `?room=${roomId}`);
     expect(live.first.type).toBe('ready');
-    // Una foto avisa solo a la sala.
     const inRoom = new Promise<{ type: string }>(resolve => live.ws.once('message', (d: Buffer) => resolve(JSON.parse(d.toString()))));
     let leaked = 0;
     group2.ws.on('message', () => { leaked++; });
-    await admin.ok('POST', `/g/live/${code}/photos`, { kind: 'board', image: b64(jpeg()) });
+    await admin.ok('POST', `/g/live/${code}/photos`, { kind: 'board', street: 'flop', image: b64(jpeg()) });
     expect((await inRoom).type).toBe('changed');
     await new Promise(r => setTimeout(r, 200));
     expect(leaked).toBe(0);
-    live.ws.close();
-    group2.ws.close();
+
+    // De la mesa transmite una sola persona: la primera sí, la segunda recibe «ocupada».
+    await r1.c.ok('POST', `/g/live/${code}/join`, { mode: 'table' });
+    await r2.c.ok('POST', `/g/live/${code}/join`, { mode: 'table' });
+    const a = live;
+    const b = await open(r2.c, `?room=${roomId}`);
+    expect(b.first.type).toBe('ready');
+    const seen: { type: string; kind?: string; source?: string }[] = [];
+    b.ws.on('message', (d: Buffer) => seen.push(JSON.parse(d.toString())));
+    const seenA: { type: string }[] = [];
+    a.ws.on('message', (d: Buffer) => seenA.push(JSON.parse(d.toString())));
+    a.ws.send(JSON.stringify({ type: 'rtc', kind: 'start', source: 'table' }));
+    await new Promise(r => setTimeout(r, 300));
+    expect(seen.some(m => m.type === 'rtc' && m.kind === 'start' && m.source === 'table')).toBe(true);
+    b.ws.send(JSON.stringify({ type: 'rtc', kind: 'start', source: 'table' }));
+    await new Promise(r => setTimeout(r, 300));
+    expect(seen.some(m => m.type === 'table-busy')).toBe(true);
+    expect(seenA.some(m => m.type === 'rtc')).toBe(false);
+    // Cuando la primera corta, la segunda puede.
+    a.ws.send(JSON.stringify({ type: 'rtc', kind: 'stop' }));
+    await new Promise(r => setTimeout(r, 200));
+    b.ws.send(JSON.stringify({ type: 'rtc', kind: 'start', source: 'table' }));
+    await new Promise(r => setTimeout(r, 300));
+    expect(seenA.some(m => m.type === 'rtc')).toBe(true);
+    for (const ws of [live.ws, group2.ws, b.ws]) ws.close();
   });
 });
 
@@ -1165,7 +1229,6 @@ describe('roles', () => {
       // Sala remota: la ven y entran los miembros; armarla y mandar fotos lo decide cada ruta (administrador u operador).
       'POST /api/v1/groups/{groupId}/sessions/{id}/live',
       ...['join', 'photos', 'new-hand', 'close'].map(a => `POST /api/v1/groups/{groupId}/live/{code}/${a}`),
-      'POST /api/v1/groups/{groupId}/live/{code}/operators/{userId}',
     ]);
     for (const route of open.filter(r => !allowed.has(r))) {
       const [method, path] = route.split(' ');

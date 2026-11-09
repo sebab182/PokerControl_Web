@@ -742,10 +742,9 @@ input[type="text"], input[type="search"], select {
 
 /* Sala remota (partidas presenciales) */
 .live-banner { display: block; text-decoration: none; margin-bottom: 12px; }
-.live-stage { padding: 0; overflow: hidden; background: #0B3B26; }
+.live-stage { padding: 12px; overflow: hidden; display: grid; gap: 10px; }
 .live-table-video { display: block; width: 100%; max-height: 62vh; object-fit: contain; background: #000; }
-.live-table-empty { min-height: 180px; display: grid; place-items: center; text-align: center; color: #fff; padding: 16px; }
-.live-table-empty .muted { color: rgba(255, 255, 255, .75); }
+.live-table-empty { min-height: 140px; display: grid; place-items: center; align-content: center; gap: 8px; text-align: center; padding: 8px; }
 .live-faces { display: flex; gap: 10px; flex-wrap: wrap; margin: 12px 0; }
 .live-faces-big { gap: 14px; }
 .live-face { position: relative; width: 112px; text-align: center; font-size: 12px; }
@@ -760,3 +759,14 @@ input[type="text"], input[type="search"], select {
 .live-photo-loading { min-height: 150px; background: var(--surface-alt); border-radius: 12px; }
 .live-mycards { display: grid; gap: 8px; }
 .live-thumbs { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+
+/* Conexión remota: «mesa online» con fotos */
+.link-btn { background: none; border: 0; padding: 0; color: var(--accent); text-decoration: underline; font: inherit; cursor: pointer; }
+.live-felt { background: radial-gradient(circle at 50% 30%, #1a7a4c, #0B3B26 75%); border-radius: 16px; padding: 12px; margin: 12px 0; color: #fff; display: grid; gap: 12px; }
+.live-felt-board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.live-slot { margin: 0; text-align: center; font-size: 12px; }
+.live-slot-photo { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 10px; background: #000; }
+.live-slot-empty { aspect-ratio: 4 / 3; display: grid; place-items: center; border: 2px dashed rgba(255, 255, 255, .35); border-radius: 10px; font-size: 28px; color: rgba(255, 255, 255, .5); }
+.live-slot figcaption { margin-top: 4px; color: rgba(255, 255, 255, .9); }
+.live-felt .live-photo-hidden { min-height: 110px; font-size: 40px; }
+.live-felt .live-photo { max-height: 50vh; }
