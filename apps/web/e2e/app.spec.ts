@@ -50,7 +50,7 @@ async function createGroup(page: Page, name = 'Los viernes'): Promise<string> {
 }
 
 async function addPlayer(page: Page, name: string) {
-  await page.getByRole('button', { name: '+ Agregar' }).click();
+  await page.getByRole('button', { name: '+ Agregar', exact: true }).click();
   await page.getByLabel('Nombre').fill(name);
   await page.getByRole('button', { name: 'Guardar' }).click();
   await expect(page.getByText(name, { exact: true })).toBeVisible();
@@ -63,6 +63,7 @@ test('partida completa: grupo, compras, cierre con diferencia, pagos y stats', a
   const code = await createGroup(page);
 
   await nav(page, 'Jugadores');
+  await expect(page.getByRole('heading', { name: 'Jugadores', exact: true })).toBeVisible();
   await addPlayer(page, 'Ana');
   await addPlayer(page, 'Beto');
 
@@ -781,6 +782,7 @@ test('blackjack contra todos con un solo conectado: el resto del grupo es la ban
   await expect(page.getByText('Seba (vos)')).toBeVisible();
   // Ana es del grupo pero no se conecta: igual forma parte de la banca.
   await nav(page, 'Jugadores');
+  await expect(page.getByRole('heading', { name: 'Jugadores', exact: true })).toBeVisible();
   await addPlayer(page, 'Ana');
   await nav(page, 'Mesa');
   await expect(page.getByText('Seba (vos)')).toBeVisible();
@@ -942,6 +944,7 @@ test('mesa online: un administrador agrega jugadores sin usuario y juega por ell
   await login(page, 'Seba');
   await createGroup(page);
   await nav(page, 'Jugadores');
+  await expect(page.getByRole('heading', { name: 'Jugadores', exact: true })).toBeVisible();
   await addPlayer(page, 'Ana');
   await addPlayer(page, 'Beto');
 
