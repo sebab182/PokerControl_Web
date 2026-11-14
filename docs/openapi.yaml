@@ -1647,6 +1647,9 @@ paths:
                       - kind
                       - position
                       - playerId
+                      - playerStack
+                      - sessionId
+                      - sessionClosed
                       - phase
                       - bet
                       - minBet
@@ -1688,6 +1691,12 @@ paths:
                         nullable: true
                       playerId:
                         type: string
+                      playerStack:
+                        type: integer
+                      sessionId:
+                        type: string
+                      sessionClosed:
+                        type: boolean
                       phase:
                         anyOf:
                           - type: string
@@ -2165,6 +2174,9 @@ paths:
                       - kind
                       - position
                       - playerId
+                      - playerStack
+                      - sessionId
+                      - sessionClosed
                       - phase
                       - bet
                       - minBet
@@ -2206,6 +2218,12 @@ paths:
                         nullable: true
                       playerId:
                         type: string
+                      playerStack:
+                        type: integer
+                      sessionId:
+                        type: string
+                      sessionClosed:
+                        type: boolean
                       phase:
                         anyOf:
                           - type: string
@@ -2683,6 +2701,9 @@ paths:
                       - kind
                       - position
                       - playerId
+                      - playerStack
+                      - sessionId
+                      - sessionClosed
                       - phase
                       - bet
                       - minBet
@@ -2724,6 +2745,12 @@ paths:
                         nullable: true
                       playerId:
                         type: string
+                      playerStack:
+                        type: integer
+                      sessionId:
+                        type: string
+                      sessionClosed:
+                        type: boolean
                       phase:
                         anyOf:
                           - type: string
@@ -3201,6 +3228,9 @@ paths:
                       - kind
                       - position
                       - playerId
+                      - playerStack
+                      - sessionId
+                      - sessionClosed
                       - phase
                       - bet
                       - minBet
@@ -3242,6 +3272,12 @@ paths:
                         nullable: true
                       playerId:
                         type: string
+                      playerStack:
+                        type: integer
+                      sessionId:
+                        type: string
+                      sessionClosed:
+                        type: boolean
                       phase:
                         anyOf:
                           - type: string
@@ -3724,6 +3760,9 @@ paths:
                       - kind
                       - position
                       - playerId
+                      - playerStack
+                      - sessionId
+                      - sessionClosed
                       - phase
                       - bet
                       - minBet
@@ -3765,6 +3804,12 @@ paths:
                         nullable: true
                       playerId:
                         type: string
+                      playerStack:
+                        type: integer
+                      sessionId:
+                        type: string
+                      sessionClosed:
+                        type: boolean
                       phase:
                         anyOf:
                           - type: string
@@ -4246,6 +4291,9 @@ paths:
                       - kind
                       - position
                       - playerId
+                      - playerStack
+                      - sessionId
+                      - sessionClosed
                       - phase
                       - bet
                       - minBet
@@ -4287,6 +4335,12 @@ paths:
                         nullable: true
                       playerId:
                         type: string
+                      playerStack:
+                        type: integer
+                      sessionId:
+                        type: string
+                      sessionClosed:
+                        type: boolean
                       phase:
                         anyOf:
                           - type: string
@@ -4781,6 +4835,9 @@ paths:
                       - kind
                       - position
                       - playerId
+                      - playerStack
+                      - sessionId
+                      - sessionClosed
                       - phase
                       - bet
                       - minBet
@@ -4822,6 +4879,12 @@ paths:
                         nullable: true
                       playerId:
                         type: string
+                      playerStack:
+                        type: integer
+                      sessionId:
+                        type: string
+                      sessionClosed:
+                        type: boolean
                       phase:
                         anyOf:
                           - type: string
@@ -5343,6 +5406,9 @@ paths:
                       - kind
                       - position
                       - playerId
+                      - playerStack
+                      - sessionId
+                      - sessionClosed
                       - phase
                       - bet
                       - minBet
@@ -5384,6 +5450,12 @@ paths:
                         nullable: true
                       playerId:
                         type: string
+                      playerStack:
+                        type: integer
+                      sessionId:
+                        type: string
+                      sessionClosed:
+                        type: boolean
                       phase:
                         anyOf:
                           - type: string
@@ -5861,6 +5933,9 @@ paths:
                       - kind
                       - position
                       - playerId
+                      - playerStack
+                      - sessionId
+                      - sessionClosed
                       - phase
                       - bet
                       - minBet
@@ -5902,6 +5977,12 @@ paths:
                         nullable: true
                       playerId:
                         type: string
+                      playerStack:
+                        type: integer
+                      sessionId:
+                        type: string
+                      sessionClosed:
+                        type: boolean
                       phase:
                         anyOf:
                           - type: string
@@ -6446,6 +6527,9 @@ paths:
                       - kind
                       - position
                       - playerId
+                      - playerStack
+                      - sessionId
+                      - sessionClosed
                       - phase
                       - bet
                       - minBet
@@ -6487,6 +6571,12 @@ paths:
                         nullable: true
                       playerId:
                         type: string
+                      playerStack:
+                        type: integer
+                      sessionId:
+                        type: string
+                      sessionClosed:
+                        type: boolean
                       phase:
                         anyOf:
                           - type: string
@@ -6983,6 +7073,9 @@ paths:
                       - kind
                       - position
                       - playerId
+                      - playerStack
+                      - sessionId
+                      - sessionClosed
                       - phase
                       - bet
                       - minBet
@@ -7024,6 +7117,12 @@ paths:
                         nullable: true
                       playerId:
                         type: string
+                      playerStack:
+                        type: integer
+                      sessionId:
+                        type: string
+                      sessionClosed:
+                        type: boolean
                       phase:
                         anyOf:
                           - type: string
@@ -7527,6 +7626,9 @@ paths:
                       - kind
                       - position
                       - playerId
+                      - playerStack
+                      - sessionId
+                      - sessionClosed
                       - phase
                       - bet
                       - minBet
@@ -7568,6 +7670,12 @@ paths:
                         nullable: true
                       playerId:
                         type: string
+                      playerStack:
+                        type: integer
+                      sessionId:
+                        type: string
+                      sessionClosed:
+                        type: boolean
                       phase:
                         anyOf:
                           - type: string
@@ -8064,6 +8172,9 @@ paths:
                       - kind
                       - position
                       - playerId
+                      - playerStack
+                      - sessionId
+                      - sessionClosed
                       - phase
                       - bet
                       - minBet
@@ -8105,6 +8216,12 @@ paths:
                         nullable: true
                       playerId:
                         type: string
+                      playerStack:
+                        type: integer
+                      sessionId:
+                        type: string
+                      sessionClosed:
+                        type: boolean
                       phase:
                         anyOf:
                           - type: string
@@ -8594,6 +8711,9 @@ paths:
                       - kind
                       - position
                       - playerId
+                      - playerStack
+                      - sessionId
+                      - sessionClosed
                       - phase
                       - bet
                       - minBet
@@ -8635,6 +8755,12 @@ paths:
                         nullable: true
                       playerId:
                         type: string
+                      playerStack:
+                        type: integer
+                      sessionId:
+                        type: string
+                      sessionClosed:
+                        type: boolean
                       phase:
                         anyOf:
                           - type: string
@@ -9122,6 +9248,9 @@ paths:
                           - kind
                           - position
                           - playerId
+                          - playerStack
+                          - sessionId
+                          - sessionClosed
                           - phase
                           - bet
                           - minBet
@@ -9163,6 +9292,12 @@ paths:
                             nullable: true
                           playerId:
                             type: string
+                          playerStack:
+                            type: integer
+                          sessionId:
+                            type: string
+                          sessionClosed:
+                            type: boolean
                           phase:
                             anyOf:
                               - type: string
@@ -12329,6 +12464,7 @@ paths:
                     - name
                     - createdAt
                     - status
+                    - game
                     - pot
                     - playerCount
                   properties:
@@ -12349,6 +12485,14 @@ paths:
                         - type: string
                           enum:
                             - voided
+                    game:
+                      anyOf:
+                        - type: string
+                          enum:
+                            - poker
+                        - type: string
+                          enum:
+                            - blackjack
                     pot:
                       type: number
                     playerCount:
@@ -12433,6 +12577,7 @@ paths:
                   - createdAt
                   - closedAt
                   - status
+                  - game
                   - seasonId
                   - participants
                   - calc
@@ -12458,6 +12603,14 @@ paths:
                       - type: string
                         enum:
                           - voided
+                  game:
+                    anyOf:
+                      - type: string
+                        enum:
+                          - poker
+                      - type: string
+                        enum:
+                          - blackjack
                   seasonId:
                     type: string
                   participants:
@@ -12572,6 +12725,7 @@ paths:
                   - createdAt
                   - closedAt
                   - status
+                  - game
                   - seasonId
                   - participants
                   - calc
@@ -12597,6 +12751,14 @@ paths:
                       - type: string
                         enum:
                           - voided
+                  game:
+                    anyOf:
+                      - type: string
+                        enum:
+                          - poker
+                      - type: string
+                        enum:
+                          - blackjack
                   seasonId:
                     type: string
                   participants:
@@ -12766,6 +12928,7 @@ paths:
                   - createdAt
                   - closedAt
                   - status
+                  - game
                   - seasonId
                   - participants
                   - calc
@@ -12791,6 +12954,14 @@ paths:
                       - type: string
                         enum:
                           - voided
+                  game:
+                    anyOf:
+                      - type: string
+                        enum:
+                          - poker
+                      - type: string
+                        enum:
+                          - blackjack
                   seasonId:
                     type: string
                   participants:
@@ -12910,6 +13081,7 @@ paths:
                   - createdAt
                   - closedAt
                   - status
+                  - game
                   - seasonId
                   - participants
                   - calc
@@ -12935,6 +13107,14 @@ paths:
                       - type: string
                         enum:
                           - voided
+                  game:
+                    anyOf:
+                      - type: string
+                        enum:
+                          - poker
+                      - type: string
+                        enum:
+                          - blackjack
                   seasonId:
                     type: string
                   participants:
@@ -13067,6 +13247,7 @@ paths:
                   - createdAt
                   - closedAt
                   - status
+                  - game
                   - seasonId
                   - participants
                   - calc
@@ -13092,6 +13273,14 @@ paths:
                       - type: string
                         enum:
                           - voided
+                  game:
+                    anyOf:
+                      - type: string
+                        enum:
+                          - poker
+                      - type: string
+                        enum:
+                          - blackjack
                   seasonId:
                     type: string
                   participants:
@@ -13223,6 +13412,7 @@ paths:
                   - createdAt
                   - closedAt
                   - status
+                  - game
                   - seasonId
                   - participants
                   - calc
@@ -13248,6 +13438,14 @@ paths:
                       - type: string
                         enum:
                           - voided
+                  game:
+                    anyOf:
+                      - type: string
+                        enum:
+                          - poker
+                      - type: string
+                        enum:
+                          - blackjack
                   seasonId:
                     type: string
                   participants:
@@ -13367,6 +13565,7 @@ paths:
                   - createdAt
                   - closedAt
                   - status
+                  - game
                   - seasonId
                   - participants
                   - calc
@@ -13392,6 +13591,14 @@ paths:
                       - type: string
                         enum:
                           - voided
+                  game:
+                    anyOf:
+                      - type: string
+                        enum:
+                          - poker
+                      - type: string
+                        enum:
+                          - blackjack
                   seasonId:
                     type: string
                   participants:
@@ -13538,6 +13745,7 @@ paths:
                       - createdAt
                       - closedAt
                       - status
+                      - game
                       - seasonId
                       - participants
                       - calc
@@ -13563,6 +13771,14 @@ paths:
                           - type: string
                             enum:
                               - voided
+                      game:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - poker
+                          - type: string
+                            enum:
+                              - blackjack
                       seasonId:
                         type: string
                       participants:
@@ -13684,6 +13900,7 @@ paths:
                       - createdAt
                       - closedAt
                       - status
+                      - game
                       - seasonId
                       - participants
                       - calc
@@ -13709,6 +13926,14 @@ paths:
                           - type: string
                             enum:
                               - voided
+                      game:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - poker
+                          - type: string
+                            enum:
+                              - blackjack
                       seasonId:
                         type: string
                       participants:
@@ -13830,6 +14055,7 @@ paths:
                       - createdAt
                       - closedAt
                       - status
+                      - game
                       - seasonId
                       - participants
                       - calc
@@ -13855,6 +14081,14 @@ paths:
                           - type: string
                             enum:
                               - voided
+                      game:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - poker
+                          - type: string
+                            enum:
+                              - blackjack
                       seasonId:
                         type: string
                       participants:

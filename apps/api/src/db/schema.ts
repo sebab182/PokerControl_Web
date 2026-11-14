@@ -105,8 +105,11 @@ export const sessions = pgTable('sessions', {
   createdAt: ts('created_at').notNull().defaultNow(),
   closedAt: ts('closed_at'),
   status: text('status').notNull().$type<'active' | 'closed' | 'voided'>(),
+  /** Qué se jugó. El blackjack se registra aparte: no entra en el ranking ni en las estadísticas (sí en saldos y deudas). */
+  game: text('game').notNull().default('poker').$type<'poker' | 'blackjack'>(),
 }, t => [
   unique('uq_sessions_group_id').on(t.groupId, t.id),
+  check('ck_sessions_game', sql`${t.game} in ('poker', 'blackjack')`),
   foreignKey({ columns: [t.groupId, t.seasonId], foreignColumns: [seasons.groupId, seasons.id], name: 'fk_sessions_season' }).onDelete('restrict'),
   // Una partida anulada fue cerrada: conserva su fecha de cierre.
   check('ck_sessions_status', sql`${t.status} in ('active', 'closed', 'voided')`),
@@ -266,6 +269,8 @@ export const pokerTables = pgTable('poker_tables', {
   bjStartedAt: ts('bj_started_at'),
   /** Último jugador que jugó una mano del blackjack contra todos, para rotar. */
   bjLast: text('bj_last'),
+  /** Partida de blackjack del interludio en curso (aparte de la de póker); se cierra al terminar la vuelta. */
+  bjSessionId: text('bj_session_id'),
   createdAt: ts('created_at').notNull().defaultNow(),
 }, t => [
   unique('uq_poker_tables_group').on(t.groupId),

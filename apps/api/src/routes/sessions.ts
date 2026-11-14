@@ -147,6 +147,7 @@ export async function sessionRoutes(app: FastifyInstance) {
       name: s.name,
       createdAt: s.createdAt,
       status: s.status,
+      game: s.game ?? 'poker',
       pot: calcSession(s).totalPot,
       playerCount: s.participants.length,
     }));

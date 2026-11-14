@@ -98,6 +98,7 @@ export async function loadSessions(
     closedAt: isoOrNull(s.closedAt),
     status: s.status,
     seasonId: s.seasonId,
+    game: s.game,
     participants: participants.filter(p => p.sessionId === s.id).map(p => ({
       playerId: p.playerId,
       name: p.name,
@@ -222,6 +223,7 @@ export function toApiSession(s: Session): ApiSession {
     closedAt: s.closedAt ?? null,
     status: s.status,
     seasonId: s.seasonId as string,
+    game: s.game ?? 'poker',
     participants: s.participants.map(p => ({
       playerId: p.playerId,
       name: p.name,

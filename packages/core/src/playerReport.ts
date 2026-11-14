@@ -60,7 +60,7 @@ function round1(n: number): number {
 
 export function buildPlayerReport(playerId: string, sessions: Session[], seasonId?: string): PlayerReport | null {
   const closed = sessions
-    .filter(s => s.status === 'closed' && (!seasonId || s.seasonId === seasonId))
+    .filter(s => s.status === 'closed' && s.game !== 'blackjack' && (!seasonId || s.seasonId === seasonId))
     .sort((a, b) => new Date(sessionDate(a)).getTime() - new Date(sessionDate(b)).getTime());
 
   const history: PlayerGameEntry[] = [];

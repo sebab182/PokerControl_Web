@@ -1,6 +1,7 @@
 import type { ApiBjView, ApiHandView, ApiTableView } from '@pokercontrol/contracts';
-import { formatMoney, parseAmount } from '@pokercontrol/core';
+import { formatMoney, handValue, parseAmount } from '@pokercontrol/core';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import { EmptyCard, PlayerSeat, PokerCard } from '../components/poker';
 import { Btn, TextField } from '../components/ui';
 import { playSfx } from '../sounds';
@@ -20,6 +21,27 @@ const RESULT_LABEL: Record<NonNullable<ApiBjView['result']>, { other: string; yo
 const seatOf = (view: ApiTableView, id: string) => view.seats.find(s => s.playerId === id);
 const nameOf = (view: ApiTableView, id: string) => { const s = seatOf(view, id); return s?.isYou ? 'Vos' : s?.name ?? 'Alguien'; };
 const signed = (n: number) => `${n > 0 ? '+' : n < 0 ? '−' : ''}${formatMoney(Math.abs(n))}`;
+
+/**
+ * Lo que suman las cartas: un solo valor, o los dos cuando hay un as que cuenta como 11 o como 1 ("7 o 17").
+ */
+export function bjTotals(cards: string[]): string {
+  const real = cards.filter(c => c !== '??');
+  if (real.length === 0) return '';
+  const { total, soft } = handValue(real);
+  if (real.length === 2 && total === 21) return 'Blackjack · 21';
+  if (total > 21) return `Se pasó · ${total}`;
+  return soft ? `${total - 10} o ${total}` : String(total);
+}
+
+/** Fichas de cada uno en el paño: las de la mesa, o en el interludio las virtuales de su partida de blackjack aparte. */
+function stackOf(bj: ApiBjView, seat: ApiTableView['seats'][number]): number {
+  if (bj.kind !== 'interlude') return seat.stack;
+  const delta = bj.phase === 'done' ? bj.deltas.find(d => d.playerId === seat.playerId)?.delta ?? 0 : 0;
+  if (seat.playerId === bj.playerId) return bj.playerStack + delta;
+  const rival = bj.rivals.find(r => r.playerId === seat.playerId);
+  return rival ? rival.stack + delta : seat.stack;
+}
 
 /**
  * La mano de blackjack vista como una mano del paño de póker, para dibujarla con los mismos asientos (avatar, video,
@@ -42,7 +64,7 @@ export function bjAsHand(view: ApiTableView, bj: ApiBjView): ApiHandView {
     players: seats.map(s => {
       const plays = s.playerId === bj.playerId;
       return {
-        playerId: s.playerId, stack: s.stack, bet: plays ? bj.bet : 0, totalBet: plays ? bj.bet : 0, folded: false, allIn: false, pending: false,
+        playerId: s.playerId, stack: stackOf(bj, s), bet: plays ? bj.bet : 0, totalBet: plays ? bj.bet : 0, folded: false, allIn: false, pending: false,
         hole: plays ? bj.player : [], shown: plays ? bj.player.map((_, i) => i) : [],
       };
     }),
@@ -100,7 +122,8 @@ export function BjFelt({ view, bj, hand, fab }: { view: ApiTableView; bj: ApiBjV
           )}
         </div>
         {players.map((p, i) => (
-          <PlayerSeat key={p.playerId} view={view} hand={hand} playerId={p.playerId} offset={(i - myIdx + players.length) % players.length} total={players.length} />
+          <PlayerSeat key={p.playerId} view={view} hand={hand} playerId={p.playerId} offset={(i - myIdx + players.length) % players.length} total={players.length}
+            note={p.playerId === bj.playerId && bj.player.length > 0 ? bjTotals(bj.player) : undefined} />
         ))}
       </div>
     </div>
@@ -127,6 +150,15 @@ export function BjDock({ view, bj, busy, sound, canDeal, waiting, onBet, onAct, 
       <h2 className="bj-title">
         {interlude ? `Subieron las ciegas · blackjack ${bj.position?.index} de ${bj.position?.total}` : 'Blackjack contra todos'}
       </h2>
+
+      {interlude && !bj.sessionClosed && (
+        <p className="xs muted" data-testid="bj-aside">Esta vuelta se registra en una partida de blackjack aparte: no cambia tus fichas ni tus estadísticas del póker.</p>
+      )}
+      {bj.sessionClosed && (
+        <p className="notice notice-ok" role="status" data-testid="bj-closed">
+          Terminó la vuelta: la partida de blackjack se cerró. <Link to={`/sessions/${bj.sessionId}`}>Ver resultados y saldos</Link>
+        </p>
+      )}
 
       {bj.bet > 0 && (
         <p className="bj-bet" data-testid="bj-bet">

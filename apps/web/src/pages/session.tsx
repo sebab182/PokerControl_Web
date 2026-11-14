@@ -184,6 +184,9 @@ export function SessionPage() {
     <>
       <Link className="breadcrumb" to={`/seasons/${session.seasonId}`}>← Partidas · {group.name}</Link>
       <h1 style={{ marginBottom: 12 }}>{session.name}</h1>
+      {session.game === 'blackjack' && (
+        <p className="xs muted" style={{ marginBottom: 8 }} data-testid="game-blackjack">Partida de blackjack: se registra aparte y no cuenta en el ranking ni en las estadísticas del póker.</p>
+      )}
 
       <div className="card center">
         <div className="xs muted strong">POZO TOTAL</div>

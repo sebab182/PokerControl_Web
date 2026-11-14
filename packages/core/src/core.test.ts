@@ -227,6 +227,16 @@ describe('playerStats y ranking', () => {
     expect(playerHistory(withVoided, '1').map(h => h.sessionId)).toEqual(['b', 'a']);
     expect(globalRanking(players, withVoided, [])).toEqual(globalRanking(players, sessions, []));
   });
+  it('una partida de blackjack se registra aparte: no cuenta en el historial, el ranking ni las estadísticas', () => {
+    const withBlackjack = [...sessions, { ...closed('bj', 't1', '2026-03-01T22:00:00.000Z', [participant('1', 'Ana', [1000], 2000), participant('2', 'Beto', [1000], 0)]), game: 'blackjack' as const }];
+    expect(playerHistory(withBlackjack, '1').map(h => h.sessionId)).toEqual(['b', 'a']);
+    expect(globalRanking(players, withBlackjack, [])).toEqual(globalRanking(players, sessions, []));
+    expect(playerStats(players[0], '1', withBlackjack, [])).toEqual(playerStats(players[0], '1', sessions, []));
+    // Quien solo jugó blackjack no tiene estadísticas.
+    const onlyBj = [{ ...closed('bj', 't1', '2026-03-01T22:00:00.000Z', [participant('1', 'Ana', [1000], 2000), participant('2', 'Beto', [1000], 0)]), game: 'blackjack' as const }];
+    expect(playerStats(players[0], '1', onlyBj, [])).toBeNull();
+    expect(buildPlayerReport('1', onlyBj)).toBeNull();
+  });
   it('devuelve null sin actividad', () => {
     expect(playerStats(undefined, '9', sessions, [])).toBeNull();
   });

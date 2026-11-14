@@ -2639,6 +2639,28 @@ describe('mesa online', () => {
       expect(v.blackjack.phase).toBe('betting');
     });
 
+    it('la partida de blackjack se registra aparte: figura como blackjack y no entra en el ranking ni en las estadísticas', async () => {
+      const { a, v, pid } = await threeAtTable();
+      await stackDeck('Ts Td 9s 7d');
+      await bjAct(a, await bjBet(a, v, 50), 'stand');
+      const closed = await a.idem('/g/table/close');
+      const session = await a.ok('GET', `/g/sessions/${closed.sessionId}`);
+      expect(session.game).toBe('blackjack');
+      expect(session.name).toMatch(/^Blackjack · /);
+      // En la lista de la temporada se ve como blackjack...
+      const season = (await a.ok('GET', '/g/seasons'))[0];
+      const list = await a.ok('GET', `/g/seasons/${season.id}/sessions`);
+      expect(list.map((x: { game: string }) => x.game)).toEqual(['blackjack']);
+      // ...pero no cuenta en el ranking, ni en las estadísticas del jugador, ni en la temporada.
+      expect(await a.ok('GET', '/g/ranking')).toEqual([]);
+      expect(await a.ok('GET', `/g/ranking?seasonId=${season.id}`)).toEqual([]);
+      expect(await a.ok('GET', `/g/players/${pid[0]}/stats`)).toBeNull();
+      // El dinero sí se arregla, en los saldos: quien ganó cobra y los demás pagan.
+      const money = await a.ok('GET', `/g/sessions/${closed.sessionId}/debts`);
+      expect(Object.fromEntries(money.balances.map((b: { playerId: string; result: number }) => [b.playerId, b.result])))
+        .toEqual({ [pid[0]]: 100, [pid[1]]: -50, [pid[2]]: -50 });
+    });
+
     describe('la banca es todo el grupo', () => {
       /** Tres jugadores en el grupo; solo el primero (a) está conectado y sentado. */
       async function onlyHost() {
@@ -2784,6 +2806,52 @@ describe('mesa online', () => {
       expect(cur.blinds.level).toBe(1);
       // Las ciegas de la mano de póker están en el pozo.
       expect(total(cur as never) + cur.hand.pot).toBe(chips);
+    });
+
+    it('el interludio se registra en una partida de blackjack aparte, que se cierra al terminar la vuelta, sin tocar el póker', async () => {
+      const ctx = await twoAtTable();
+      const { a, byPlayer, v } = ctx;
+      let cur = await byPlayer(v.hand.toActPlayerId).ok('POST', '/g/table/action', { version: v.version, action: { type: 'fold' } });
+      const pokerStacks = Object.fromEntries(cur.seats.map((s: { playerId: string; stack: number }) => [s.playerId, s.stack]));
+      await rewind(6);
+      cur = await a.ok('POST', '/g/table/deal');
+      // La partida de blackjack existe, es aparte de la de póker y sigue abierta mientras haya manos por jugar.
+      const bjSessions = async () => (await conn.pool.query(`select id, game, status from sessions where game = 'blackjack'`)).rows;
+      expect(cur.blackjack).toMatchObject({ kind: 'interlude', sessionClosed: false });
+      let [bj] = await bjSessions();
+      expect(bj).toMatchObject({ game: 'blackjack', status: 'active' });
+      expect(cur.blackjack.sessionId).toBe(bj.id);
+      cur = await finishBj(ctx, cur as never) as never;
+      expect((await bjSessions())[0].status).toBe('active');
+      cur = await a.ok('POST', '/g/table/deal');
+      cur = await finishBj(ctx, cur as never) as never;
+      // Terminada la vuelta, la partida de blackjack se cierra sola: sus fichas son las virtuales de la entrada.
+      [bj] = await bjSessions();
+      expect(bj.status).toBe('closed');
+      expect((cur as { blackjack: { sessionClosed: boolean } }).blackjack.sessionClosed).toBe(true);
+      const parts = (await conn.pool.query('select player_id, final_amount from session_participants where session_id = $1', [bj.id])).rows;
+      expect(parts).toHaveLength(2);
+      expect(parts.reduce((n: number, p: { final_amount: string }) => n + Number(p.final_amount), 0)).toBe(2000);
+      // Las fichas del póker no cambiaron, y la partida de póker sigue abierta, con sus propios participantes.
+      const sameSeats = Object.fromEntries((cur as { seats: { playerId: string; stack: number }[] }).seats.map(s => [s.playerId, s.stack]));
+      expect(sameSeats).toEqual(pokerStacks);
+      expect((await conn.pool.query(`select count(*)::int as n from sessions where game = 'poker' and status = 'active'`)).rows[0].n).toBe(1);
+      // El póker sigue sin interludio de más.
+      cur = await a.ok('POST', '/g/table/deal');
+      expect(cur.blackjack).toBeNull();
+      expect(cur.hand).not.toBeNull();
+    });
+
+    it('si se cierra la mesa entre dos manos del interludio, la partida de blackjack se cierra con lo jugado', async () => {
+      const ctx = await twoAtTable();
+      const { a, byPlayer, v } = ctx;
+      await byPlayer(v.hand.toActPlayerId).ok('POST', '/g/table/action', { version: v.version, action: { type: 'fold' } });
+      await rewind(6);
+      await finishBj(ctx, await a.ok('POST', '/g/table/deal') as never);
+      const closed = await a.idem('/g/table/close');
+      expect(closed.table.status).toBe('waiting');
+      const rows = (await conn.pool.query(`select game, status from sessions order by created_at`)).rows;
+      expect(rows).toEqual([{ game: 'poker', status: 'closed' }, { game: 'blackjack', status: 'closed' }]);
     });
 
     it('si se apaga el interludio, no hay blackjack al subir las ciegas', async () => {

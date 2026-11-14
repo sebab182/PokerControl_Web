@@ -747,6 +747,9 @@ test('blackjack contra todos: apostar, jugar la mano, rotar el turno y cerrar', 
   await expect(page2.getByTestId('bj-bet')).toContainText('$50');
   // El otro ve la mano de Seba, pero la carta tapada del croupier sigue tapada hasta que termina.
   await expect(page2.getByTestId('seat-Seba').locator('.pcard')).toHaveCount(2);
+  // Junto a las cartas de quien juega se ve lo que suman (los dos valores si hay un as), en su pantalla y en la de los demás.
+  await expect(page.getByTestId('hand-total')).toHaveText(/^(\d+( o \d+)?|Blackjack · 21)$/);
+  await expect(page2.getByTestId('hand-total')).toHaveText(/^(\d+( o \d+)?|Blackjack · 21)$/);
   await bjStand(page);
   await expect(page2.getByTestId('bj-result')).toBeVisible({ timeout: 10000 });
   await expect(page2.getByTestId('bj-dealer').getByRole('img', { name: 'Carta oculta' })).toHaveCount(0);
@@ -811,7 +814,7 @@ test('blackjack contra todos con un solo conectado: el resto del grupo es la ban
   await expect(page.getByRole('group', { name: 'Tu apuesta' })).toBeVisible({ timeout: 10000 });
 });
 
-test('póker: al subir las ciegas todos juegan una mano de blackjack y después sigue el póker', async ({ page, browser, request }) => {
+test('póker: al subir las ciegas todos juegan una mano de blackjack y después sigue el póker', async ({ page, browser, request, isMobile }) => {
   test.setTimeout(120000);
   const { page2, context2 } = await twoSeated(page, browser);
   await page.getByRole('button', { name: /Iniciar partida \(2 jugadores\)/ }).click();
@@ -830,16 +833,32 @@ test('póker: al subir las ciegas todos juegan una mano de blackjack y después 
     await expect(p.getByRole('heading', { name: /Subieron las ciegas · blackjack 1 de 2/ })).toBeVisible({ timeout: 15000 });
   }
   await expect(page.getByTestId('bj-bet')).toContainText('$40');
+  // Se registra en una partida de blackjack aparte; sus fichas (de la entrada) no son las del póker.
+  await expect(page.getByTestId('bj-aside')).toContainText('partida de blackjack aparte');
   await checkPage(page, 'interludio de blackjack');
   await bjStand(page);
   await page.getByTestId('bj-next').click();
   await expect(page2.getByRole('heading', { name: /blackjack 2 de 2/ })).toBeVisible({ timeout: 10000 });
   await bjStand(page2);
+  // Terminada la vuelta, esa partida de blackjack se cierra sola, con su aviso y el acceso a sus resultados.
+  await expect(page.getByTestId('bj-closed')).toBeVisible({ timeout: 10000 });
+  await expect(page2.getByTestId('bj-closed')).toBeVisible({ timeout: 10000 });
+  await checkPage(page, 'interludio de blackjack: vuelta cerrada');
   // Terminadas las dos manos, sigue el póker con las ciegas nuevas.
   await page.getByRole('button', { name: 'Seguir con el póker' }).click();
   await expect(page.getByTestId('felt')).toBeVisible({ timeout: 10000 });
   await expect(page.getByTestId('blinds')).toContainText('Ciegas $20/$40');
   await expect(page.getByTestId('bj')).toHaveCount(0);
+  // La partida de blackjack quedó cerrada y marcada aparte, distinta de la de póker (que sigue abierta).
+  // En el celular la mesa reemplaza al menú: se vuelve con la flecha.
+  if (isMobile) await page.getByRole('link', { name: 'Volver al menú' }).click();
+  await nav(page, 'Temporadas');
+  await page.getByRole('link', { name: 'Ver partidas' }).click();
+  await expect(page.locator('[data-testid^="session-Blackjack"]')).toContainText('Blackjack');
+  await expect(page.locator('[data-testid^="session-Blackjack"]')).toContainText('Cerrada');
+  await expect(page.locator('[data-testid^="session-Mesa online"]')).toContainText('Activa');
+  await page.locator('[data-testid^="session-Blackjack"]').getByRole('link').first().click();
+  await expect(page.getByTestId('game-blackjack')).toBeVisible();
   await context2.close();
 });
 

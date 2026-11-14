@@ -91,7 +91,7 @@ export async function backupRoutes(app: FastifyInstance) {
         }
         for (const s of plan.sessions) {
           await tx.insert(schema.sessions).values({
-            id: s.id, groupId, seasonId: s.seasonId as string, name: s.name, status: s.status,
+            id: s.id, groupId, seasonId: s.seasonId as string, name: s.name, status: s.status, game: s.game ?? 'poker',
             createdAt: new Date(s.createdAt), closedAt: s.closedAt ? new Date(s.closedAt) : null,
           });
           for (const p of s.participants) {

@@ -115,12 +115,14 @@ export const SessionCalc = Obj({
   totalPot: T.Number(), totalOut: T.Number(), diff: T.Number(),
   status: T.Union([T.Literal('ok'), T.Literal('faltan'), T.Literal('sobran')]),
 }, 'SessionCalc');
+/** Qué se jugó en la partida. El blackjack se registra aparte: no cuenta en el ranking ni en las estadísticas. */
+export const SessionGame = T.Union([T.Literal('poker'), T.Literal('blackjack')]);
 export const Session = Obj({
-  id: T.String(), name: T.String(), createdAt: T.String(), closedAt: Nullable(T.String()), status: SessionStatus,
+  id: T.String(), name: T.String(), createdAt: T.String(), closedAt: Nullable(T.String()), status: SessionStatus, game: SessionGame,
   seasonId: T.String(), participants: T.Array(Participant), calc: SessionCalc, missingResults: T.Array(T.String()),
 }, 'Session');
 export const SessionSummary = Obj({
-  id: T.String(), name: T.String(), createdAt: T.String(), status: SessionStatus, pot: T.Number(), playerCount: T.Number(),
+  id: T.String(), name: T.String(), createdAt: T.String(), status: SessionStatus, game: SessionGame, pot: T.Number(), playerCount: T.Number(),
 }, 'SessionSummary');
 export const CreateSessionBody = Obj({
   name: T.Optional(T.String({ maxLength: 120 })),
@@ -410,6 +412,10 @@ export const BjView = Obj({
   position: Nullable(Obj({ index: T.Integer(), total: T.Integer(), level: T.Integer() })),
   /** Quien juega la mano; los demás son sus rivales. */
   playerId: T.String(),
+  /** Fichas de quien juega al empezar la mano (en el interludio, las virtuales de la partida de blackjack). */
+  playerStack: T.Integer(),
+  /** Partida en la que se registra la mano (aparte de la de póker) y si ya se cerró al terminar la vuelta. */
+  sessionId: T.String(), sessionClosed: T.Boolean(),
   phase: T.Union([T.Literal('betting'), T.Literal('player'), T.Literal('done')]),
   /** Apuesta por cabeza (ya duplicada si dobló), mínima y tope: con el tope nadie queda debiendo más de lo que tiene. */
   bet: T.Integer(), minBet: T.Integer(), maxBet: T.Integer(),

@@ -20,7 +20,7 @@ import type { FastifyInstance } from 'fastify';
 import * as schema from '../db/schema';
 import type { LoggedAction } from '../db/schema';
 import { ApiError, notFound } from '../errors';
-import { activeBj, bjAct, bjBet, bjTimeout, bjView, dealNext, latestBj } from './blackjack';
+import { activeBj, bjAct, bjBet, bjTimeout, bjView, closeInterlude, dealNext, latestBj } from './blackjack';
 import { recordBoughtInHand, recordHandResult, recordHandStart } from '../hand-history';
 import { idempotent } from '../idempotency';
 import type { Conn, Tx } from '../repo';
@@ -160,8 +160,9 @@ async function buildView(db: Conn, table: TableRow, viewer: Viewer): Promise<Api
 
   // La mano de blackjack se muestra mientras sea lo más reciente de la partida en curso (en el póker, hasta que se reparta otra mano).
   const bjRow = await latestBj(db, table.id);
-  const showBj = table.status === 'playing' && !!bjRow && bjRow.sessionId === table.sessionId
-    && (table.game === 'blackjack' || !row || bjRow.startedAt.getTime() > row.startedAt.getTime());
+  // Las manos del interludio se registran en su propia partida, distinta de la de póker: se reconocen por la mano más nueva.
+  const showBj = table.status === 'playing' && !!bjRow
+    && (table.game === 'blackjack' ? bjRow.sessionId === table.sessionId : !row || bjRow.startedAt.getTime() > row.startedAt.getTime());
   const blackjack = showBj ? await bjView(db, table, bjRow, { myId, managed: managedIds }) : null;
 
   let hand: ApiTableView['hand'] = null;
@@ -332,7 +333,7 @@ async function dealNextHand(tx: Tx, table: TableRow): Promise<void> {
 }
 
 /** Vuelve a cero el estado del blackjack de la mesa (al cerrar o cancelar la partida). */
-const bjReset = { bjLevel: 0, bjQueue: [] as string[], bjStartedAt: null, bjLast: null };
+const bjReset = { bjLevel: 0, bjQueue: [] as string[], bjStartedAt: null, bjLast: null, bjSessionId: null };
 
 /**
  * El asiento guarda el usuario del jugador al sentarse. Si después se vincula o desvincula un usuario
@@ -573,6 +574,7 @@ async function standPlayer(tx: Tx, table: TableRow, playerId: string, self = fal
  */
 async function cancelGame(tx: Tx, table: TableRow): Promise<void> {
   const sessionId = table.sessionId as string;
+  if (table.bjSessionId) await tx.delete(schema.sessions).where(and(eq(schema.sessions.groupId, table.groupId), eq(schema.sessions.id, table.bjSessionId)));
   await tx.delete(schema.pokerHands).where(and(eq(schema.pokerHands.tableId, table.id), eq(schema.pokerHands.sessionId, sessionId)));
   await tx.delete(schema.pokerSeats).where(eq(schema.pokerSeats.tableId, table.id));
   await tx.update(schema.pokerTables)
@@ -790,8 +792,8 @@ export async function tableRoutes(app: FastifyInstance) {
       const sessionId = randomUUID();
       const now = new Date();
       await tx.insert(schema.sessions).values({
-        id: sessionId, groupId, seasonId: season.id, name: `Mesa online · ${defaultSessionName(now, req.group.timezone)}`,
-        status: 'active', createdAt: now,
+        id: sessionId, groupId, seasonId: season.id, name: `${blackjack ? 'Blackjack' : 'Mesa online'} · ${defaultSessionName(now, req.group.timezone)}`,
+        status: 'active', createdAt: now, game: blackjack ? 'blackjack' : 'poker',
       });
       // Póker: juegan los conectados. Blackjack contra todos: todos los jugadores del grupo entran con su entrada (son la
       // banca, ganan o pierden aunque no estén conectados) y solo juegan turno los que están conectados.
@@ -917,6 +919,8 @@ export async function tableRoutes(app: FastifyInstance) {
       }
       if ((await activeHand(tx, table.id)) || (await activeBj(tx, table.id))) throw new ApiError(409, 'hand_in_progress', 'Esperá a que termine la mano.');
       const sessionId = table.sessionId as string;
+      // Si se cierra entre dos manos de un interludio, esa partida de blackjack también se cierra, con lo jugado hasta ahí.
+      await closeInterlude(tx, table);
       for (const seat of seats) {
         await tx.update(schema.sessionParticipants).set({ finalAmount: seat.stack })
           .where(and(eq(schema.sessionParticipants.sessionId, sessionId), eq(schema.sessionParticipants.playerId, seat.playerId)));

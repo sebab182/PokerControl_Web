@@ -88,8 +88,10 @@ export function SeatScore({ seat }: { seat: { rebuys: number; net: number } }) {
  * Un asiento del paño. Las cartas propias (las tuyas y las de los jugadores sin usuario que manejás) van en el asiento:
  * en el tuyo, abajo y grandes, con el nombre de tu jugada; en los demás, chicas en abanico sobre el avatar.
  */
-export function PlayerSeat({ view, hand, playerId, offset, total }: {
+export function PlayerSeat({ view, hand, playerId, offset, total, note }: {
   view: ApiTableView; hand: ApiHandView; playerId: string; offset: number; total: number;
+  /** Texto junto a las cartas, en lugar del nombre de la jugada: en el blackjack, lo que suman. */
+  note?: string;
 }) {
   const video = useVideo();
   const stream = useSeatStream(playerId);
@@ -105,7 +107,7 @@ export function PlayerSeat({ view, hand, playerId, offset, total }: {
   // Se ve lo que se mostró y, en los asientos propios, también lo que solo ves vos.
   const cards = p.hole.flatMap((c, i) => c !== '??' && (p.shown.includes(i) || mine) ? [{ c, i, own: !p.shown.includes(i) }] : []);
   const hero = offset === 0 && mine && cards.length > 0;
-  const handName = mine && !p.folded && p.hole.length + hand.board.length >= 5 && !p.hole.includes('??')
+  const handName = note ? null : mine && !p.folded && p.hole.length + hand.board.length >= 5 && !p.hole.includes('??')
     ? evaluate([...p.hole, ...hand.board]).name : null;
   const name = seat.isYou ? 'Vos' : seat.name;
   // Con cámara se ve el video; si solo transmite el micrófono se ve la inicial, con el audio sonando y un ícono de micrófono.
@@ -146,7 +148,7 @@ export function PlayerSeat({ view, hand, playerId, offset, total }: {
                 <span className="pseat-name"><span className="ellipsis">{name}</span>{dealer && <span className="dealer" title="Botón">D</span>}</span>
                 <span className="pseat-stack num">{formatMoney(p.stack)}</span>
                 <SeatScore seat={seat} />
-                {handName && <span className="pseat-handname">{handName}</span>}
+                {(note || handName) && <span className="pseat-handname" {...(note ? { 'data-testid': 'hand-total' } : {})}>{note ?? handName}</span>}
               </span>
             </div>
             {chips}
@@ -162,6 +164,7 @@ export function PlayerSeat({ view, hand, playerId, offset, total }: {
             <span className="pseat-name"><span className="ellipsis">{name}</span>{dealer && <span className="dealer" title="Botón">D</span>}</span>
             <span className="pseat-stack num">{formatMoney(p.stack)}</span>
             <SeatScore seat={seat} />
+            {note && <span className="pseat-handname" data-testid="hand-total">{note}</span>}
           </div>
         </>
       )}
