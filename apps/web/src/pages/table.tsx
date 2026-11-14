@@ -9,7 +9,7 @@ import {
   Avatar, Btn, Emoji, Loading, Modal, QueryError, TextField, useAction, useFeedback,
 } from '../components/ui';
 import { useGroup } from '../context';
-import { BlackjackTable } from './blackjack';
+import { BjDock, BjFelt, bjAsHand } from './blackjack';
 import { LiveRoom } from './live';
 import { useTableSounds, useTickTock } from '../tableSounds';
 import { DECKS, type Deck, type TablePrefs, primeHandSound, useTablePrefs, useTurnAlert, useWakeLock } from '../tablePrefs';
@@ -90,8 +90,8 @@ const PrefsIcon = () => (
  * Barra de la mesa mientras se juega una mano (celular y compu): el estado de la mano y las herramientas
  * (video, preferencias). En el celular reemplaza al menú de abajo, así que lleva una flecha para volver.
  */
-function TableBar({ view, hand, updatedAt, live, onPrefs }: {
-  view: ApiTableView; hand: Hand; updatedAt: number; live: boolean; onPrefs: () => void;
+function TableBar({ view, hand, updatedAt, live, onPrefs, status }: {
+  view: ApiTableView; hand: Hand; updatedAt: number; live: boolean; onPrefs: () => void; status?: ReactNode;
 }) {
   return (
     <div className="table-bar">
@@ -99,7 +99,7 @@ function TableBar({ view, hand, updatedAt, live, onPrefs }: {
       <Link to="/ranking" className="tool-btn table-back" aria-label="Volver al menú">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6" /></svg>
       </Link>
-      <Status view={view} hand={hand} updatedAt={updatedAt} />
+      {status ?? <Status view={view} hand={hand} updatedAt={updatedAt} />}
       <div className="table-tools">
         {live && <span className="live-dot" role="img" aria-label="En vivo" title="En vivo: recibís los cambios al instante" />}
         <VideoMenu />
@@ -189,7 +189,7 @@ function TableView() {
   const view = query.data;
   const me = view?.seats.find(s => s.isYou);
   // Mientras se muestra una mano de blackjack, la mano de póker (si la hay) queda de fondo.
-  const pokerHand = view && !view.blackjack ? view.hand : null;
+  const tableHand = view ? (view.blackjack ? bjAsHand(view, view.blackjack) : view.hand) : null;
 
   // Con la pestaña en segundo plano, el título avisa cuando te toca.
   const myTurn = !!view?.hand?.legal || (!!view?.blackjack?.actingPlayerId && view.blackjack.phase !== 'done');
@@ -221,7 +221,7 @@ function TableView() {
     lastBig.current = bigBlind;
   }, [handNo, bigBlind, smallBlind, notify]);
 
-  useLandscapeTable(view?.status === 'playing' && !!pokerHand);
+  useLandscapeTable(view?.status === 'playing' && !!tableHand);
   // En la compu la mesa usa más ancho que el resto de las páginas (ver styles.css).
   useEffect(() => {
     document.documentElement.classList.add('table-page');
@@ -238,7 +238,8 @@ function TableView() {
 
   // Presencia: en la sala de espera se sienta solo al entrar; con partida en curso solo
   // renueva a quien ya está sentado (sumarse tiene costo: una nueva entrada).
-  const canBeat = !!view && !!group.playerId && !standing && (view.status === 'waiting' || me?.status === 'sitting');
+  // En el blackjack contra todos el jugador del grupo ya tiene sus fichas: al conectarse se sienta solo y entra a jugar.
+  const canBeat = !!view && !!group.playerId && !standing && (view.status === 'waiting' || me?.status === 'sitting' || (view.game === 'blackjack' && !!me));
   const beat = useRef<() => void>(() => {});
   beat.current = () => {
     api<ApiTableView>(path('/table/join'), { method: 'POST' }).then(next => qc.setQueryData(queryKey, next)).catch(() => {});
@@ -338,9 +339,9 @@ function TableView() {
     <VideoProvider state={video.state}>
       <EmojiLayer handler={emojiHandler} enabled={prefs.emojis} sound={prefs.emojiSound} />
       {/* En el paño el botón va en la esquina del propio paño; en la sala de espera, flotando sobre la página. */}
-      {prefs.emojis && !(view.status === 'playing' && pokerHand) && <EmojiFab placement="page" live={live} onSend={socket.sendEmoji} />}
+      {prefs.emojis && !(view.status === 'playing' && tableHand) && <EmojiFab placement="page" live={live} onSend={socket.sendEmoji} />}
       {/* Con una mano en juego, la barra de la mesa reemplaza al encabezado. */}
-      {!(view.status === 'playing' && pokerHand) && (
+      {!(view.status === 'playing' && tableHand) && (
         <div className="page-head">
           <h1 className="grow">Mesa</h1>
           {live && <span className="badge badge-muted" title="Recibís los cambios al instante">En vivo</span>}
@@ -350,7 +351,7 @@ function TableView() {
       )}
       <div className={`table-layout${prefs.animations ? ' table-anim' : ''} deck-${prefs.deck}`}>
         <div className="table-main">
-          {view.status === 'playing' && !pokerHand && <VideoControls />}
+          {view.status === 'playing' && !tableHand && <VideoControls />}
           {closedId && view.status === 'waiting' && (
             <div className="notice notice-ok" role="status">
               Partida cerrada. <Link to={`/sessions/${closedId}`}>Ver resultados y saldos</Link>
@@ -360,7 +361,8 @@ function TableView() {
             ? <Waiting view={view} canEdit={canEdit} standing={standing} busy={busy} onJoin={join} onLeave={leave} onStart={() => setStartOpen(true)} onAddOpen={() => setAddOpen(true)} />
             : <Playing view={view} updatedAt={query.dataUpdatedAt} busy={busy} sound={prefs.sound}
               fab={prefs.emojis ? <EmojiFab placement="felt" live={live} onSend={socket.sendEmoji} /> : null} onJoin={join} onLeave={leave} onLeaveGame={() => { void leaveGame(); }} onDeal={deal} onClose={close}
-              bar={pokerHand && <TableBar view={view} hand={pokerHand} updatedAt={query.dataUpdatedAt} live={live} onPrefs={() => setPrefsOpen(true)} />}
+              bar={tableHand && <TableBar view={view} hand={tableHand} updatedAt={query.dataUpdatedAt} live={live} onPrefs={() => setPrefsOpen(true)}
+                status={view.blackjack ? <BjStatus view={view} bj={view.blackjack} updatedAt={query.dataUpdatedAt} /> : undefined} />}
               onReveal={(playerIds, cards) => run(async () => {
                 // Varios a la vez (los jugadores que manejás): uno por vez, cada uno con la mesa ya actualizada.
                 for (const playerId of playerIds) {
@@ -414,7 +416,8 @@ function Waiting({ view, canEdit, standing, busy, onJoin, onLeave, onStart, onAd
   const { group, path, key } = useGroup();
   const { notify } = useFeedback();
   const present = view.seats.filter(s => s.online);
-  const canStart = present.length >= 2 && (canEdit || present.some(s => s.isYou));
+  // El blackjack contra todos se juega con uno solo conectado (la banca es todo el grupo); el póker pide 2 (se valida al elegir).
+  const canStart = present.length >= 1 && (canEdit || present.some(s => s.isYou));
   // El código de invitación solo les llega a master y admins (misma consulta que Configuración).
   const details = useQuery({ queryKey: key('group-details'), queryFn: () => api<ApiGroup>(path('')), enabled: canEdit });
   const inviteCode = details.data?.inviteCode;
@@ -454,7 +457,7 @@ function Waiting({ view, canEdit, standing, busy, onJoin, onLeave, onStart, onAd
             </div>
           </div>
         ))}
-        <p className="xs muted" style={{ marginTop: 8 }}>Cuando haya al menos 2 jugadores conectados se puede iniciar.</p>
+        <p className="xs muted" style={{ marginTop: 8 }}>Póker: al menos 2 conectados. Blackjack contra todos: alcanza con 1, el resto del grupo es la banca.</p>
       </section>
 
       <div className="lobby-actions">
@@ -465,7 +468,7 @@ function Waiting({ view, canEdit, standing, busy, onJoin, onLeave, onStart, onAd
           Iniciar partida ({present.length} {present.length === 1 ? 'jugador' : 'jugadores'})
         </Btn>
       </div>
-      {!canStart && <p className="muted small center">Los demás miembros pueden sumarse después de iniciar.</p>}
+      {!canStart && <p className="muted small center">Conectate para iniciar. Los demás miembros pueden sumarse después.</p>}
     </div>
   );
 }
@@ -514,6 +517,7 @@ function StartModal({ view, open, onClose, onStart, busy }: {
     if (blindMinutes === null || !Number.isInteger(blindMinutes) || (blindMinutes !== 0 && (blindMinutes < 5 || blindMinutes > 120))) {
       return setError('Las ciegas se duplican cada 0 (nunca) o entre 5 y 120 minutos.');
     }
+    if (view.seats.filter(s => s.online).length < 2) return setError('Para jugar al póker hacen falta al menos 2 jugadores conectados.');
     setError('');
     onStart({ ...cfg, game, turnSeconds, blindMinutes, showAllCards: showAll, bjInterlude: interlude } as StartConfig);
   };
@@ -529,8 +533,8 @@ function StartModal({ view, open, onClose, onStart, busy }: {
         <>
           <TextField label="Apuesta mínima" value={bjMin} onChange={setBjMin} decimal />
           <p className="xs muted" style={{ marginTop: -6, marginBottom: 12 }}>
-            Juega una mano cada uno, por turnos, contra el croupier y contra todos los demás: la apuesta se paga por cabeza. El tope de la apuesta cuida que
-            nadie quede debiendo más de lo que tiene, ni doblando.
+            Juega una mano cada conectado, por turnos, contra el croupier y contra la banca: todos los jugadores del grupo, estén o no conectados, entran con
+            su entrada y ganan o pierden la apuesta por cabeza. El tope de la apuesta cuida que nadie quede debiendo más de lo que tiene, ni doblando.
           </p>
           <TextField label="Tiempo por turno (segundos, 0 = sin límite)" value={turn} onChange={setTurn} decimal />
         </>
@@ -581,6 +585,7 @@ function Playing({ view, updatedAt, bar, fab, busy, sound, onJoin, onLeave, onLe
   const me = view.seats.find(s => s.isYou);
   // Con una mano de blackjack a la vista (juego de la mesa o interludio de las ciegas) no se muestra la de póker.
   const bj = view.blackjack;
+  const bjHand = bj ? bjAsHand(view, bj) : null;
   const hand = bj ? null : view.hand;
   const live = (!!hand && hand.street !== 'done') || (!!bj && bj.phase !== 'done');
   // Sin fichas se puede recomprar entre manos, si ya te retiraste de la que está en juego o mientras seguís pendiente de pagar.
@@ -598,8 +603,11 @@ function Playing({ view, updatedAt, bar, fab, busy, sound, onJoin, onLeave, onLe
   return (
     <>
       {bj && (
-        <BlackjackTable view={view} bj={bj} busy={busy} sound={sound} timer={<TurnTimer view={view} updatedAt={updatedAt} />}
-          canDeal={canDeal} waiting={waitingDeal} onBet={onBjBet} onAct={onBjAct} onDeal={onDeal} />
+        <div className="table-stage">
+          {bar}
+          <BjFelt view={view} bj={bj} hand={bjHand as Hand} fab={fab} />
+          <BjDock view={view} bj={bj} busy={busy} sound={sound} canDeal={canDeal} waiting={waitingDeal} onBet={onBjBet} onAct={onBjAct} onDeal={onDeal} />
+        </div>
       )}
       {hand && (
         <div className="table-stage">
@@ -925,6 +933,20 @@ function Status({ view, hand, updatedAt }: { view: ApiTableView; hand: Hand; upd
   );
 }
 
+
+/** Estado de la barra de la mesa durante una mano de blackjack. */
+function BjStatus({ view, bj, updatedAt }: { view: ApiTableView; bj: NonNullable<ApiTableView['blackjack']>; updatedAt: number }) {
+  const done = bj.phase === 'done';
+  const text = done ? 'Terminada.'
+    : bj.actingPlayerId ? (bj.actingPlayerId === view.myPlayerId ? 'Es tu turno.' : `Te toca jugar por ${nameOf(view, bj.actingPlayerId)}.`)
+      : `Turno de ${nameOf(view, bj.playerId)}.`;
+  return (
+    <p className={`table-status ${done ? 'notice notice-ok' : 'notice notice-info'}`} role="status" aria-live="polite">
+      <span className="xs muted">Blackjack · </span>{text}
+      {!done && <TurnTimer view={view} updatedAt={updatedAt} />}
+    </p>
+  );
+}
 
 /** Tecla de atajo, solo visible con mouse. No forma parte del nombre del botón. */
 function Kbd({ children }: { children: string }) {

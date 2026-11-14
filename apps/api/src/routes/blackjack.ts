@@ -44,8 +44,14 @@ async function seatRows(db: Conn, tableId: string): Promise<SeatRow[]> {
     .orderBy(asc(schema.pokerSeats.joinedAt), asc(schema.pokerSeats.playerId));
 }
 
-/** Juegan (o cubren apuestas) los sentados con fichas. */
+const ONLINE_MS = 45_000;
+
+/** Juegan (o cubren apuestas) en el interludio del póker los sentados con fichas. */
 const eligible = (seats: SeatRow[]): SeatRow[] => seats.filter(s => s.status === 'sitting' && s.stack > 0);
+
+/** Tiene turno en el blackjack contra todos: sentado, con fichas y conectado (o sentado a mano por un administrador). */
+const plays = (s: SeatRow, now = Date.now()): boolean =>
+  s.status === 'sitting' && s.stack > 0 && (s.addedBy !== null || now - s.lastSeenAt.getTime() < ONLINE_MS);
 
 const deadlineFor = (table: Pick<TableRow, 'turnSeconds'>): Date | null =>
   table.turnSeconds > 0 ? new Date(Date.now() + table.turnSeconds * 1000) : null;
@@ -68,9 +74,11 @@ async function settleStacks(tx: Tx, tableId: string, state: BjState): Promise<vo
 async function startHand(
   tx: Tx, table: TableRow, playerId: string, kind: 'solo' | 'interlude', level: number, bigBlind: number,
 ): Promise<BjState | null> {
-  const seats = eligible(await seatRows(tx, table.id));
-  const me = seats.find(s => s.playerId === playerId);
-  const rivals = seats.filter(s => s.playerId !== playerId).map(s => ({ id: s.playerId, stack: s.stack }));
+  const all = await seatRows(tx, table.id);
+  // Contra todos: la banca son todos los que tienen fichas, estén o no conectados. En el interludio, los sentados.
+  const bank = kind === 'solo' ? all.filter(s => s.stack > 0) : eligible(all);
+  const me = bank.find(s => s.playerId === playerId);
+  const rivals = bank.filter(s => s.playerId !== playerId).map(s => ({ id: s.playerId, stack: s.stack }));
   if (!me || rivals.length === 0) return null;
   let state = newRound({ playerId, playerStack: me.stack, rivals, minBet: kind === 'interlude' ? 1 : table.bjMinBet, randomInt });
   if (kind === 'interlude') {
@@ -91,15 +99,16 @@ async function startHand(
   return state;
 }
 
-/** Blackjack contra todos: le toca al que sigue (en orden de asiento) al último que jugó. */
+/** Blackjack contra todos: le toca al conectado que sigue (en orden de asiento) al último que jugó. */
 async function dealSolo(tx: Tx, table: TableRow): Promise<void> {
-  const ids = eligible(await seatRows(tx, table.id)).map(s => s.playerId);
-  if (ids.length < 2) throw new ApiError(422, 'not_enough_players', 'Hacen falta al menos 2 jugadores con fichas.');
+  const ids = (await seatRows(tx, table.id)).filter(s => plays(s)).map(s => s.playerId);
+  if (ids.length < 1) throw new ApiError(422, 'not_enough_players', 'Hace falta al menos un jugador conectado con fichas.');
   let from = table.bjLast ? ids.indexOf(table.bjLast) : -1;
   for (let k = 1; k <= ids.length; k++) {
     const id = ids[(from + k + ids.length) % ids.length];
     const state = await startHand(tx, table, id, 'solo', 0, 0);
     if (state && state.result !== 'skipped') return;
+    if (!state) throw new ApiError(422, 'not_enough_players', 'No hay con quién jugar: hacen falta otros jugadores con fichas.');
     from = ids.indexOf(id);
     table = { ...table, bjLast: id };
   }

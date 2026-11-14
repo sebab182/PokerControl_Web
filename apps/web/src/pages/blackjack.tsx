@@ -1,8 +1,8 @@
-import type { ApiBjView, ApiTableView } from '@pokercontrol/contracts';
+import type { ApiBjView, ApiHandView, ApiTableView } from '@pokercontrol/contracts';
 import { formatMoney, parseAmount } from '@pokercontrol/core';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { PokerCard } from '../components/poker';
-import { Avatar, Btn, Emoji, TextField } from '../components/ui';
+import { EmptyCard, PlayerSeat, PokerCard } from '../components/poker';
+import { Btn, TextField } from '../components/ui';
 import { playSfx } from '../sounds';
 
 type BjAction = 'hit' | 'stand' | 'double';
@@ -20,6 +20,39 @@ const RESULT_LABEL: Record<NonNullable<ApiBjView['result']>, { other: string; yo
 const seatOf = (view: ApiTableView, id: string) => view.seats.find(s => s.playerId === id);
 const nameOf = (view: ApiTableView, id: string) => { const s = seatOf(view, id); return s?.isYou ? 'Vos' : s?.name ?? 'Alguien'; };
 const signed = (n: number) => `${n > 0 ? '+' : n < 0 ? '−' : ''}${formatMoney(Math.abs(n))}`;
+
+/**
+ * La mano de blackjack vista como una mano del paño de póker, para dibujarla con los mismos asientos (avatar, video,
+ * emojis, posiciones): se sientan los conectados, las cartas del que juega van en su asiento y a la vista de todos.
+ */
+export function bjAsHand(view: ApiTableView, bj: ApiBjView): ApiHandView {
+  const seated = view.seats.filter(s => s.status === 'sitting');
+  const seats = seated.some(s => s.playerId === bj.playerId) ? seated : [...seated, ...view.seats.filter(s => s.playerId === bj.playerId)];
+  const live = bj.phase !== 'done';
+  return {
+    handNo: bj.handId,
+    gameHandNo: 0,
+    street: live ? 'preflop' : 'done',
+    board: [],
+    pot: 0,
+    currentBet: bj.bet,
+    minRaise: bj.minBet,
+    button: -1,
+    toActPlayerId: live ? bj.playerId : null,
+    players: seats.map(s => {
+      const plays = s.playerId === bj.playerId;
+      return {
+        playerId: s.playerId, stack: s.stack, bet: plays ? bj.bet : 0, totalBet: plays ? bj.bet : 0, folded: false, allIn: false, pending: false,
+        hole: plays ? bj.player : [], shown: plays ? bj.player.map((_, i) => i) : [],
+      };
+    }),
+    legal: null,
+    actingPlayerId: bj.actingPlayerId,
+    lastAction: null,
+    payouts: bj.deltas.filter(d => d.delta > 0).map(d => ({ playerId: d.playerId, amount: d.delta })),
+    showdown: [],
+  };
+}
 
 /** Mezclar y repartir al empezar la mano, una carta cada vez que se pide y mostrar la carta tapada del croupier. */
 function useBjSounds(bj: ApiBjView, enabled: boolean) {
@@ -41,15 +74,47 @@ function useBjSounds(bj: ApiBjView, enabled: boolean) {
 }
 
 /**
- * Mano de blackjack «contra todos»: un jugador contra el croupier y, por cabeza, contra todos los demás. Se muestra
- * en el lugar de la mano de póker mientras dura (y hasta que se reparte la que sigue).
+ * El paño del blackjack contra todos: la misma mesa que el póker. En el centro, las cartas del croupier; las del jugador
+ * de turno van en su asiento. La banca son todos los jugadores del grupo, estén o no conectados.
  */
-export function BlackjackTable({ view, bj, busy, sound, timer, canDeal, waiting, onBet, onAct, onDeal }: {
-  view: ApiTableView; bj: ApiBjView; busy: boolean; sound: boolean; timer: ReactNode; canDeal: boolean; waiting: ReactNode;
+export function BjFelt({ view, bj, hand, fab }: { view: ApiTableView; bj: ApiBjView; hand: ApiHandView; fab: ReactNode }) {
+  const players = hand.players;
+  const myIdx = Math.max(0, players.findIndex(p => p.playerId === view.myPlayerId));
+  const hero = players[myIdx];
+  const heroSeat = view.seats.find(s => s.playerId === hero?.playerId);
+  const heroCards = !!heroSeat && (heroSeat.isYou || heroSeat.managed) && !!hero && hero.hole.some(c => c !== '??');
+  const hidden = bj.dealer.includes('??');
+  return (
+    <div className="felt-wrap">
+      {fab}
+      <div className={`felt${heroCards ? ' felt-hero' : ''}`} data-testid="felt">
+        <div className="felt-center" data-testid="bj">
+          <div className="pot num" data-testid="bj-bank">Contra la banca · {bj.rivals.length} {bj.rivals.length === 1 ? 'jugador' : 'jugadores'} del grupo</div>
+          <div className="bj-dealer" role="group" aria-label="Croupier" data-testid="bj-dealer">
+            {bj.dealer.length > 0
+              ? bj.dealer.map((c, i) => <PokerCard key={`${c}${i}`} card={c} />)
+              : [0, 1].map(i => <EmptyCard key={i} />)}
+          </div>
+          {bj.dealerTotal !== null && bj.dealer.length > 0 && (
+            <div className="pot bj-dealer-total num" data-testid="bj-dealer-total">Croupier {bj.dealerTotal}{hidden ? '+' : ''}</div>
+          )}
+        </div>
+        {players.map((p, i) => (
+          <PlayerSeat key={p.playerId} view={view} hand={hand} playerId={p.playerId} offset={(i - myIdx + players.length) % players.length} total={players.length} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Lo que hay que decidir en cada momento, debajo del paño: apostar, pedir / plantarse / doblar, el resultado y repartir la siguiente. */
+export function BjDock({ view, bj, busy, sound, canDeal, waiting, onBet, onAct, onDeal }: {
+  view: ApiTableView; bj: ApiBjView; busy: boolean; sound: boolean; canDeal: boolean; waiting: ReactNode;
   onBet: (amount: number) => void; onAct: (action: BjAction) => void; onDeal: () => void;
 }) {
   useBjSounds(bj, sound);
   const player = nameOf(view, bj.playerId);
+  const you = player === 'Vos';
   const youPlay = bj.actingPlayerId !== null;
   const rivals = bj.rivals.length;
   const done = bj.phase === 'done';
@@ -58,39 +123,14 @@ export function BlackjackTable({ view, bj, busy, sound, timer, canDeal, waiting,
   const myDelta = bj.deltas.find(d => d.playerId === view.myPlayerId)?.delta;
 
   return (
-    <section className="bj" aria-label="Blackjack contra todos" data-testid="bj">
-      <header className="bj-head">
-        <h2>
-          <Emoji>🂡</Emoji>{' '}
-          {interlude ? `Subieron las ciegas · blackjack ${bj.position?.index} de ${bj.position?.total}` : 'Blackjack contra todos'}
-        </h2>
-        {!done && timer}
-      </header>
-      <p className="muted small bj-rule">
-        {player === 'Vos' ? 'Jugás' : `Juega ${player}`} contra el croupier y contra {rivals === 1 ? 'el otro jugador' : `los otros ${rivals}`}: cada uno pone la misma apuesta.
-        Si {player === 'Vos' ? 'ganás' : 'gana'}, {player === 'Vos' ? 'cobrás' : 'cobra'} a cada uno; si {player === 'Vos' ? 'perdés' : 'pierde'}, {player === 'Vos' ? 'le pagás' : 'le paga'} a cada uno.
-      </p>
-
-      <div className="bj-hands">
-        <div className="bj-hand" aria-label="Croupier">
-          <strong>Croupier</strong>
-          <div className="bj-cards" data-testid="bj-dealer">
-            {bj.dealer.length ? bj.dealer.map((c, i) => <PokerCard key={`${c}${i}`} card={c} size="md" />) : <span className="muted small">Sin cartas todavía</span>}
-          </div>
-          {bj.dealerTotal !== null && bj.dealer.length > 0 && <span className="num bj-total" data-testid="bj-dealer-total">{bj.dealerTotal}{bj.dealer.includes('??') ? '+' : ''}</span>}
-        </div>
-        <div className="bj-hand" aria-label={`Mano de ${player}`}>
-          <strong>{player === 'Vos' ? 'Tu mano' : `Mano de ${player}`}</strong>
-          <div className="bj-cards" data-testid="bj-player">
-            {bj.player.length ? bj.player.map((c, i) => <PokerCard key={`${c}${i}`} card={c} size="md" />) : <span className="muted small">Todavía no apostó</span>}
-          </div>
-          {bj.player.length > 0 && <span className="num bj-total" data-testid="bj-player-total">{bj.playerTotal}</span>}
-        </div>
-      </div>
+    <section className="hand-dock bj-dock" aria-label="Tus acciones">
+      <h2 className="bj-title">
+        {interlude ? `Subieron las ciegas · blackjack ${bj.position?.index} de ${bj.position?.total}` : 'Blackjack contra todos'}
+      </h2>
 
       {bj.bet > 0 && (
         <p className="bj-bet" data-testid="bj-bet">
-          Apuesta <strong className="num">{formatMoney(bj.bet)}</strong> por cabeza · en juego <strong className="num">{formatMoney(bj.bet * rivals)}</strong>
+          {you ? 'Apostás' : `Apuesta ${player}:`} <strong className="num">{formatMoney(bj.bet)}</strong> por cabeza · en juego <strong className="num">{formatMoney(bj.bet * rivals)}</strong>
         </p>
       )}
 
@@ -106,24 +146,20 @@ export function BlackjackTable({ view, bj, busy, sound, timer, canDeal, waiting,
             {bj.canDouble && <Btn variant="ghost" busy={busy} onClick={() => onAct('double')} data-testid="bj-double">Doblar</Btn>}
           </div>
         )
-        : <p className="muted center" role="status">{player} está decidiendo…</p>)}
+        : <p className="muted center" role="status">{player} está decidiendo… <span className="num">{bj.playerTotal}</span></p>)}
 
       {done && (
         <div className="bj-result" role="status" data-testid="bj-result">
           <strong>
             {bj.result === 'skipped'
-              ? `${player === 'Vos' ? 'No tenías' : `${player} no tenía`} fichas suficientes para apostar: se saltea.`
-              : `${player === 'Vos' ? RESULT_LABEL[bj.result ?? 'lose'].you.replace(/^./, c => c.toUpperCase()) : `${player} ${RESULT_LABEL[bj.result ?? 'lose'].other}`}.`}
+              ? `${you ? 'No tenías' : `${player} no tenía`} fichas suficientes para apostar: se saltea.`
+              : `${you ? RESULT_LABEL[bj.result ?? 'lose'].you.replace(/^./, c => c.toUpperCase()) : `${player} ${RESULT_LABEL[bj.result ?? 'lose'].other}`} (${bj.playerTotal} contra ${bj.dealerTotal ?? '—'}).`}
           </strong>
-          {bj.result !== 'skipped' && (
-            <ul className="bj-deltas">
-              {bj.deltas.map(d => (
-                <li key={d.playerId}><span>{nameOf(view, d.playerId)}</span> <strong className={`num ${d.delta > 0 ? 'pos' : d.delta < 0 ? 'neg' : ''}`}>{signed(d.delta)}</strong></li>
-              ))}
-            </ul>
-          )}
-          {myDelta !== undefined && myDelta !== 0 && bj.result !== 'skipped' && (
-            <p className="small">{myDelta > 0 ? 'Ganaste' : 'Perdiste'} {formatMoney(Math.abs(myDelta))} en esta mano.</p>
+          {bj.result !== 'skipped' && bj.deltas.length > 0 && (
+            <span className="small">
+              {signed(bj.deltas.find(d => d.playerId === bj.playerId)?.delta ?? 0)} para {you ? 'vos' : player}, que {you ? 'cobrás' : 'cobra'} de la banca por cabeza.
+              {myDelta !== undefined && !you && myDelta !== 0 && <> Para vos: <strong className={`num ${myDelta > 0 ? 'pos' : 'neg'}`}>{signed(myDelta)}</strong>.</>}
+            </span>
           )}
         </div>
       )}
@@ -134,16 +170,6 @@ export function BlackjackTable({ view, bj, busy, sound, timer, canDeal, waiting,
         </Btn>
       )}
       {done && !canDeal && waiting}
-
-      <div className="bj-stacks" aria-label="Fichas">
-        {view.seats.map(s => (
-          <div key={s.playerId} className={`bj-stack${s.playerId === bj.playerId ? ' bj-stack-active' : ''}`}>
-            <Avatar name={s.name} />
-            <span className="small">{s.isYou ? `${s.name} (vos)` : s.name}</span>
-            <strong className="num">{formatMoney(s.stack)}</strong>
-          </div>
-        ))}
-      </div>
     </section>
   );
 }
@@ -168,7 +194,7 @@ function BetControl({ bj, rivals, busy, onBet }: { bj: ApiBjView; rivals: number
         <Btn variant="ghost" onClick={() => setText(String(bj.maxBet))}>Tope</Btn>
       </div>
       <p className="xs muted">
-        El tope cubre que dobles: {rivals === 1 ? 'el otro jugador pone' : `cada uno de los otros ${rivals} pone`} lo mismo y nadie queda debiendo más de lo que tiene.
+        Cada uno de la banca ({rivals}) pone lo mismo. El tope cubre que dobles y nadie queda debiendo más de lo que tiene.
         {valid && n !== null && <> Si perdés, pagás hasta {formatMoney(n * rivals * 2)} doblando.</>}
       </p>
       {error && <p className="notice notice-err" role="alert">{error}</p>}

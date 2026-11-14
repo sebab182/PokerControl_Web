@@ -2639,6 +2639,75 @@ describe('mesa online', () => {
       expect(v.blackjack.phase).toBe('betting');
     });
 
+    describe('la banca es todo el grupo', () => {
+      /** Tres jugadores en el grupo; solo el primero (a) está conectado y sentado. */
+      async function onlyHost() {
+        const ctx = await setup(1);
+        await ctx.a.ok('POST', '/g/table/join');
+        const v = await ctx.a.idem('/g/table/start', { game: 'blackjack', bjMinBet: 10 });
+        return { ...ctx, v };
+      }
+
+      it('se puede jugar con uno solo conectado: los demás del grupo son la banca, sin verse sentados', async () => {
+        const { a, v, pid } = await onlyHost();
+        expect(v.blackjack).toMatchObject({ playerId: pid[0], phase: 'betting' });
+        expect(v.blackjack.rivals.map((r: { playerId: string }) => r.playerId).sort()).toEqual([pid[1], pid[2]].sort());
+        // Los tres entraron con su entrada, pero solo uno está sentado.
+        expect(v.seats.map((s: { status: string }) => s.status).sort()).toEqual(['out', 'out', 'sitting']);
+        expect(v.seats.every((s: { stack: number }) => s.stack === 1000)).toBe(true);
+        // Gana: cobra a los dos de la banca, que no están conectados.
+        await conn.pool.query(`update blackjack_hands set state = jsonb_set(state, '{deck}', '["Ts","Td","9s","7d"]') where status = 'active'`);
+        const played = await a.ok('POST', '/g/table/bj/bet', { version: v.version, amount: 50 });
+        const done = await a.ok('POST', '/g/table/bj/act', { version: played.version, action: 'stand' });
+        expect(done.blackjack.result).toBe('win');
+        expect(Object.fromEntries(done.seats.map((s: { playerId: string; stack: number }) => [s.playerId, s.stack])))
+          .toEqual({ [pid[0]]: 1100, [pid[1]]: 950, [pid[2]]: 950 });
+        // La siguiente mano es otra vez suya: es el único conectado.
+        const next = await a.ok('POST', '/g/table/deal');
+        expect(next.blackjack).toMatchObject({ playerId: pid[0], phase: 'betting' });
+      });
+
+      it('quien se conecta después se sienta solo y entra a la rotación', async () => {
+        const { a, b, v, pid } = await onlyHost();
+        await conn.pool.query(`update blackjack_hands set state = jsonb_set(state, '{deck}', '["Ts","Td","9s","7d"]') where status = 'active'`);
+        const played = await a.ok('POST', '/g/table/bj/bet', { version: v.version, amount: 10 });
+        await a.ok('POST', '/g/table/bj/act', { version: played.version, action: 'stand' });
+        const joined = await b.ok('POST', '/g/table/join');
+        expect(joined.seats.find((s: { playerId: string }) => s.playerId === pid[1])).toMatchObject({ status: 'sitting', isYou: true });
+        // Le toca al que sigue entre los conectados.
+        const next = await a.ok('POST', '/g/table/deal');
+        expect(next.blackjack.playerId).toBe(pid[1]);
+        expect(next.blackjack.rivals.map((r: { playerId: string }) => r.playerId).sort()).toEqual([pid[0], pid[2]].sort());
+      });
+
+      it('sin ningún conectado no se puede iniciar; con la banca de todo el grupo, al cerrar cobran todos', async () => {
+        const ctx = await setup(1);
+        expect((await ctx.a.call('POST', '/g/table/start', { game: 'blackjack' }, 'bj-solo-0001')).body.error).toBe('not_enough_players');
+        await ctx.a.ok('POST', '/g/table/join');
+        const v = await ctx.a.idem('/g/table/start', { game: 'blackjack', bjMinBet: 10 });
+        await conn.pool.query(`update blackjack_hands set state = jsonb_set(state, '{deck}', '["Ts","Td","7s","9d"]') where status = 'active'`);
+        const played = await ctx.a.ok('POST', '/g/table/bj/bet', { version: v.version, amount: 100 });
+        await ctx.a.ok('POST', '/g/table/bj/act', { version: played.version, action: 'stand' });
+        const closed = await ctx.a.idem('/g/table/close');
+        const session = await ctx.a.ok('GET', `/g/sessions/${closed.sessionId}`);
+        expect(session.participants).toHaveLength(3);
+        const finals = Object.fromEntries(session.participants.map((p: { playerId: string; finalAmount: number }) => [p.playerId, p.finalAmount]));
+        expect(finals).toEqual({ [ctx.pid[0]]: 800, [ctx.pid[1]]: 1100, [ctx.pid[2]]: 1100 });
+      });
+
+      it('si el único conectado se levanta, la partida sigue abierta y no se cancela', async () => {
+        const { a, v, pid } = await onlyHost();
+        await conn.pool.query(`update blackjack_hands set state = jsonb_set(state, '{deck}', '["Ts","Td","9s","7d"]') where status = 'active'`);
+        const played = await a.ok('POST', '/g/table/bj/bet', { version: v.version, amount: 10 });
+        await a.ok('POST', '/g/table/bj/act', { version: played.version, action: 'stand' });
+        const left = await a.ok('POST', '/g/table/leave');
+        expect(left.status).toBe('playing');
+        expect(left.seats.find((s: { playerId: string }) => s.playerId === pid[0]).status).toBe('out');
+        // Sin nadie conectado no hay quién juegue la próxima mano.
+        expect((await a.call('POST', '/g/table/deal')).body.error).toBe('not_enough_players');
+      });
+    });
+
     it('al cerrar, las fichas pasan a ser los resultados de la partida', async () => {
       const { a, v, pid } = await threeAtTable();
       await stackDeck('Ts Td 9s 7d');

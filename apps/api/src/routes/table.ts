@@ -15,7 +15,7 @@ import {
   HoldemError, applyAction, blindLevel, buyInHand, describeAction, legalActions, publicView, revealCards, shownCards, startHand, winDetails, type Action, type HandState,
 } from '@pokercontrol/core';
 import { type Static } from '@sinclair/typebox';
-import { and, asc, desc, eq, isNotNull, lte, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, lte, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import * as schema from '../db/schema';
 import type { LoggedAction } from '../db/schema';
@@ -561,7 +561,7 @@ async function standPlayer(tx: Tx, table: TableRow, playerId: string, self = fal
     await tx.update(schema.pokerTables).set({ turnDeadline: new Date() }).where(eq(schema.pokerTables.id, table.id));
   }
   // Se fue una persona (no un jugador manejado por un administrador): ¿queda alguna?
-  if (seat.userId !== null) {
+  if (seat.userId !== null && table.game !== 'blackjack') {
     const seats = (await loadSeats(tx, table.id)).map(x => x.seat);
     if (!seats.some(x => x.userId !== null && x.status === 'sitting')) await cancelGame(tx, table);
   }
@@ -767,7 +767,16 @@ export async function tableRoutes(app: FastifyInstance) {
       const seats = (await loadSeats(tx, table.id)).map(s => s.seat);
       const present = seats.filter(s => isPresent(s));
       if (playerId && !present.some(s => s.playerId === playerId)) throw new ApiError(409, 'not_seated', 'Sentate en la mesa para iniciar la partida.');
-      if (present.length < 2) throw new ApiError(422, 'not_enough_players', 'Hacen falta al menos 2 jugadores conectados.');
+      const blackjack = cfg.game === 'blackjack';
+      // El blackjack contra todos se juega con uno solo conectado: la banca son todos los jugadores del grupo.
+      if (present.length < (blackjack ? 1 : 2)) {
+        throw new ApiError(422, 'not_enough_players', blackjack ? 'Hace falta al menos 1 jugador conectado.' : 'Hacen falta al menos 2 jugadores conectados.');
+      }
+      const bank = blackjack
+        ? await tx.select({ id: schema.players.id, userId: schema.players.userId }).from(schema.players)
+          .where(and(eq(schema.players.groupId, groupId), isNull(schema.players.archivedAt)))
+        : [];
+      if (blackjack && bank.length < 2) throw new ApiError(422, 'not_enough_players', 'Hacen falta al menos 2 jugadores en el grupo.');
 
       const [season] = await tx.select({ id: schema.seasons.id }).from(schema.seasons)
         .where(and(eq(schema.seasons.groupId, groupId), eq(schema.seasons.status, 'active')));
@@ -784,17 +793,33 @@ export async function tableRoutes(app: FastifyInstance) {
         id: sessionId, groupId, seasonId: season.id, name: `Mesa online · ${defaultSessionName(now, req.group.timezone)}`,
         status: 'active', createdAt: now,
       });
-      for (const seat of present) {
+      // Póker: juegan los conectados. Blackjack contra todos: todos los jugadores del grupo entran con su entrada (son la
+      // banca, ganan o pierden aunque no estén conectados) y solo juegan turno los que están conectados.
+      const playing = blackjack ? bank.map(p => p.id) : present.map(s => s.playerId);
+      for (const id of playing) {
         const [participant] = await tx.insert(schema.sessionParticipants)
-          .values({ groupId, sessionId, playerId: seat.playerId }).returning({ id: schema.sessionParticipants.id });
+          .values({ groupId, sessionId, playerId: id }).returning({ id: schema.sessionParticipants.id });
         await tx.insert(schema.buys).values({ participantId: participant.id, amount: cfg.buyIn, occurredAt: now });
       }
-      // Los que no están conectados quedan afuera de esta partida.
-      for (const seat of seats.filter(s => !present.includes(s))) {
+      // Los que no entran quedan afuera de esta partida.
+      for (const seat of seats.filter(s => !playing.includes(s.playerId))) {
         await tx.delete(schema.pokerSeats)
           .where(and(eq(schema.pokerSeats.tableId, table.id), eq(schema.pokerSeats.playerId, seat.playerId)));
       }
-      await tx.update(schema.pokerSeats).set({ stack: cfg.buyIn, status: 'sitting' }).where(eq(schema.pokerSeats.tableId, table.id));
+      if (blackjack) {
+        // Con fichas pero sin asiento a la vista ('out'): se sientan solos al conectarse (ver sitPlayer).
+        await tx.update(schema.pokerSeats).set({ stack: cfg.buyIn, status: 'out' }).where(eq(schema.pokerSeats.tableId, table.id));
+        await tx.update(schema.pokerSeats).set({ status: 'sitting' })
+          .where(and(eq(schema.pokerSeats.tableId, table.id), inArray(schema.pokerSeats.playerId, present.map(s => s.playerId))));
+        const seated = new Set(seats.map(s => s.playerId));
+        for (const p of bank.filter(x => !seated.has(x.id))) {
+          await tx.insert(schema.pokerSeats).values({
+            tableId: table.id, groupId, playerId: p.id, userId: p.userId, stack: cfg.buyIn, status: 'out', lastSeenAt: new Date(0),
+          });
+        }
+      } else {
+        await tx.update(schema.pokerSeats).set({ stack: cfg.buyIn, status: 'sitting' }).where(eq(schema.pokerSeats.tableId, table.id));
+      }
       await tx.update(schema.pokerTables).set({ ...cfg, status: 'playing', sessionId, sessionHandBase: table.handCount, startedBy: req.user.sub, hostSeenAt: now, blindsStartedAt: now, ...bjReset, version: bump })
         .where(eq(schema.pokerTables.id, table.id));
       const [fresh] = await tx.select().from(schema.pokerTables).where(eq(schema.pokerTables.id, table.id));

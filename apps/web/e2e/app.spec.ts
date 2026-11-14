@@ -714,8 +714,8 @@ async function twoSeated(page: Page, browser: Browser) {
   return { page2, context2 };
 }
 
-/** Las fichas de cada uno según el blackjack (en pesos enteros). */
-const bjStacks = async (p: Page) => (await p.locator('.bj-stack strong').allInnerTexts()).map(t => Number(t.replace(/[^\d-]/g, '')));
+/** Las fichas de cada uno sentado en el paño (en pesos enteros). */
+const bjStacks = async (p: Page) => (await p.locator('.pseat-stack').allInnerTexts()).map(t => Number(t.replace(/[^\d-]/g, '')));
 /** Si la mano sigue en juego (no fue blackjack natural), el que juega se planta. */
 async function bjStand(p: Page) {
   await expect(p.getByTestId('bj-stand').or(p.getByTestId('bj-result'))).toBeVisible({ timeout: 15000 });
@@ -745,7 +745,7 @@ test('blackjack contra todos: apostar, jugar la mano, rotar el turno y cerrar', 
   await expect(page.getByTestId('bj-bet')).toContainText('$50', { timeout: 10000 });
   await expect(page2.getByTestId('bj-bet')).toContainText('$50');
   // El otro ve la mano de Seba, pero la carta tapada del croupier sigue tapada hasta que termina.
-  await expect(page2.getByTestId('bj-player').getByRole('img')).toHaveCount(2);
+  await expect(page2.getByTestId('seat-Seba').locator('.pcard')).toHaveCount(2);
   await bjStand(page);
   await expect(page2.getByTestId('bj-result')).toBeVisible({ timeout: 10000 });
   await expect(page2.getByTestId('bj-dealer').getByRole('img', { name: 'Carta oculta' })).toHaveCount(0);
@@ -768,6 +768,45 @@ test('blackjack contra todos: apostar, jugar la mano, rotar el turno y cerrar', 
   await page.getByRole('dialog').getByRole('button', { name: 'Cerrar partida' }).click();
   await expect(page.getByRole('link', { name: 'Ver resultados y saldos' })).toBeVisible({ timeout: 10000 });
   await context2.close();
+});
+
+test('blackjack contra todos con un solo conectado: el resto del grupo es la banca', async ({ page }) => {
+  test.setTimeout(90000);
+  await login(page, 'Seba');
+  await createGroup(page);
+  await nav(page, 'Mesa');
+  await page.getByText('Quiero jugar yo también').click();
+  await page.getByLabel('Tu nick').fill('Seba');
+  await page.getByRole('button', { name: 'Crear mi jugador' }).click();
+  await expect(page.getByText('Seba (vos)')).toBeVisible();
+  // Ana es del grupo pero no se conecta: igual forma parte de la banca.
+  await nav(page, 'Jugadores');
+  await addPlayer(page, 'Ana');
+  await nav(page, 'Mesa');
+  await expect(page.getByText('Seba (vos)')).toBeVisible();
+  const start = page.getByRole('button', { name: /Iniciar partida \(1 jugador\)/ });
+  await expect(start).toBeEnabled();
+  await start.click();
+  // Al póker no se puede jugar de a uno; al blackjack contra todos, sí.
+  await page.getByRole('dialog').getByRole('button', { name: 'Iniciar partida' }).click();
+  await expect(page.getByRole('alert').filter({ hasText: 'al menos 2 jugadores conectados' })).toBeVisible();
+  await page.getByTestId('game-blackjack').click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Iniciar partida' }).click();
+
+  // La misma mesa que el póker, con Seba solo sentado y la banca (Ana) fuera del paño.
+  await expect(page.getByTestId('felt')).toBeVisible({ timeout: 15000 });
+  await expect(page.getByTestId('bj-bank')).toContainText('1 jugador del grupo');
+  await expect(page.locator('.pseat')).toHaveCount(1);
+  await expect(page.getByTestId('bj-dealer')).toBeVisible();
+  await page.getByTestId('bj-bet-button').click();
+  // Las cartas van al asiento de quien juega; el croupier muestra una y tapa la otra.
+  await expect(page.getByTestId('my-hand').getByRole('img')).toHaveCount(2, { timeout: 10000 });
+  await bjStand(page);
+  await checkPage(page, 'blackjack contra todos: un solo conectado');
+  // Las fichas de Seba y de Ana suman lo mismo que al empezar.
+  await expect(page.getByTestId('bj-next')).toBeVisible();
+  await page.getByTestId('bj-next').click();
+  await expect(page.getByRole('group', { name: 'Tu apuesta' })).toBeVisible({ timeout: 10000 });
 });
 
 test('póker: al subir las ciegas todos juegan una mano de blackjack y después sigue el póker', async ({ page, browser, request }) => {
