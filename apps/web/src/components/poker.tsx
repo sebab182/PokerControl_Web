@@ -107,8 +107,8 @@ export function PlayerSeat({ view, hand, playerId, offset, total, note }: {
   // Se ve lo que se mostró y, en los asientos propios, también lo que solo ves vos.
   const cards = p.hole.flatMap((c, i) => c !== '??' && (p.shown.includes(i) || mine) ? [{ c, i, own: !p.shown.includes(i) }] : []);
   const hero = offset === 0 && mine && cards.length > 0;
-  const handName = note ? null : mine && !p.folded && p.hole.length + hand.board.length >= 5 && !p.hole.includes('??')
-    ? evaluate([...p.hole, ...hand.board]).name : null;
+  const handName = note ? null : mine && !p.folded && p.hole.length + hand.board.length - hand.runout >= 5 && !p.hole.includes('??')
+    ? evaluate([...p.hole, ...(hand.runout ? hand.board.slice(0, -hand.runout) : hand.board)]).name : null;
   const name = seat.isYou ? 'Vos' : seat.name;
   // Con cámara se ve el video; si solo transmite el micrófono se ve la inicial, con el audio sonando y un ícono de micrófono.
   const hasPicture = !!stream && stream.getVideoTracks().length > 0;

@@ -1313,6 +1313,7 @@ paths:
                   - hand
                   - game
                   - bjMinBet
+                  - bjMaxBet
                   - bjInterlude
                   - blackjack
                 properties:
@@ -1436,6 +1437,7 @@ paths:
                       - gameHandNo
                       - street
                       - board
+                      - runout
                       - pot
                       - currentBet
                       - minRaise
@@ -1473,6 +1475,8 @@ paths:
                         type: array
                         items:
                           type: string
+                      runout:
+                        type: integer
                       pot:
                         type: integer
                       currentBet:
@@ -1635,6 +1639,8 @@ paths:
                         enum:
                           - blackjack
                   bjMinBet:
+                    type: integer
+                  bjMaxBet:
                     type: integer
                   bjInterlude:
                     type: boolean
@@ -1840,6 +1846,7 @@ paths:
                   - hand
                   - game
                   - bjMinBet
+                  - bjMaxBet
                   - bjInterlude
                   - blackjack
                 properties:
@@ -1963,6 +1970,7 @@ paths:
                       - gameHandNo
                       - street
                       - board
+                      - runout
                       - pot
                       - currentBet
                       - minRaise
@@ -2000,6 +2008,8 @@ paths:
                         type: array
                         items:
                           type: string
+                      runout:
+                        type: integer
                       pot:
                         type: integer
                       currentBet:
@@ -2162,6 +2172,8 @@ paths:
                         enum:
                           - blackjack
                   bjMinBet:
+                    type: integer
+                  bjMaxBet:
                     type: integer
                   bjInterlude:
                     type: boolean
@@ -2367,6 +2379,7 @@ paths:
                   - hand
                   - game
                   - bjMinBet
+                  - bjMaxBet
                   - bjInterlude
                   - blackjack
                 properties:
@@ -2490,6 +2503,7 @@ paths:
                       - gameHandNo
                       - street
                       - board
+                      - runout
                       - pot
                       - currentBet
                       - minRaise
@@ -2527,6 +2541,8 @@ paths:
                         type: array
                         items:
                           type: string
+                      runout:
+                        type: integer
                       pot:
                         type: integer
                       currentBet:
@@ -2689,6 +2705,8 @@ paths:
                         enum:
                           - blackjack
                   bjMinBet:
+                    type: integer
+                  bjMaxBet:
                     type: integer
                   bjInterlude:
                     type: boolean
@@ -2894,6 +2912,7 @@ paths:
                   - hand
                   - game
                   - bjMinBet
+                  - bjMaxBet
                   - bjInterlude
                   - blackjack
                 properties:
@@ -3017,6 +3036,7 @@ paths:
                       - gameHandNo
                       - street
                       - board
+                      - runout
                       - pot
                       - currentBet
                       - minRaise
@@ -3054,6 +3074,8 @@ paths:
                         type: array
                         items:
                           type: string
+                      runout:
+                        type: integer
                       pot:
                         type: integer
                       currentBet:
@@ -3216,6 +3238,8 @@ paths:
                         enum:
                           - blackjack
                   bjMinBet:
+                    type: integer
+                  bjMaxBet:
                     type: integer
                   bjInterlude:
                     type: boolean
@@ -3426,6 +3450,7 @@ paths:
                   - hand
                   - game
                   - bjMinBet
+                  - bjMaxBet
                   - bjInterlude
                   - blackjack
                 properties:
@@ -3549,6 +3574,7 @@ paths:
                       - gameHandNo
                       - street
                       - board
+                      - runout
                       - pot
                       - currentBet
                       - minRaise
@@ -3586,6 +3612,8 @@ paths:
                         type: array
                         items:
                           type: string
+                      runout:
+                        type: integer
                       pot:
                         type: integer
                       currentBet:
@@ -3748,6 +3776,8 @@ paths:
                         enum:
                           - blackjack
                   bjMinBet:
+                    type: integer
+                  bjMaxBet:
                     type: integer
                   bjInterlude:
                     type: boolean
@@ -3957,6 +3987,7 @@ paths:
                   - hand
                   - game
                   - bjMinBet
+                  - bjMaxBet
                   - bjInterlude
                   - blackjack
                 properties:
@@ -4080,6 +4111,7 @@ paths:
                       - gameHandNo
                       - street
                       - board
+                      - runout
                       - pot
                       - currentBet
                       - minRaise
@@ -4117,6 +4149,8 @@ paths:
                         type: array
                         items:
                           type: string
+                      runout:
+                        type: integer
                       pot:
                         type: integer
                       currentBet:
@@ -4279,6 +4313,8 @@ paths:
                         enum:
                           - blackjack
                   bjMinBet:
+                    type: integer
+                  bjMaxBet:
                     type: integer
                   bjInterlude:
                     type: boolean
@@ -4501,6 +4537,7 @@ paths:
                   - hand
                   - game
                   - bjMinBet
+                  - bjMaxBet
                   - bjInterlude
                   - blackjack
                 properties:
@@ -4624,6 +4661,7 @@ paths:
                       - gameHandNo
                       - street
                       - board
+                      - runout
                       - pot
                       - currentBet
                       - minRaise
@@ -4661,6 +4699,8 @@ paths:
                         type: array
                         items:
                           type: string
+                      runout:
+                        type: integer
                       pot:
                         type: integer
                       currentBet:
@@ -4823,6 +4863,8 @@ paths:
                         enum:
                           - blackjack
                   bjMinBet:
+                    type: integer
+                  bjMaxBet:
                     type: integer
                   bjInterlude:
                     type: boolean
@@ -5033,6 +5075,10 @@ paths:
                   minimum: 1
                   maximum: 1000000000
                   type: integer
+                bjMaxBet:
+                  minimum: 1
+                  maximum: 1000000000
+                  type: integer
                 bjInterlude:
                   type: boolean
       parameters:
@@ -5072,6 +5118,7 @@ paths:
                   - hand
                   - game
                   - bjMinBet
+                  - bjMaxBet
                   - bjInterlude
                   - blackjack
                 properties:
@@ -5195,6 +5242,7 @@ paths:
                       - gameHandNo
                       - street
                       - board
+                      - runout
                       - pot
                       - currentBet
                       - minRaise
@@ -5232,6 +5280,8 @@ paths:
                         type: array
                         items:
                           type: string
+                      runout:
+                        type: integer
                       pot:
                         type: integer
                       currentBet:
@@ -5394,6 +5444,8 @@ paths:
                         enum:
                           - blackjack
                   bjMinBet:
+                    type: integer
+                  bjMaxBet:
                     type: integer
                   bjInterlude:
                     type: boolean
@@ -5599,6 +5651,7 @@ paths:
                   - hand
                   - game
                   - bjMinBet
+                  - bjMaxBet
                   - bjInterlude
                   - blackjack
                 properties:
@@ -5722,6 +5775,7 @@ paths:
                       - gameHandNo
                       - street
                       - board
+                      - runout
                       - pot
                       - currentBet
                       - minRaise
@@ -5759,6 +5813,8 @@ paths:
                         type: array
                         items:
                           type: string
+                      runout:
+                        type: integer
                       pot:
                         type: integer
                       currentBet:
@@ -5921,6 +5977,8 @@ paths:
                         enum:
                           - blackjack
                   bjMinBet:
+                    type: integer
+                  bjMaxBet:
                     type: integer
                   bjInterlude:
                     type: boolean
@@ -6193,6 +6251,7 @@ paths:
                   - hand
                   - game
                   - bjMinBet
+                  - bjMaxBet
                   - bjInterlude
                   - blackjack
                 properties:
@@ -6316,6 +6375,7 @@ paths:
                       - gameHandNo
                       - street
                       - board
+                      - runout
                       - pot
                       - currentBet
                       - minRaise
@@ -6353,6 +6413,8 @@ paths:
                         type: array
                         items:
                           type: string
+                      runout:
+                        type: integer
                       pot:
                         type: integer
                       currentBet:
@@ -6515,6 +6577,8 @@ paths:
                         enum:
                           - blackjack
                   bjMinBet:
+                    type: integer
+                  bjMaxBet:
                     type: integer
                   bjInterlude:
                     type: boolean
@@ -6739,6 +6803,7 @@ paths:
                   - hand
                   - game
                   - bjMinBet
+                  - bjMaxBet
                   - bjInterlude
                   - blackjack
                 properties:
@@ -6862,6 +6927,7 @@ paths:
                       - gameHandNo
                       - street
                       - board
+                      - runout
                       - pot
                       - currentBet
                       - minRaise
@@ -6899,6 +6965,8 @@ paths:
                         type: array
                         items:
                           type: string
+                      runout:
+                        type: integer
                       pot:
                         type: integer
                       currentBet:
@@ -7061,6 +7129,8 @@ paths:
                         enum:
                           - blackjack
                   bjMinBet:
+                    type: integer
+                  bjMaxBet:
                     type: integer
                   bjInterlude:
                     type: boolean
@@ -7292,6 +7362,7 @@ paths:
                   - hand
                   - game
                   - bjMinBet
+                  - bjMaxBet
                   - bjInterlude
                   - blackjack
                 properties:
@@ -7415,6 +7486,7 @@ paths:
                       - gameHandNo
                       - street
                       - board
+                      - runout
                       - pot
                       - currentBet
                       - minRaise
@@ -7452,6 +7524,8 @@ paths:
                         type: array
                         items:
                           type: string
+                      runout:
+                        type: integer
                       pot:
                         type: integer
                       currentBet:
@@ -7614,6 +7688,8 @@ paths:
                         enum:
                           - blackjack
                   bjMinBet:
+                    type: integer
+                  bjMaxBet:
                     type: integer
                   bjInterlude:
                     type: boolean
@@ -7838,6 +7914,7 @@ paths:
                   - hand
                   - game
                   - bjMinBet
+                  - bjMaxBet
                   - bjInterlude
                   - blackjack
                 properties:
@@ -7961,6 +8038,7 @@ paths:
                       - gameHandNo
                       - street
                       - board
+                      - runout
                       - pot
                       - currentBet
                       - minRaise
@@ -7998,6 +8076,8 @@ paths:
                         type: array
                         items:
                           type: string
+                      runout:
+                        type: integer
                       pot:
                         type: integer
                       currentBet:
@@ -8160,6 +8240,8 @@ paths:
                         enum:
                           - blackjack
                   bjMinBet:
+                    type: integer
+                  bjMaxBet:
                     type: integer
                   bjInterlude:
                     type: boolean
@@ -8377,6 +8459,7 @@ paths:
                   - hand
                   - game
                   - bjMinBet
+                  - bjMaxBet
                   - bjInterlude
                   - blackjack
                 properties:
@@ -8500,6 +8583,7 @@ paths:
                       - gameHandNo
                       - street
                       - board
+                      - runout
                       - pot
                       - currentBet
                       - minRaise
@@ -8537,6 +8621,8 @@ paths:
                         type: array
                         items:
                           type: string
+                      runout:
+                        type: integer
                       pot:
                         type: integer
                       currentBet:
@@ -8699,6 +8785,8 @@ paths:
                         enum:
                           - blackjack
                   bjMinBet:
+                    type: integer
+                  bjMaxBet:
                     type: integer
                   bjInterlude:
                     type: boolean
@@ -8914,6 +9002,7 @@ paths:
                       - hand
                       - game
                       - bjMinBet
+                      - bjMaxBet
                       - bjInterlude
                       - blackjack
                     properties:
@@ -9037,6 +9126,7 @@ paths:
                           - gameHandNo
                           - street
                           - board
+                          - runout
                           - pot
                           - currentBet
                           - minRaise
@@ -9074,6 +9164,8 @@ paths:
                             type: array
                             items:
                               type: string
+                          runout:
+                            type: integer
                           pot:
                             type: integer
                           currentBet:
@@ -9236,6 +9328,8 @@ paths:
                             enum:
                               - blackjack
                       bjMinBet:
+                        type: integer
+                      bjMaxBet:
                         type: integer
                       bjInterlude:
                         type: boolean

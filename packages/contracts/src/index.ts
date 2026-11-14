@@ -376,7 +376,10 @@ export const HandView = Obj({
   /** Número de la mano dentro de la partida en curso (1 = la primera). */
   gameHandNo: T.Integer(),
   street: T.Union([T.Literal('preflop'), T.Literal('flop'), T.Literal('turn'), T.Literal('river'), T.Literal('done')]),
-  board: T.Array(T.String()), pot: T.Integer(), currentBet: T.Integer(), minRaise: T.Integer(),
+  board: T.Array(T.String()),
+  /** Cuántas de las últimas cartas de `board` no salieron en la mano: se muestran porque quien ganó por abandono mostró las suyas. */
+  runout: T.Integer(),
+  pot: T.Integer(), currentBet: T.Integer(), minRaise: T.Integer(),
   button: T.Integer(), toActPlayerId: Nullable(T.String()),
   players: T.Array(HandPlayerView),
   /** Solo viene si es tu turno, o el de un jugador que manejás. */
@@ -464,8 +467,9 @@ export const TableView = Obj({
   hand: Nullable(HandView),
   /** Juego de la mesa en curso: póker o blackjack contra todos. */
   game: T.Union([T.Literal('holdem'), T.Literal('blackjack')]),
-  /** Apuesta mínima del blackjack contra todos. */
+  /** Apuestas mínima y máxima del blackjack contra todos. */
   bjMinBet: T.Integer(),
+  bjMaxBet: T.Integer(),
   /** En el póker: al subir las ciegas, todos juegan una mano de blackjack. */
   bjInterlude: T.Boolean(),
   /** La mano de blackjack en curso (o la última, hasta que se reparta otra cosa); null si no corresponde mostrarla. */
@@ -524,8 +528,9 @@ export const StartTableBody = Obj({
   showAllCards: T.Optional(T.Boolean()),
   /** Juego de la mesa: póker (por defecto) o blackjack contra todos. */
   game: T.Optional(T.Union([T.Literal('holdem'), T.Literal('blackjack')])),
-  /** Blackjack contra todos: apuesta mínima. */
+  /** Blackjack contra todos: apuesta mínima y máxima (no hay compra inicial: el saldo de cada uno arranca en 0). */
   bjMinBet: T.Optional(Chips),
+  bjMaxBet: T.Optional(Chips),
   /** Póker: cada vez que suben las ciegas, todos juegan una mano de blackjack (por defecto sí). */
   bjInterlude: T.Optional(T.Boolean()),
 });

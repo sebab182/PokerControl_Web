@@ -1,7 +1,8 @@
 /**
  * Blackjack «contra todos»: un jugador juega su mano contra un croupier automático y la apuesta la cubren, por cabeza,
  * todos los demás. Si gana, cobra la apuesta de cada rival; si pierde, se la paga a cada uno. La suma de los cambios de
- * fichas siempre da 0. Puro: sin base de datos ni reloj; el servidor guarda el estado y reparte los turnos.
+ * saldo siempre da 0. No hay compra inicial: se juega con saldo que arranca en 0 y puede quedar en negativo. Puro: sin
+ * base de datos ni reloj; el servidor guarda el estado y reparte los turnos.
  *
  * Reglas: el croupier se planta en 17 (también en 17 blando) y mira su carta tapada con as o figura/10 a la vista (si hace
  * blackjack la mano termina ahí). Blackjack natural paga 3 a 2 (redondeado hacia abajo); se puede doblar con las dos
@@ -14,17 +15,18 @@ export type BjAction = 'hit' | 'stand' | 'double';
 export type BjPhase = 'betting' | 'player' | 'done';
 export type BjResult = 'blackjack' | 'win' | 'push' | 'lose' | 'bust' | 'skipped';
 
+/** `stack` es el saldo de la partida de blackjack (lo ganado menos lo perdido): arranca en 0 y puede ser negativo. */
 export interface BjRival { id: string; stack: number }
 
 export interface BjState {
   playerId: string;
-  /** Fichas del jugador al empezar la mano. */
+  /** Saldo del jugador al empezar la mano (puede ser negativo). */
   playerStack: number;
   rivals: BjRival[];
   /** Apuesta por cabeza: cada rival arriesga esto contra el jugador (ya duplicada si dobló). */
   bet: number;
   minBet: number;
-  /** Tope de la apuesta: con él nadie queda debiendo más de lo que tiene, ni doblando. */
+  /** Tope de la apuesta (se configura al iniciar la partida). */
   maxBet: number;
   phase: BjPhase;
   player: Card[];
@@ -67,26 +69,17 @@ export function handValue(cards: Card[]): { total: number; soft: boolean } {
 
 export const isBlackjack = (cards: Card[]): boolean => cards.length === 2 && handValue(cards).total === 21;
 
-// ─── Tope de la apuesta ──────────────────────────────────────────────────────
-
-/**
- * Apuesta máxima por cabeza. En el peor caso (doblar) el jugador le paga 2× a cada rival, y cada rival le paga 2× a él:
- * el jugador necesita `2 × rivales` fichas y el rival con menos fichas necesita 2×.
- */
-export function maxBet(playerStack: number, rivalStacks: number[]): number {
-  const n = rivalStacks.length;
-  if (n === 0) return 0;
-  return Math.max(0, Math.floor(Math.min(playerStack / (2 * n), Math.min(...rivalStacks) / 2)));
-}
-
 // ─── Mano ────────────────────────────────────────────────────────────────────
 
 export interface NewRoundOptions {
   playerId: string;
+  /** Saldo del jugador en la partida de blackjack (puede ser negativo). */
   playerStack: number;
-  /** Los demás jugadores con fichas (los que están en 0 no entran). */
+  /** Todos los demás de la banca, con su saldo: cada uno cubre la apuesta, tengan o no saldo a favor. */
   rivals: BjRival[];
   minBet: number;
+  /** Apuesta máxima: no depende del saldo de nadie. */
+  maxBet: number;
   /** Entero uniforme en [0, n); obligatorio salvo que se pase `deck`. */
   randomInt?: (n: number) => number;
   deck?: Card[];
@@ -98,7 +91,7 @@ export function newRound(opts: NewRoundOptions): BjState {
   if (!opts.deck && !opts.randomInt) throw new BlackjackError('Falta randomInt o deck');
   return {
     playerId: opts.playerId, playerStack: opts.playerStack, rivals: opts.rivals.map(r => ({ ...r })),
-    bet: 0, minBet: opts.minBet, maxBet: maxBet(opts.playerStack, opts.rivals.map(r => r.stack)),
+    bet: 0, minBet: opts.minBet, maxBet: opts.maxBet,
     phase: 'betting', player: [], dealer: [],
     deck: opts.deck ? opts.deck.slice() : shuffle(newDeck(), opts.randomInt as (n: number) => number),
     doubled: false, dealerRevealed: false, result: null, deltas: {},
@@ -107,14 +100,14 @@ export function newRound(opts: NewRoundOptions): BjState {
 
 const clone = (s: BjState): BjState => structuredClone(s);
 
-/** ¿Puede apostar el jugador? Con el tope por debajo de la apuesta mínima esa mano se saltea. */
+/** ¿Puede apostar el jugador? Si el tope quedó por debajo de la apuesta mínima esa mano se saltea. */
 export const canBet = (s: BjState): boolean => s.phase === 'betting' && s.maxBet >= s.minBet;
 
 /** Apuesta y reparte: jugador, croupier, jugador, croupier (la segunda del croupier va tapada). */
-export function placeBet(state: BjState, amount: number, opts: { minBet?: number } = {}): BjState {
+export function placeBet(state: BjState, amount: number): BjState {
   if (state.phase !== 'betting') throw new BlackjackError('Ya se apostó en esta mano.');
-  const min = opts.minBet ?? state.minBet;
-  if (!Number.isInteger(amount) || amount < Math.max(1, min)) throw new BlackjackError(`La apuesta mínima es ${Math.max(1, min)}.`);
+  const min = Math.max(1, state.minBet);
+  if (!Number.isInteger(amount) || amount < min) throw new BlackjackError(`La apuesta mínima es ${min}.`);
   if (amount > state.maxBet) throw new BlackjackError(`La apuesta máxima es ${state.maxBet}.`);
   const s = clone(state);
   s.bet = amount;
@@ -129,7 +122,7 @@ export function placeBet(state: BjState, amount: number, opts: { minBet?: number
   return s;
 }
 
-/** La mano se saltea (nadie arriesga nada): no hay apuesta posible dentro del tope. */
+/** La mano se saltea (nadie arriesga nada): el tope no deja ninguna apuesta posible. */
 export function skipRound(state: BjState): BjState {
   if (state.phase !== 'betting') throw new BlackjackError('La mano ya empezó.');
   const s = clone(state);

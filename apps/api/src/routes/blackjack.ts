@@ -1,10 +1,14 @@
 /**
  * Blackjack «contra todos» sobre la mesa online: un jugador juega su mano contra un croupier automático y todos los demás
- * cubren su apuesta por cabeza (ver packages/core/src/blackjack). Usa las fichas de los asientos y la misma Session que
- * el póker, así que al cerrar la mesa las deudas y el ranking salen igual.
+ * cubren su apuesta por cabeza (ver packages/core/src/blackjack).
+ *
+ * No hay compra inicial: se juega con saldo que arranca en 0 y puede quedar en negativo. El saldo de cada uno es lo que
+ * ganó menos lo que perdió en las manos de su partida de blackjack (que es siempre una partida propia, aparte de la de
+ * póker); al cerrarla ese saldo es su resultado y se generan las deudas. Participa todo el grupo, esté o no conectado;
+ * solo juegan turno los conectados.
  *
  * Dos usos: como juego de la mesa (`game = 'blackjack'`: una mano por jugador, en rotación) y como interludio del póker
- * (cada vez que suben las ciegas, una mano por jugador con apuesta fija = ciega grande; el reloj de las ciegas se frena).
+ * (cada vez que cambian las ciegas, una mano por jugador con apuesta fija = ciega grande; el reloj de las ciegas se frena).
  *
  * Este módulo no importa nada de table.ts: table.ts lo llama (reparto, vencimientos, vista).
  */
@@ -15,7 +19,7 @@ import {
   type BjAction, type BjState,
 } from '@pokercontrol/core';
 import type { ApiBjView } from '@pokercontrol/contracts';
-import { and, asc, desc, eq, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import { ApiError } from '../errors';
 import type { Conn, Tx } from '../repo';
@@ -47,36 +51,38 @@ async function seatRows(db: Conn, tableId: string): Promise<SeatRow[]> {
 
 const ONLINE_MS = 45_000;
 
-/** Juegan (o cubren apuestas) en el interludio del póker los sentados con fichas. */
-const eligible = (seats: SeatRow[]): SeatRow[] => seats.filter(s => s.status === 'sitting' && s.stack > 0);
-
-/** Tiene turno en el blackjack contra todos: sentado, con fichas y conectado (o sentado a mano por un administrador). */
+/** Tiene turno: sentado y conectado (o sentado a mano por un administrador). Los demás del grupo solo cubren la apuesta. */
 const plays = (s: SeatRow, now = Date.now()): boolean =>
-  s.status === 'sitting' && s.stack > 0 && (s.addedBy !== null || now - s.lastSeenAt.getTime() < ONLINE_MS);
+  s.status === 'sitting' && (s.addedBy !== null || now - s.lastSeenAt.getTime() < ONLINE_MS);
 
 const deadlineFor = (table: Pick<TableRow, 'turnSeconds'>): Date | null =>
   table.turnSeconds > 0 ? new Date(Date.now() + table.turnSeconds * 1000) : null;
 
-// ─── Partida de blackjack del interludio (aparte de la de póker) ─────────────
+// ─── Saldos y partida de blackjack ───────────────────────────────────────────
 
 /**
- * Fichas de cada jugador en la partida de blackjack del interludio: la entrada más lo que ganó y perdió en sus manos.
- * Son virtuales: no son las del póker, que el interludio no toca.
+ * Saldo de cada participante de una partida de blackjack: lo que ganó menos lo que perdió en sus manos. Arranca en 0
+ * (no hay compra inicial) y puede ser negativo.
  */
-async function interludeStacks(db: Conn, table: Pick<TableRow, 'bjSessionId' | 'buyIn'>): Promise<Map<string, number>> {
-  const sid = table.bjSessionId;
-  if (!sid) return new Map();
+export async function bjNets(db: Conn, sessionId: string | null): Promise<Map<string, number>> {
+  if (!sessionId) return new Map();
   const parts = await db.select({ playerId: schema.sessionParticipants.playerId }).from(schema.sessionParticipants)
-    .where(eq(schema.sessionParticipants.sessionId, sid));
-  const stacks = new Map(parts.map(p => [p.playerId, table.buyIn]));
+    .where(eq(schema.sessionParticipants.sessionId, sessionId));
+  const nets = new Map(parts.map(p => [p.playerId, 0]));
   const hands = await db.select({ state: schema.blackjackHands.state }).from(schema.blackjackHands)
-    .where(and(eq(schema.blackjackHands.sessionId, sid), eq(schema.blackjackHands.status, 'done')));
-  for (const h of hands) for (const [id, delta] of Object.entries(h.state.deltas)) stacks.set(id, (stacks.get(id) ?? 0) + delta);
-  return stacks;
+    .where(and(eq(schema.blackjackHands.sessionId, sessionId), eq(schema.blackjackHands.status, 'done')));
+  for (const h of hands) for (const [id, delta] of Object.entries(h.state.deltas)) nets.set(id, (nets.get(id) ?? 0) + delta);
+  return nets;
 }
 
-/** Abre la partida de blackjack del interludio: una partida propia, con los que juegan y su entrada como fichas virtuales. */
-async function openInterludeSession(tx: Tx, table: TableRow, players: string[], bigBlind: number): Promise<string> {
+/** Los jugadores activos del grupo: la banca del blackjack, estén o no conectados. */
+export async function groupPlayers(db: Conn, groupId: string): Promise<{ id: string; userId: string | null }[]> {
+  return db.select({ id: schema.players.id, userId: schema.players.userId }).from(schema.players)
+    .where(and(eq(schema.players.groupId, groupId), isNull(schema.players.archivedAt)));
+}
+
+/** Abre la partida de blackjack del interludio: una partida propia, con todo el grupo y sin compra inicial. */
+async function openInterludeSession(tx: Tx, table: TableRow, bigBlind: number): Promise<string> {
   const [poker] = await tx.select({ seasonId: schema.sessions.seasonId }).from(schema.sessions)
     .where(eq(schema.sessions.id, table.sessionId as string));
   const [group] = await tx.select({ timezone: schema.groups.timezone }).from(schema.groups).where(eq(schema.groups.id, table.groupId));
@@ -87,82 +93,68 @@ async function openInterludeSession(tx: Tx, table: TableRow, players: string[], 
     name: `${defaultSessionName(now, group?.timezone ?? 'UTC').replace('Party', 'Blackjack')} · ciegas $${bigBlind}`,
     status: 'active', createdAt: now, game: 'blackjack',
   });
-  for (const playerId of players) {
-    const [participant] = await tx.insert(schema.sessionParticipants)
-      .values({ groupId: table.groupId, sessionId: id, playerId }).returning({ id: schema.sessionParticipants.id });
-    await tx.insert(schema.buys).values({ participantId: participant.id, amount: table.buyIn, occurredAt: now });
+  // Todos los jugadores del grupo, conectados o no: así el historial muestra lo que ganó o perdió cada uno.
+  for (const p of await groupPlayers(tx, table.groupId)) {
+    await tx.insert(schema.sessionParticipants).values({ groupId: table.groupId, sessionId: id, playerId: p.id });
   }
   return id;
 }
 
 /**
- * Cierra la partida de blackjack del interludio (al terminar la vuelta): el resultado de cada uno son sus fichas
- * virtuales y se generan sus deudas, aparte de las del póker. Si nadie llegó a jugar una mano, no se registra nada.
+ * Cierra la partida de blackjack del interludio (al terminar la vuelta): el resultado de cada uno es su saldo y se
+ * generan sus deudas, aparte de las del póker. Si nadie llegó a jugar una mano, no se registra nada.
  */
 export async function closeInterlude(tx: Tx, table: TableRow): Promise<void> {
   // Se lee de la base: la mesa que llega puede estar desactualizada y la partida ya cerrarse (no se cierra dos veces).
   const [current] = await tx.select({ sid: schema.pokerTables.bjSessionId }).from(schema.pokerTables).where(eq(schema.pokerTables.id, table.id));
   const sid = current?.sid;
   if (!sid) return;
-  table = { ...table, bjSessionId: sid };
   const hands = await tx.select({ state: schema.blackjackHands.state }).from(schema.blackjackHands)
     .where(eq(schema.blackjackHands.sessionId, sid));
   if (hands.every(h => h.state.result === 'skipped')) {
     await tx.delete(schema.sessions).where(eq(schema.sessions.id, sid));
   } else {
-    for (const [playerId, stack] of await interludeStacks(tx, table)) {
-      await tx.update(schema.sessionParticipants).set({ finalAmount: stack })
-        .where(and(eq(schema.sessionParticipants.sessionId, sid), eq(schema.sessionParticipants.playerId, playerId)));
-    }
+    await finalizeNets(tx, sid);
     await closeSessionTx(tx, table.groupId, sid);
   }
   await tx.update(schema.pokerTables).set({ bjSessionId: null }).where(eq(schema.pokerTables.id, table.id));
 }
 
-// ─── Reparto ─────────────────────────────────────────────────────────────────
-
-/** Guarda en los asientos lo que ganó o perdió cada uno. El tope de la apuesta garantiza que nadie queda en negativo. */
-async function settleStacks(tx: Tx, tableId: string, state: BjState): Promise<void> {
-  for (const [playerId, delta] of Object.entries(state.deltas)) {
-    if (delta === 0) continue;
-    await tx.update(schema.pokerSeats).set({ stack: sql`${schema.pokerSeats.stack} + ${delta}` })
-      .where(and(eq(schema.pokerSeats.tableId, tableId), eq(schema.pokerSeats.playerId, playerId)));
+/** Deja como resultado de cada participante su saldo de blackjack (para cerrar la partida). */
+export async function finalizeNets(tx: Tx, sessionId: string): Promise<void> {
+  for (const [playerId, net] of await bjNets(tx, sessionId)) {
+    await tx.update(schema.sessionParticipants).set({ finalAmount: net })
+      .where(and(eq(schema.sessionParticipants.sessionId, sessionId), eq(schema.sessionParticipants.playerId, playerId)));
   }
 }
 
+// ─── Reparto ─────────────────────────────────────────────────────────────────
+
 /**
- * Arma y guarda la mano de `playerId`. En el interludio la apuesta es fija: `min(ciega grande, tope)`; si no alcanza ni a 1
- * la mano se saltea. En el blackjack contra todos queda esperando la apuesta (o se saltea si el tope no llega al mínimo).
+ * Arma y guarda la mano de `playerId`. En el interludio la apuesta es fija: la ciega grande. En el blackjack contra todos
+ * queda esperando la apuesta, entre el mínimo y el máximo de la mesa. La banca son todos los participantes de la partida.
  */
 async function startHand(
-  tx: Tx, table: TableRow, playerId: string, kind: 'solo' | 'interlude', level: number, bigBlind: number,
+  tx: Tx, table: TableRow, playerId: string, kind: 'solo' | 'interlude', step: number, bigBlind: number,
 ): Promise<BjState | null> {
-  // Contra todos: la banca son todos los que tienen fichas, estén o no conectados. En el interludio, los que juegan la
-  // partida de blackjack aparte, con sus fichas virtuales.
-  const bank = kind === 'solo'
-    ? (await seatRows(tx, table.id)).filter(s => s.stack > 0).map(s => ({ id: s.playerId, stack: s.stack }))
-    : [...(await interludeStacks(tx, table))].filter(([, stack]) => stack > 0).map(([id, stack]) => ({ id, stack }));
+  const sessionId = (kind === 'interlude' ? table.bjSessionId : table.sessionId) as string;
+  const bank = [...(await bjNets(tx, sessionId))].map(([id, stack]) => ({ id, stack }));
   const me = bank.find(s => s.id === playerId);
   const rivals = bank.filter(s => s.id !== playerId);
   if (!me || rivals.length === 0) return null;
-  let state = newRound({ playerId, playerStack: me.stack, rivals, minBet: kind === 'interlude' ? 1 : table.bjMinBet, randomInt });
-  if (kind === 'interlude') {
-    const bet = Math.min(bigBlind, state.maxBet);
-    state = bet >= 1 ? placeBet(state, bet, { minBet: 1 }) : skipRound(state);
-  } else if (!canBet(state)) {
-    state = skipRound(state);
-  }
+  const [minBet, maxBet] = kind === 'interlude' ? [bigBlind, bigBlind] : [table.bjMinBet, table.bjMaxBet];
+  let state = newRound({ playerId, playerStack: me.stack, rivals, minBet, maxBet, randomInt });
+  if (!canBet(state)) state = skipRound(state);
+  else if (kind === 'interlude') state = placeBet(state, bigBlind);
   const done = state.phase === 'done';
   await tx.insert(schema.blackjackHands).values({
-    tableId: table.id, sessionId: (kind === 'interlude' ? table.bjSessionId : table.sessionId) as string, kind, playerId, level, state,
+    tableId: table.id, sessionId, kind, playerId, level: step, state,
     status: done ? 'done' : 'active', finishedAt: done ? new Date() : null,
   });
-  // Contra todos las fichas son las de la mesa; el interludio se lleva aparte y no toca las del póker.
-  if (done && kind === 'solo') await settleStacks(tx, table.id, state);
   await tx.update(schema.pokerTables).set({
     version: bump, turnDeadline: done ? null : deadlineFor(table), ...(kind === 'solo' ? { bjLast: playerId } : {}),
   }).where(eq(schema.pokerTables.id, table.id));
-  // Última mano del interludio resuelta de entrada (blackjack natural, o sin fichas para apostar): termina la vuelta.
+  // Última mano del interludio resuelta de entrada (blackjack natural, o saltea): termina la vuelta.
   if (done && kind === 'interlude' && table.bjQueue.length === 0) await closeInterlude(tx, table);
   return state;
 }
@@ -170,40 +162,41 @@ async function startHand(
 /** Blackjack contra todos: le toca al conectado que sigue (en orden de asiento) al último que jugó. */
 async function dealSolo(tx: Tx, table: TableRow): Promise<void> {
   const ids = (await seatRows(tx, table.id)).filter(s => plays(s)).map(s => s.playerId);
-  if (ids.length < 1) throw new ApiError(422, 'not_enough_players', 'Hace falta al menos un jugador conectado con fichas.');
+  if (ids.length < 1) throw new ApiError(422, 'not_enough_players', 'Hace falta al menos un jugador conectado.');
   let from = table.bjLast ? ids.indexOf(table.bjLast) : -1;
   for (let k = 1; k <= ids.length; k++) {
     const id = ids[(from + k + ids.length) % ids.length];
     const state = await startHand(tx, table, id, 'solo', 0, 0);
     if (state && state.result !== 'skipped') return;
-    if (!state) throw new ApiError(422, 'not_enough_players', 'No hay con quién jugar: hacen falta otros jugadores con fichas.');
+    if (!state) throw new ApiError(422, 'not_enough_players', 'No hay con quién jugar: hacen falta otros jugadores en el grupo.');
     from = ids.indexOf(id);
     table = { ...table, bjLast: id };
   }
-  throw new ApiError(422, 'bet_too_low', 'Nadie tiene fichas suficientes para apostar el mínimo.');
+  throw new ApiError(422, 'bet_too_low', 'La apuesta máxima quedó por debajo de la mínima.');
 }
 
 /**
  * Reparte lo que sigue. Devuelve 'holdem' cuando toca una mano de póker (la reparte quien llama) y 'dealt' si se repartió
- * una mano de blackjack. En el póker, al subir las ciegas se arma el interludio: una mano por jugador, en orden de asiento.
+ * una mano de blackjack. En el póker, cada vez que cambian las ciegas se arma el interludio: una mano por cada conectado,
+ * en orden de asiento, contra todo el grupo.
  */
-export async function dealNext(tx: Tx, table: TableRow, blinds: { level: number; big: number }): Promise<'holdem' | 'dealt'> {
+export async function dealNext(tx: Tx, table: TableRow, blinds: { step: number; big: number }): Promise<'holdem' | 'dealt'> {
   if (table.game === 'blackjack') { await dealSolo(tx, table); return 'dealt'; }
   let queue = table.bjQueue;
-  if (queue.length === 0 && table.bjInterlude && blinds.level > table.bjLevel) {
-    queue = eligible(await seatRows(tx, table.id)).map(s => s.playerId);
+  if (queue.length === 0 && table.bjInterlude && blinds.step > table.bjLevel) {
+    queue = (await seatRows(tx, table.id)).filter(s => plays(s)).map(s => s.playerId);
     // Una partida de blackjack propia, aparte de la de póker (no toca sus fichas ni sus estadísticas).
-    const bjSessionId = queue.length >= 2 ? await openInterludeSession(tx, table, queue, blinds.big) : null;
+    const bjSessionId = queue.length >= 1 ? await openInterludeSession(tx, table, blinds.big) : null;
     if (!bjSessionId) queue = [];
-    table = { ...table, bjLevel: blinds.level, bjStartedAt: bjSessionId ? table.bjStartedAt ?? new Date() : table.bjStartedAt, bjSessionId };
+    table = { ...table, bjLevel: blinds.step, bjStartedAt: bjSessionId ? table.bjStartedAt ?? new Date() : table.bjStartedAt, bjSessionId };
     await tx.update(schema.pokerTables).set({ bjLevel: table.bjLevel, bjStartedAt: table.bjStartedAt, bjSessionId }).where(eq(schema.pokerTables.id, table.id));
   }
   while (queue.length > 0) {
     const [next, ...rest] = queue;
     queue = rest;
     await tx.update(schema.pokerTables).set({ bjQueue: queue }).where(eq(schema.pokerTables.id, table.id));
-    const state = await startHand(tx, { ...table, bjQueue: queue }, next, 'interlude', blinds.level, blinds.big);
-    // Una mano salteada (sin fichas, o el tope no llega a 1) no se muestra: se sigue con el que viene.
+    const state = await startHand(tx, { ...table, bjQueue: queue }, next, 'interlude', blinds.step, blinds.big);
+    // Una mano salteada no se muestra: se sigue con el que viene.
     if (state && state.result !== 'skipped') return 'dealt';
   }
   // Terminó la vuelta (por ejemplo, las últimas manos se salteaban): se cierra la partida de blackjack.
@@ -225,7 +218,6 @@ async function save(tx: Tx, table: TableRow, row: BjRow, playerId: string, next:
   const done = next.phase === 'done';
   await tx.update(schema.blackjackHands).set({ state: next, ...(done ? { status: 'done', finishedAt: new Date() } : {}) })
     .where(eq(schema.blackjackHands.id, row.id));
-  if (done && row.kind === 'solo') await settleStacks(tx, table.id, next);
   const seat = and(eq(schema.pokerSeats.tableId, table.id), eq(schema.pokerSeats.playerId, playerId));
   if (auto) {
     // Dos turnos seguidos sin responder: queda afuera de las próximas manos (vuelve con "Volver a sentarme").

@@ -298,28 +298,45 @@ describe('ciegas por tiempo', () => {
   const min = (n: number) => n * 60_000;
 
   it('se duplican cada intervalo, siempre sobre las ciegas base', () => {
-    expect(blindLevel({ ...base, minutes: 15, elapsedMs: 0 })).toEqual({ level: 0, small: 10, big: 20, atCap: false, nextAtMs: min(15) });
+    expect(blindLevel({ ...base, minutes: 15, elapsedMs: 0 })).toEqual({ level: 0, small: 10, big: 20, atCap: false, nextAtMs: min(15), step: 0 });
     expect(blindLevel({ ...base, minutes: 15, elapsedMs: min(14) + 59_000 }).big).toBe(20);
-    expect(blindLevel({ ...base, minutes: 15, elapsedMs: min(15) })).toMatchObject({ level: 1, small: 20, big: 40, nextAtMs: min(30) });
+    expect(blindLevel({ ...base, minutes: 15, elapsedMs: min(15) })).toMatchObject({ level: 1, small: 20, big: 40, nextAtMs: min(30), step: 1 });
     expect(blindLevel({ ...base, minutes: 15, elapsedMs: min(47) })).toMatchObject({ level: 3, small: 80, big: 160 });
+  });
+
+  it('la chica sube a la par de la grande: las dos se duplican juntas en cada nivel', () => {
+    for (let level = 0; level <= 4; level++) {
+      const b = blindLevel({ ...base, minutes: 15, elapsedMs: min(15 * level) });
+      expect([b.small, b.big]).toEqual([10 * 2 ** level, 20 * 2 ** level]);
+      expect(b.big / b.small).toBe(2);
+    }
+    // También con ciegas base que no son 1:2.
+    const odd = blindLevel({ smallBlind: 5, bigBlind: 20, buyIn: 1000, minutes: 15, elapsedMs: min(30) });
+    expect([odd.small, odd.big]).toEqual([20, 80]);
   });
 
   it('la ciega grande no pasa de la mitad de la entrada', () => {
     // 20 → 40 → 80 → 160 → 320; 640 supera 500.
     expect(maxBlindLevel(20, 1000)).toBe(4);
-    const capped = blindLevel({ ...base, minutes: 15, elapsedMs: min(15 * 50) });
-    expect(capped).toEqual({ level: 4, small: 160, big: 320, atCap: true, nextAtMs: null });
-    expect(blindLevel({ ...base, minutes: 15, elapsedMs: min(15 * 4) }).atCap).toBe(true);
+    expect(blindLevel({ ...base, minutes: 15, elapsedMs: min(15 * 4) })).toEqual({ level: 4, small: 160, big: 320, atCap: true, nextAtMs: min(15 * 5), step: 4 });
     expect(blindLevel({ ...base, minutes: 15, elapsedMs: min(15 * 3) }).atCap).toBe(false);
   });
 
-  it('con 0 minutos nunca se duplican', () => {
-    expect(blindLevel({ ...base, minutes: 0, elapsedMs: min(10_000) })).toEqual({ level: 0, small: 10, big: 20, atCap: true, nextAtMs: null });
+  it('al alcanzar el límite y cumplirse otro período, las ciegas vuelven a la más baja y vuelven a subir', () => {
+    const at = (periods: number) => blindLevel({ ...base, minutes: 15, elapsedMs: min(15 * periods) });
+    expect([at(4).big, at(5).big, at(6).big, at(9).big, at(10).big]).toEqual([320, 20, 40, 320, 20]);
+    expect(at(5)).toEqual({ level: 0, small: 10, big: 20, atCap: false, nextAtMs: min(15 * 6), step: 5 });
+    // El contador de cambios sigue creciendo aunque el nivel vuelva a 0.
+    expect([at(4).step, at(5).step, at(6).step]).toEqual([4, 5, 6]);
   });
 
-  it('si la entrada es justa (el doble de la ciega) no hay subidas; un reloj adelantado no baja el nivel', () => {
+  it('con 0 minutos nunca se duplican', () => {
+    expect(blindLevel({ ...base, minutes: 0, elapsedMs: min(10_000) })).toEqual({ level: 0, small: 10, big: 20, atCap: true, nextAtMs: null, step: 0 });
+  });
+
+  it('si la entrada es justa (el doble de la ciega) no hay subidas ni vueltas; un reloj adelantado no baja el nivel', () => {
     expect(maxBlindLevel(500, 1000)).toBe(0);
-    expect(blindLevel({ smallBlind: 250, bigBlind: 500, buyIn: 1000, minutes: 15, elapsedMs: min(999) })).toMatchObject({ level: 0, atCap: true });
+    expect(blindLevel({ smallBlind: 250, bigBlind: 500, buyIn: 1000, minutes: 15, elapsedMs: min(999) })).toMatchObject({ level: 0, atCap: true, nextAtMs: null, step: 0 });
     expect(blindLevel({ ...base, minutes: 15, elapsedMs: -5000 }).level).toBe(0);
   });
 });

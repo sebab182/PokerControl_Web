@@ -656,6 +656,9 @@ test('mesa online: sala de espera, iniciar, jugar una mano y cerrar', async ({ p
   // El polling con el socket en vivo es de 15 s: ver el cambio antes prueba que llegó por WebSocket.
   await expect(other.getByTestId('last-action')).toContainText('se retiró', { timeout: 5000 });
   await expect(page.getByRole('status').filter({ hasText: 'ganó' }).or(page.getByRole('status').filter({ hasText: 'ganaste' }))).toBeVisible({ timeout: 10000 });
+  // Con todas las cartas a la vista, también se ven las de la mesa que faltaban (atenuadas: no se jugaron).
+  await expect(page.getByTestId('felt').locator('.board .pcard')).toHaveCount(5);
+  await expect(page.getByTestId('felt').locator('.board .pcard-dim')).toHaveCount(5);
   await checkPage(page, 'mesa: fin de mano');
   // El retiro suena en los dos, y al mostrarse todas las cartas suena el volteo.
   for (const p of [page, page2]) {
@@ -716,7 +719,7 @@ async function twoSeated(page: Page, browser: Browser) {
 }
 
 /** Las fichas de cada uno sentado en el paño (en pesos enteros). */
-const bjStacks = async (p: Page) => (await p.locator('.pseat-stack').allInnerTexts()).map(t => Number(t.replace(/[^\d-]/g, '')));
+const bjStacks = async (p: Page) => (await p.locator('.pseat-stack').allInnerTexts()).map(t => Number(t.replace('−', '-').replace(/[^\d-]/g, '')));
 /** Si la mano sigue en juego (no fue blackjack natural), el que juega se planta. */
 async function bjStand(p: Page) {
   await expect(p.getByTestId('bj-stand').or(p.getByTestId('bj-result'))).toBeVisible({ timeout: 15000 });
@@ -730,6 +733,9 @@ test('blackjack contra todos: apostar, jugar la mano, rotar el turno y cerrar', 
   await page.getByRole('button', { name: /Iniciar partida \(2 jugadores\)/ }).click();
   await page.getByTestId('game-blackjack').click();
   await expect(page.getByLabel('Apuesta mínima')).toBeVisible();
+  await expect(page.getByLabel('Apuesta máxima')).toBeVisible();
+  // El blackjack no tiene compra inicial: no se pide la entrada.
+  await expect(page.getByLabel('Entrada por jugador')).toHaveCount(0);
   await page.getByRole('dialog').getByRole('button', { name: 'Iniciar partida' }).click();
 
   // Los dos ven la mesa de blackjack; apuesta el primero (Seba), el otro espera.
@@ -737,10 +743,10 @@ test('blackjack contra todos: apostar, jugar la mano, rotar el turno y cerrar', 
   await expect(page2.getByText('Seba está eligiendo su apuesta…')).toBeVisible();
   await expect(page.getByRole('group', { name: 'Tu apuesta' })).toBeVisible();
   await checkPage(page, 'blackjack: apuesta');
-  // Sobre el tope no se puede apostar: con 1000 de entrada y 1 rival, el tope es 500.
+  // No hay compra inicial y el tope es la apuesta máxima de la mesa (100 por defecto), no el saldo de nadie.
   await page.getByRole('textbox', { name: /^Tu apuesta/ }).fill('600');
   await page.getByTestId('bj-bet-button').click();
-  await expect(page.getByRole('alert').filter({ hasText: 'entre $10 y $500' })).toBeVisible();
+  await expect(page.getByRole('alert').filter({ hasText: 'entre $10 y $100' })).toBeVisible();
   await page.getByRole('textbox', { name: /^Tu apuesta/ }).fill('50');
   await page.getByTestId('bj-bet-button').click();
   await expect(page.getByTestId('bj-bet')).toContainText('$50', { timeout: 10000 });
@@ -755,8 +761,8 @@ test('blackjack contra todos: apostar, jugar la mano, rotar el turno y cerrar', 
   await expect(page2.getByTestId('bj-dealer').getByRole('img', { name: 'Carta oculta' })).toHaveCount(0);
   await checkPage(page, 'blackjack: resultado');
   await checkPage(page2, 'blackjack: resultado (lector)');
-  // Las fichas de la mesa no cambian: lo que gana uno lo pierde el otro.
-  expect((await bjStacks(page)).reduce((a, b) => a + b, 0)).toBe(2000);
+  // Los saldos arrancan en 0 y suman 0: lo que gana uno lo pierde el otro.
+  expect((await bjStacks(page)).reduce((a, b) => a + b, 0)).toBe(0);
 
   // Reparte Seba (quien inició): le toca a Nico.
   await page.getByTestId('bj-next').click();
@@ -764,7 +770,7 @@ test('blackjack contra todos: apostar, jugar la mano, rotar el turno y cerrar', 
   await expect(page.getByText('Nico está eligiendo su apuesta…')).toBeVisible();
   await page2.getByTestId('bj-bet-button').click();
   await bjStand(page2);
-  expect((await bjStacks(page2)).reduce((a, b) => a + b, 0)).toBe(2000);
+  expect((await bjStacks(page2)).reduce((a, b) => a + b, 0)).toBe(0);
 
   // Cerrar la partida: las fichas pasan a ser el resultado.
   await expect(page.getByTestId('bj-result')).toBeVisible();

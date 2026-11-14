@@ -15,12 +15,12 @@ import {
   HoldemError, applyAction, blindLevel, buyInHand, describeAction, legalActions, publicView, revealCards, shownCards, startHand, winDetails, type Action, type HandState,
 } from '@pokercontrol/core';
 import { type Static } from '@sinclair/typebox';
-import { and, asc, desc, eq, inArray, isNotNull, isNull, lte, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, lte, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import * as schema from '../db/schema';
 import type { LoggedAction } from '../db/schema';
 import { ApiError, notFound } from '../errors';
-import { activeBj, bjAct, bjBet, bjTimeout, bjView, closeInterlude, dealNext, latestBj } from './blackjack';
+import { activeBj, bjAct, bjBet, bjNets, bjTimeout, bjView, closeInterlude, dealNext, finalizeNets, groupPlayers, latestBj } from './blackjack';
 import { recordBoughtInHand, recordHandResult, recordHandStart } from '../hand-history';
 import { idempotent } from '../idempotency';
 import type { Conn, Tx } from '../repo';
@@ -158,6 +158,8 @@ async function buildView(db: Conn, table: TableRow, viewer: Viewer): Promise<Api
     }
   }
 
+  // Saldo de cada uno en el blackjack contra todos: lo ganado menos lo perdido (no hay compra inicial y puede ser negativo).
+  const bjNet = table.game === 'blackjack' && table.sessionId ? await bjNets(db, table.sessionId) : new Map<string, number>();
   // La mano de blackjack se muestra mientras sea lo más reciente de la partida en curso (en el póker, hasta que se reparta otra mano).
   const bjRow = await latestBj(db, table.id);
   // Las manos del interludio se registran en su propia partida, distinta de la de póker: se reconocen por la mano más nueva.
@@ -172,11 +174,16 @@ async function buildView(db: Conn, table: TableRow, viewer: Viewer): Promise<Api
     const actingFor = actor && (actor === myId || managedIds.has(actor)) ? actor : null;
     const legal = actingFor ? legalActions(state) : null;
     const wins = winDetails(state);
+    // Si quien ganó porque todos se retiraron muestra sus cartas, también se muestran las cartas de la mesa que faltaban
+    // (las que habrían salido), si falta alguna. Mientras no las muestre, siguen ocultas.
+    const winnerShown = state.street === 'done' && state.showdown.length === 0 && state.payouts.some(w => shownCards(state, w.playerId).length > 0);
+    const runout = winnerShown && state.board.length < 5 && Array.isArray(row.fullBoard) ? row.fullBoard.slice(state.board.length, 5) : [];
     hand = {
       handNo: row.handNo,
       gameHandNo: row.handNo - table.sessionHandBase,
       street: v.street,
-      board: v.board,
+      board: [...v.board, ...runout],
+      runout: runout.length,
       pot: v.players.reduce((sum, p) => sum + p.totalBet, 0),
       currentBet: v.currentBet,
       minRaise: v.minRaise,
@@ -223,7 +230,7 @@ async function buildView(db: Conn, table: TableRow, viewer: Viewer): Promise<Api
     showAllCards: table.showAllCards,
     turnDeadline: (live || blackjack?.phase !== undefined && blackjack.phase !== 'done') && table.turnDeadline ? table.turnDeadline.toISOString() : null,
     serverTime: new Date(now).toISOString(),
-    maxRebuy: maxRebuy(seats.map(x => x.seat), live),
+    maxRebuy: table.game === 'blackjack' ? 0 : maxRebuy(seats.map(x => x.seat), live),
     myPlayerId: myId,
     host: await hostName(db, table, seats),
     canHost: mayHost(table, seats.map(x => x.seat), viewer, myId, now),
@@ -231,21 +238,22 @@ async function buildView(db: Conn, table: TableRow, viewer: Viewer): Promise<Api
     hand,
     game: table.game,
     bjMinBet: table.bjMinBet,
+    bjMaxBet: table.bjMaxBet,
     bjInterlude: table.bjInterlude,
     blackjack,
     seats: seats.map(({ seat, name }) => ({
       playerId: seat.playerId,
       name,
-      // Durante una mano, el stack real de quien juega está en el estado de la mano.
-      stack: live?.players.find(p => p.id === seat.playerId)?.stack ?? seat.stack,
+      // Durante una mano, el stack real de quien juega está en el estado de la mano. En el blackjack no hay fichas: es el saldo.
+      stack: table.game === 'blackjack' ? bjNet.get(seat.playerId) ?? 0 : live?.players.find(p => p.id === seat.playerId)?.stack ?? seat.stack,
       status: seat.status,
       online: isPresent(seat, now),
       isYou: seat.playerId === myId,
       managed: managedIds.has(seat.playerId),
       rebuys: Math.max(0, (purchases.get(seat.playerId)?.count ?? 0) - 1),
       bought: purchases.get(seat.playerId)?.total ?? 0,
-      // Con las fichas de la mesa (sin contar lo que está en juego en la mano) menos lo comprado.
-      net: purchases.has(seat.playerId) ? seat.stack - (purchases.get(seat.playerId)?.total ?? 0) : 0,
+      // Con las fichas de la mesa (sin contar lo que está en juego en la mano) menos lo comprado; en el blackjack, el saldo.
+      net: table.game === 'blackjack' ? bjNet.get(seat.playerId) ?? 0 : purchases.has(seat.playerId) ? seat.stack - (purchases.get(seat.playerId)?.total ?? 0) : 0,
     })),
   };
 }
@@ -327,7 +335,7 @@ const bump = sql`${schema.pokerTables.version} + 1`;
  */
 async function dealNextHand(tx: Tx, table: TableRow): Promise<void> {
   const blinds = currentBlinds(table);
-  if ((await dealNext(tx, table, { level: blinds.level, big: blinds.big })) === 'dealt') return;
+  if ((await dealNext(tx, table, { step: blinds.step, big: blinds.big })) === 'dealt') return;
   const [fresh] = await tx.select().from(schema.pokerTables).where(eq(schema.pokerTables.id, table.id));
   await dealHand(tx, fresh);
 }
@@ -523,11 +531,12 @@ async function sitPlayer(
   }
   let stack = 0;
   if (table.status === 'playing') {
-    stack = table.buyIn;
+    // En el blackjack no hay compra: se entra con saldo 0.
+    stack = table.game === 'blackjack' ? 0 : table.buyIn;
     const [participant] = await tx.insert(schema.sessionParticipants)
       .values({ groupId: table.groupId, sessionId: table.sessionId as string, playerId: p.id }).onConflictDoNothing()
       .returning({ id: schema.sessionParticipants.id });
-    if (participant) await tx.insert(schema.buys).values({ participantId: participant.id, amount: table.buyIn, occurredAt: new Date() });
+    if (participant && table.game !== 'blackjack') await tx.insert(schema.buys).values({ participantId: participant.id, amount: table.buyIn, occurredAt: new Date() });
   }
   await tx.insert(schema.pokerSeats).values({
     tableId: table.id, groupId: table.groupId, playerId: p.id, userId: p.userId, addedBy: by, stack,
@@ -589,6 +598,7 @@ async function cancelGame(tx: Tx, table: TableRow): Promise<void> {
  */
 async function rebuyPlayer(tx: Tx, table: TableRow, playerId: string, amount?: number): Promise<void> {
   if (table.status !== 'playing') throw new ApiError(409, 'not_playing', 'No hay una partida en juego.');
+  if (table.game === 'blackjack') throw new ApiError(409, 'no_rebuy', 'En el blackjack no hay compras: se juega con saldo y puede quedar en negativo.');
   const seats = (await loadSeats(tx, table.id)).map(s => s.seat);
   const seat = seats.find(s => s.playerId === playerId);
   if (!seat) throw notFound('Asiento');
@@ -754,6 +764,7 @@ export async function tableRoutes(app: FastifyInstance) {
         showAllCards: req.body.showAllCards ?? table.showAllCards,
         game: req.body.game ?? 'holdem',
         bjMinBet: req.body.bjMinBet ?? table.bjMinBet,
+        bjMaxBet: req.body.bjMaxBet ?? Math.max(table.bjMaxBet, (req.body.bjMinBet ?? table.bjMinBet) * 10),
         bjInterlude: req.body.bjInterlude ?? table.bjInterlude,
       };
       if (cfg.blindMinutes !== 0 && cfg.blindMinutes < 5) {
@@ -764,7 +775,7 @@ export async function tableRoutes(app: FastifyInstance) {
       }
       if (cfg.smallBlind > cfg.bigBlind) throw new ApiError(422, 'invalid_blinds', 'La ciega chica no puede superar a la grande.');
       if (cfg.game === 'holdem' && cfg.buyIn < cfg.bigBlind * 2) throw new ApiError(422, 'invalid_buy_in', 'La entrada debe ser al menos el doble de la ciega grande.');
-      if (cfg.game === 'blackjack' && cfg.buyIn < cfg.bjMinBet * 4) throw new ApiError(422, 'invalid_buy_in', 'La entrada debe ser al menos 4 veces la apuesta mínima.');
+      if (cfg.game === 'blackjack' && cfg.bjMaxBet < cfg.bjMinBet) throw new ApiError(422, 'invalid_bet', 'La apuesta máxima no puede ser menor que la mínima.');
 
       const seats = (await loadSeats(tx, table.id)).map(s => s.seat);
       const present = seats.filter(s => isPresent(s));
@@ -774,10 +785,7 @@ export async function tableRoutes(app: FastifyInstance) {
       if (present.length < (blackjack ? 1 : 2)) {
         throw new ApiError(422, 'not_enough_players', blackjack ? 'Hace falta al menos 1 jugador conectado.' : 'Hacen falta al menos 2 jugadores conectados.');
       }
-      const bank = blackjack
-        ? await tx.select({ id: schema.players.id, userId: schema.players.userId }).from(schema.players)
-          .where(and(eq(schema.players.groupId, groupId), isNull(schema.players.archivedAt)))
-        : [];
+      const bank = blackjack ? await groupPlayers(tx, groupId) : [];
       if (blackjack && bank.length < 2) throw new ApiError(422, 'not_enough_players', 'Hacen falta al menos 2 jugadores en el grupo.');
 
       const [season] = await tx.select({ id: schema.seasons.id }).from(schema.seasons)
@@ -801,7 +809,8 @@ export async function tableRoutes(app: FastifyInstance) {
       for (const id of playing) {
         const [participant] = await tx.insert(schema.sessionParticipants)
           .values({ groupId, sessionId, playerId: id }).returning({ id: schema.sessionParticipants.id });
-        await tx.insert(schema.buys).values({ participantId: participant.id, amount: cfg.buyIn, occurredAt: now });
+        // El blackjack no tiene compra inicial: se juega con saldo que arranca en 0.
+        if (!blackjack) await tx.insert(schema.buys).values({ participantId: participant.id, amount: cfg.buyIn, occurredAt: now });
       }
       // Los que no entran quedan afuera de esta partida.
       for (const seat of seats.filter(s => !playing.includes(s.playerId))) {
@@ -810,13 +819,13 @@ export async function tableRoutes(app: FastifyInstance) {
       }
       if (blackjack) {
         // Con fichas pero sin asiento a la vista ('out'): se sientan solos al conectarse (ver sitPlayer).
-        await tx.update(schema.pokerSeats).set({ stack: cfg.buyIn, status: 'out' }).where(eq(schema.pokerSeats.tableId, table.id));
+        await tx.update(schema.pokerSeats).set({ stack: 0, status: 'out' }).where(eq(schema.pokerSeats.tableId, table.id));
         await tx.update(schema.pokerSeats).set({ status: 'sitting' })
           .where(and(eq(schema.pokerSeats.tableId, table.id), inArray(schema.pokerSeats.playerId, present.map(s => s.playerId))));
         const seated = new Set(seats.map(s => s.playerId));
         for (const p of bank.filter(x => !seated.has(x.id))) {
           await tx.insert(schema.pokerSeats).values({
-            tableId: table.id, groupId, playerId: p.id, userId: p.userId, stack: cfg.buyIn, status: 'out', lastSeenAt: new Date(0),
+            tableId: table.id, groupId, playerId: p.id, userId: p.userId, stack: 0, status: 'out', lastSeenAt: new Date(0),
           });
         }
       } else {
@@ -921,9 +930,14 @@ export async function tableRoutes(app: FastifyInstance) {
       const sessionId = table.sessionId as string;
       // Si se cierra entre dos manos de un interludio, esa partida de blackjack también se cierra, con lo jugado hasta ahí.
       await closeInterlude(tx, table);
-      for (const seat of seats) {
-        await tx.update(schema.sessionParticipants).set({ finalAmount: seat.stack })
-          .where(and(eq(schema.sessionParticipants.sessionId, sessionId), eq(schema.sessionParticipants.playerId, seat.playerId)));
+      if (table.game === 'blackjack') {
+        // El resultado de cada uno es su saldo de blackjack (puede ser negativo); los fichas de los asientos no cuentan.
+        await finalizeNets(tx, sessionId);
+      } else {
+        for (const seat of seats) {
+          await tx.update(schema.sessionParticipants).set({ finalAmount: seat.stack })
+            .where(and(eq(schema.sessionParticipants.sessionId, sessionId), eq(schema.sessionParticipants.playerId, seat.playerId)));
+        }
       }
       await closeSessionTx(tx, groupId, sessionId);
       await tx.delete(schema.pokerSeats).where(eq(schema.pokerSeats.tableId, table.id));

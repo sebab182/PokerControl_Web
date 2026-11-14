@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
-  BlackjackError, act, canBet, handValue, isBlackjack, legalBjActions, maxBet, newRound, placeBet, publicBjView, skipRound, type BjState,
+  BlackjackError, act, canBet, handValue, isBlackjack, legalBjActions, newRound, placeBet, publicBjView, skipRound, type BjState,
 } from './index';
 
 /** Mazo armado: jugador, croupier, jugador, croupier y después lo que se pida. */
 const deck = (s: string) => s.split(' ');
 const rivals = (...stacks: number[]) => stacks.map((stack, i) => ({ id: `r${i + 1}`, stack }));
-const round = (cards: string, o: { stack?: number; rivals?: number[]; minBet?: number } = {}): BjState =>
-  newRound({ playerId: 'p', playerStack: o.stack ?? 1000, rivals: rivals(...(o.rivals ?? [1000, 1000])), minBet: o.minBet ?? 10, deck: deck(cards) });
+/** Los saldos arrancan en 0 (no hay compra inicial) y la apuesta máxima se configura, no depende de nadie. */
+const round = (cards: string, o: { stack?: number; rivals?: number[]; minBet?: number; maxBet?: number } = {}): BjState =>
+  newRound({ playerId: 'p', playerStack: o.stack ?? 0, rivals: rivals(...(o.rivals ?? [0, 0])), minBet: o.minBet ?? 10, maxBet: o.maxBet ?? 100, deck: deck(cards) });
 const sum = (s: BjState) => Object.values(s.deltas).reduce((a, b) => a + b, 0);
 
 describe('handValue', () => {
@@ -25,35 +26,30 @@ describe('handValue', () => {
   });
 });
 
-describe('maxBet', () => {
-  it('cubre doblar: el jugador contra cada rival y el rival con menos fichas', () => {
-    expect(maxBet(1000, [1000, 1000])).toBe(250); // 1000 / (2·2)
-    expect(maxBet(1000, [1000, 100])).toBe(50); // el rival con 100 aguanta 2×50
-    expect(maxBet(100, [1000, 1000, 1000, 1000])).toBe(12); // 100 / 8 = 12,5
-    expect(maxBet(1000, [])).toBe(0);
-    expect(maxBet(1, [1000])).toBe(0);
-  });
-});
-
 describe('apuesta', () => {
-  it('rechaza una apuesta bajo el mínimo o sobre el tope', () => {
+  it('rechaza una apuesta bajo el mínimo o sobre el tope configurado', () => {
     const s = round('5s 5d 6s 6d');
     expect(() => placeBet(s, 5)).toThrow(BlackjackError);
-    expect(() => placeBet(s, s.maxBet + 1)).toThrow(/máxima/);
+    expect(() => placeBet(s, 101)).toThrow(/máxima/);
     expect(() => placeBet(s, 20.5)).toThrow(BlackjackError);
-    expect(placeBet(s, s.maxBet).phase).toBe('player');
+    expect(placeBet(s, 100).phase).toBe('player');
+  });
+  it('el saldo de nadie limita la apuesta: se puede apostar con saldo en cero o negativo', () => {
+    const s = round('5s 5d 6s 6d', { stack: -500, rivals: [-1000, 0] });
+    expect(s.maxBet).toBe(100);
+    expect(placeBet(s, 100).bet).toBe(100);
   });
   it('con el tope por debajo del mínimo no se puede apostar y la mano se saltea', () => {
-    const s = round('5s 5d 6s 6d', { stack: 30, minBet: 10 }); // 30 / 4 = 7
-    expect(s.maxBet).toBe(7);
+    const s = round('5s 5d 6s 6d', { minBet: 10, maxBet: 5 });
     expect(canBet(s)).toBe(false);
     const skipped = skipRound(s);
     expect(skipped.result).toBe('skipped');
     expect(skipped.deltas).toEqual({});
   });
-  it('el interludio puede apostar bajo el mínimo de la mesa', () => {
-    const s = round('5s 5d 6s 6d', { stack: 30, minBet: 10 });
-    expect(placeBet(s, 7, { minBet: 1 }).bet).toBe(7);
+  it('en el interludio el mínimo y el tope son la ciega grande: la apuesta es fija', () => {
+    const s = round('5s 5d 6s 6d', { minBet: 40, maxBet: 40 });
+    expect(() => placeBet(s, 20)).toThrow(BlackjackError);
+    expect(placeBet(s, 40).bet).toBe(40);
   });
   it('reparte jugador, croupier, jugador, croupier', () => {
     const s = placeBet(round('2s 3s 4s 5s 6s'), 10);
@@ -164,18 +160,18 @@ describe('vista pública', () => {
 });
 
 describe('suma cero en muchas manos', () => {
-  it('con mazos al azar, los cambios siempre suman 0 y nadie baja de cero', () => {
+  it('con mazos al azar, los cambios siempre suman 0 y los saldos pueden quedar en negativo', () => {
     let seed = 7;
     const rng = (n: number) => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed % n; };
+    let negative = 0;
     for (let i = 0; i < 400; i++) {
-      const stacks = [rng(900) + 100, rng(900) + 100, rng(900) + 100];
-      let s = newRound({ playerId: 'p', playerStack: rng(900) + 100, rivals: rivals(...stacks), minBet: 1, randomInt: rng });
-      if (s.maxBet < 1) continue;
-      s = placeBet(s, 1 + rng(s.maxBet));
+      let s = newRound({ playerId: 'p', playerStack: 0, rivals: rivals(0, 0, 0), minBet: 1, maxBet: 50, randomInt: rng });
+      s = placeBet(s, 1 + rng(50));
       while (s.phase === 'player') s = act(s, 'p', legalBjActions(s)[rng(legalBjActions(s).length)]);
       expect(sum(s)).toBe(0);
-      for (const r of s.rivals) expect(r.stack + s.deltas[r.id]).toBeGreaterThanOrEqual(0);
-      expect(s.playerStack + s.deltas.p).toBeGreaterThanOrEqual(0);
+      if (s.deltas.p < 0) negative++;
     }
+    // Perder deja el saldo debajo de 0: no hay nada que lo impida.
+    expect(negative).toBeGreaterThan(0);
   });
 });

@@ -259,6 +259,8 @@ export const pokerTables = pgTable('poker_tables', {
   game: text('game').notNull().default('holdem').$type<'holdem' | 'blackjack'>(),
   /** Apuesta mínima del blackjack contra todos. */
   bjMinBet: integer('bj_min_bet').notNull().default(10),
+  /** Apuesta máxima: el saldo de nadie la limita (no hay compra inicial y el saldo puede quedar en negativo). */
+  bjMaxBet: integer('bj_max_bet').notNull().default(100),
   /** En el póker: cada vez que suben las ciegas, todos juegan una mano de blackjack (apuesta fija = ciega grande). */
   bjInterlude: boolean('bj_interlude').notNull().default(true),
   /** Último nivel de ciegas cuyo interludio ya se armó. */
@@ -276,6 +278,7 @@ export const pokerTables = pgTable('poker_tables', {
   unique('uq_poker_tables_group').on(t.groupId),
   check('ck_poker_tables_game', sql`${t.game} in ('holdem', 'blackjack')`),
   check('ck_poker_tables_bj_min_bet', sql`${t.bjMinBet} >= 1`),
+  check('ck_poker_tables_bj_max_bet', sql`${t.bjMaxBet} >= ${t.bjMinBet}`),
   unique('uq_poker_tables_group_id').on(t.groupId, t.id),
   foreignKey({ columns: [t.groupId, t.sessionId], foreignColumns: [sessions.groupId, sessions.id], name: 'fk_poker_tables_session' }).onDelete('restrict'),
   check('ck_poker_tables_status', sql`${t.status} in ('waiting', 'playing')`),

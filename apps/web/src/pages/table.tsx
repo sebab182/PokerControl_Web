@@ -474,8 +474,8 @@ function Waiting({ view, canEdit, standing, busy, onJoin, onLeave, onStart, onAd
 }
 
 type StartConfig = {
-  game: 'holdem' | 'blackjack'; buyIn: number; turnSeconds: number; smallBlind?: number; bigBlind?: number; blindMinutes?: number;
-  showAllCards?: boolean; bjMinBet?: number; bjInterlude?: boolean;
+  game: 'holdem' | 'blackjack'; buyIn?: number; turnSeconds: number; smallBlind?: number; bigBlind?: number; blindMinutes?: number;
+  showAllCards?: boolean; bjMinBet?: number; bjMaxBet?: number; bjInterlude?: boolean;
 };
 
 function StartModal({ view, open, onClose, onStart, busy }: {
@@ -491,19 +491,20 @@ function StartModal({ view, open, onClose, onStart, busy }: {
   const [showAll, setShowAll] = useState(view.showAllCards);
   const [game, setGame] = useState<'holdem' | 'blackjack'>('holdem');
   const [bjMin, setBjMin] = useState(String(view.bjMinBet));
+  const [bjMax, setBjMax] = useState(String(view.bjMaxBet));
   const [interlude, setInterlude] = useState(view.bjInterlude);
   const submit = () => {
     if (game === 'blackjack') {
-      const buy = parseAmount(buyIn);
       const min = parseAmount(bjMin);
-      if (buy === null || min === null || !Number.isInteger(buy) || !Number.isInteger(min) || buy <= 0 || min <= 0) return setError('Ingresá montos enteros mayores a 0.');
-      if (buy < min * 4) return setError('La entrada debe ser al menos 4 veces la apuesta mínima.');
+      const max = parseAmount(bjMax);
+      if (min === null || max === null || !Number.isInteger(min) || !Number.isInteger(max) || min <= 0 || max <= 0) return setError('Ingresá montos enteros mayores a 0.');
+      if (max < min) return setError('La apuesta máxima no puede ser menor que la mínima.');
       const seconds = parseAmount(turn);
       if (seconds === null || !Number.isInteger(seconds) || (seconds !== 0 && (seconds < 10 || seconds > 300))) {
         return setError('El tiempo por turno es 0 (sin límite) o entre 10 y 300 segundos.');
       }
       setError('');
-      return onStart({ game, buyIn: buy, bjMinBet: min, turnSeconds: seconds });
+      return onStart({ game, bjMinBet: min, bjMaxBet: max, turnSeconds: seconds });
     }
     const cfg = { buyIn: parseAmount(buyIn), smallBlind: parseAmount(sb), bigBlind: parseAmount(bb) };
     if ([cfg.buyIn, cfg.smallBlind, cfg.bigBlind].some(n => n === null || n <= 0 || !Number.isInteger(n))) {
@@ -528,13 +529,16 @@ function StartModal({ view, open, onClose, onStart, busy }: {
         <Btn variant={game === 'holdem' ? 'primary' : 'ghost'} aria-pressed={game === 'holdem'} onClick={() => setGame('holdem')} data-testid="game-holdem">Póker</Btn>
         <Btn variant={game === 'blackjack' ? 'primary' : 'ghost'} aria-pressed={game === 'blackjack'} onClick={() => setGame('blackjack')} data-testid="game-blackjack">Blackjack contra todos</Btn>
       </div>
-      <TextField label="Entrada por jugador" value={buyIn} onChange={setBuyIn} decimal />
+      {game === 'holdem' && <TextField label="Entrada por jugador" value={buyIn} onChange={setBuyIn} decimal />}
       {game === 'blackjack' ? (
         <>
-          <TextField label="Apuesta mínima" value={bjMin} onChange={setBjMin} decimal />
+          <div className="row">
+            <TextField label="Apuesta mínima" value={bjMin} onChange={setBjMin} decimal />
+            <TextField label="Apuesta máxima" value={bjMax} onChange={setBjMax} decimal />
+          </div>
           <p className="xs muted" style={{ marginTop: -6, marginBottom: 12 }}>
-            Juega una mano cada conectado, por turnos, contra el croupier y contra la banca: todos los jugadores del grupo, estén o no conectados, entran con
-            su entrada y ganan o pierden la apuesta por cabeza. El tope de la apuesta cuida que nadie quede debiendo más de lo que tiene, ni doblando.
+            Juega una mano cada conectado, por turnos, contra el croupier y contra la banca: todos los jugadores del grupo, estén o no conectados, ganan o
+            pierden la apuesta por cabeza. No hay compra inicial: se juega con saldo que arranca en 0 y puede quedar en negativo.
           </p>
           <TextField label="Tiempo por turno (segundos, 0 = sin límite)" value={turn} onChange={setTurn} decimal />
         </>
@@ -590,7 +594,7 @@ function Playing({ view, updatedAt, bar, fab, busy, sound, onJoin, onLeave, onLe
   const live = (!!hand && hand.street !== 'done') || (!!bj && bj.phase !== 'done');
   // Sin fichas se puede recomprar entre manos, si ya te retiraste de la que está en juego o mientras seguís pendiente de pagar.
   const myPlayer = hand?.players.find(p => p.playerId === me?.playerId);
-  const canRebuy = !!me && me.stack === 0 && (!live || !myPlayer || myPlayer.folded || myPlayer.pending);
+  const canRebuy = view.game !== 'blackjack' && !!me && me.stack === 0 && (!live || !myPlayer || myPlayer.folded || myPlayer.pending);
   // Vos y los jugadores sin usuario que manejás, en el orden de la mesa.
   const mine = (hand?.players ?? [])
     .map(p => view.seats.find(s => s.playerId === p.playerId))
@@ -634,7 +638,7 @@ function Playing({ view, updatedAt, bar, fab, busy, sound, onJoin, onLeave, onLe
       <div className="stack table-extra">
         {!hand && !bj && canDeal && <Btn block busy={busy} onClick={onDeal}>Repartir</Btn>}
         {!hand && !bj && waitingDeal}
-        {!me && view.myPlayerId && <Btn variant="ghost" block busy={busy} onClick={onJoin}>Sumarme a la mesa por {formatMoney(view.buyIn)}</Btn>}
+        {!me && view.myPlayerId && <Btn variant="ghost" block busy={busy} onClick={onJoin}>{view.game === 'blackjack' ? 'Sumarme a la mesa' : `Sumarme a la mesa por ${formatMoney(view.buyIn)}`}</Btn>}
         {me?.status === 'out' && <Btn variant="ghost" block busy={busy} onClick={onJoin}>Volver a sentarme</Btn>}
         {view.canHost && !live && <Btn variant="danger" block busy={busy} onClick={onClose}>Cerrar partida</Btn>}
         {me?.status === 'sitting' && <Btn variant="ghost" block busy={busy} onClick={onLeaveGame}>Salir de la partida</Btn>}
@@ -816,10 +820,10 @@ function Felt({ view, hand, updatedAt, fab }: { view: ApiTableView; hand: Hand; 
           {/* En línea (compu y celular horizontal) separados 3 | 1 | 1; en un paño angosto, flop arriba y turn + river abajo. El pozo va arriba. */}
           <div className="board" role="group" aria-label="Cartas comunitarias">
             <div className="board-row">
-              {[0, 1, 2].map(i => hand.board[i] ? <PokerCard key={i} card={hand.board[i]} mark={markOf(win, hand.board[i])} /> : <EmptyCard key={i} />)}
+              {[0, 1, 2].map(i => hand.board[i] ? <PokerCard key={i} card={hand.board[i]} mark={i >= hand.board.length - hand.runout ? 'dim' : markOf(win, hand.board[i])} /> : <EmptyCard key={i} />)}
             </div>
             <div className="board-row board-late">
-              {[3, 4].map(i => hand.board[i] ? <PokerCard key={i} card={hand.board[i]} mark={markOf(win, hand.board[i])} /> : <EmptyCard key={i} />)}
+              {[3, 4].map(i => hand.board[i] ? <PokerCard key={i} card={hand.board[i]} mark={i >= hand.board.length - hand.runout ? 'dim' : markOf(win, hand.board[i])} /> : <EmptyCard key={i} />)}
             </div>
           </div>
         </div>
@@ -852,12 +856,14 @@ function BlindsChip({ view, updatedAt }: { view: ApiTableView; updatedAt: number
   }, [b.nextAt]);
   let note: string | null = null;
   if (b.minutes > 0) {
-    if (view.bigBlind < b.big) note = `Próxima mano: ${formatMoney(b.small)}/${formatMoney(b.big)}`;
-    else if (b.atCap) note = 'Ciegas al máximo';
+    if (view.bigBlind !== b.big) note = `Próxima mano: ${formatMoney(b.small)}/${formatMoney(b.big)}`;
     else if (b.nextAt) {
+      // En el nivel más alto, el próximo cambio vuelve a las ciegas más bajas (la chica y la grande suben y bajan juntas).
+      const next = b.atCap ? [b.small / 2 ** b.level, b.big / 2 ** b.level] : [b.small * 2, b.big * 2];
       const left = Date.parse(b.nextAt) - (now + (Date.parse(view.serverTime) - updatedAt));
-      note = left > 0 ? `Suben a ${formatMoney(b.small * 2)}/${formatMoney(b.big * 2)} en ${clock(left)}` : 'Suben en la próxima mano';
-    }
+      const verb = b.atCap ? 'Vuelven' : 'Suben';
+      note = left > 0 ? `${verb} a ${formatMoney(next[0])}/${formatMoney(next[1])} en ${clock(left)}` : `${verb} en la próxima mano`;
+    } else if (b.atCap) note = 'Ciegas al máximo';
   }
   return (
     <div className="blinds-chip" data-testid="blinds">

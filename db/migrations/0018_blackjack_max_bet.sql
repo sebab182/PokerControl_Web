@@ -1,0 +1,2 @@
+ALTER TABLE "poker_tables" ADD COLUMN "bj_max_bet" integer DEFAULT 100 NOT NULL;--> statement-breakpoint
+ALTER TABLE "poker_tables" ADD CONSTRAINT "ck_poker_tables_bj_max_bet" CHECK ("poker_tables"."bj_max_bet" >= "poker_tables"."bj_min_bet");

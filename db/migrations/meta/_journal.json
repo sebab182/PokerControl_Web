@@ -127,6 +127,13 @@
       "when": 1794683846946,
       "tag": "0017_blackjack_sessions",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1794686898817,
+      "tag": "0018_blackjack_max_bet",
+      "breakpoints": true
     }
   ]
 }

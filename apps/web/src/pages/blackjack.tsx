@@ -73,6 +73,7 @@ export function bjAsHand(view: ApiTableView, bj: ApiBjView): ApiHandView {
     lastAction: null,
     payouts: bj.deltas.filter(d => d.delta > 0).map(d => ({ playerId: d.playerId, amount: d.delta })),
     showdown: [],
+    runout: 0,
   };
 }
 
@@ -152,7 +153,7 @@ export function BjDock({ view, bj, busy, sound, canDeal, waiting, onBet, onAct, 
       </h2>
 
       {interlude && !bj.sessionClosed && (
-        <p className="xs muted" data-testid="bj-aside">Esta vuelta se registra en una partida de blackjack aparte: no cambia tus fichas ni tus estadísticas del póker.</p>
+        <p className="xs muted" data-testid="bj-aside">Esta vuelta se registra en una partida de blackjack aparte, con todo el grupo y sin compra inicial: no cambia tus fichas ni tus estadísticas del póker.</p>
       )}
       {bj.sessionClosed && (
         <p className="notice notice-ok" role="status" data-testid="bj-closed">
@@ -226,8 +227,8 @@ function BetControl({ bj, rivals, busy, onBet }: { bj: ApiBjView; rivals: number
         <Btn variant="ghost" onClick={() => setText(String(bj.maxBet))}>Tope</Btn>
       </div>
       <p className="xs muted">
-        Cada uno de la banca ({rivals}) pone lo mismo. El tope cubre que dobles y nadie queda debiendo más de lo que tiene.
-        {valid && n !== null && <> Si perdés, pagás hasta {formatMoney(n * rivals * 2)} doblando.</>}
+        Cada uno de la banca ({rivals}) pone lo mismo. No hay compra inicial: tu saldo puede quedar en negativo.
+        {valid && n !== null && <> Si perdés, pagás {formatMoney(n * rivals)} ({formatMoney(n * rivals * 2)} si doblás).</>}
       </p>
       {error && <p className="notice notice-err" role="alert">{error}</p>}
       <Btn block busy={busy} onClick={submit} data-testid="bj-bet-button">Apostar{valid && n !== null ? ` ${formatMoney(n)}` : ''}</Btn>
