@@ -1225,7 +1225,7 @@ describe('roles', () => {
       // Pagos: se autorizan por dueño del pagador, no por rol (ver test de pagos a nombre propio).
       'POST /api/v1/groups/{groupId}/payments', 'DELETE /api/v1/groups/{groupId}/payments/{paymentId}',
       // La mesa online la juega cualquier miembro.
-      ...['join', 'leave', 'ping', 'start', 'deal', 'action', 'rebuy', 'reveal', 'close'].map(a => `POST /api/v1/groups/{groupId}/table/${a}`),
+      ...['join', 'leave', 'ping', 'start', 'deal', 'action', 'rebuy', 'reveal', 'close', 'bj/bet', 'bj/act'].map(a => `POST /api/v1/groups/{groupId}/table/${a}`),
       // Sala remota: la ven y entran los miembros; armarla y mandar fotos lo decide cada ruta (administrador u operador).
       'POST /api/v1/groups/{groupId}/sessions/{id}/live',
       ...['join', 'photos', 'new-hand', 'close'].map(a => `POST /api/v1/groups/{groupId}/live/{code}/${a}`),
@@ -2392,7 +2392,8 @@ describe('mesa online', () => {
       const ctx = await setup();
       await ctx.a.ok('POST', '/g/table/join');
       await ctx.b.ok('POST', '/g/table/join');
-      const v = await ctx.a.idem('/g/table/start', body);
+      // Estos tests miden el reloj de las ciegas: sin el interludio de blackjack que arma cada suba.
+      const v = await ctx.a.idem('/g/table/start', { bjInterlude: false, ...body });
       return { ...ctx, v };
     }
 
@@ -2522,6 +2523,227 @@ describe('mesa online', () => {
       // Volver a sentarse reinicia el contador y no suma otro vencimiento.
       await second.byPlayer(second.v.hand.toActPlayerId).ok('POST', '/g/table/join');
       expect((await seatsOf()).find(s => s.player_id === second.v.hand.toActPlayerId)).toMatchObject({ status: 'sitting', timeouts: 0 });
+    });
+  });
+
+  describe('blackjack contra todos', () => {
+    const bjBet = (c: Client, v: { version: number }, amount: number) => c.ok('POST', '/g/table/bj/bet', { version: v.version, amount });
+    const bjAct = (c: Client, v: { version: number }, action: string) => c.ok('POST', '/g/table/bj/act', { version: v.version, action });
+    /** Arma el mazo de la mano activa: jugador, croupier, jugador, croupier y lo que se pida después. */
+    const stackDeck = (cards: string) => conn.pool.query(
+      `update blackjack_hands set state = jsonb_set(state, '{deck}', $1::jsonb) where status = 'active'`, [JSON.stringify(cards.split(' '))]);
+    const total = (v: { seats: { stack: number }[] }) => v.seats.reduce((n, x) => n + x.stack, 0);
+
+    /** Tres jugadores sentados, en orden, con la mesa iniciada como blackjack. */
+    async function threeAtTable(body: object = {}) {
+      const ctx = await setup(1);
+      for (const c of ctx.clients) await c.ok('POST', '/g/table/join');
+      const v = await ctx.a.idem('/g/table/start', { game: 'blackjack', bjMinBet: 10, ...body });
+      return { ...ctx, v };
+    }
+
+    it('arranca esperando la apuesta del primero, con el tope a la vista y sin cartas de póker', async () => {
+      const { v, pid, clients } = await threeAtTable();
+      expect(v.game).toBe('blackjack');
+      expect(v.hand).toBeNull();
+      expect(v.blackjack).toMatchObject({ kind: 'solo', phase: 'betting', playerId: pid[0], minBet: 10, maxBet: 250, player: [], position: null });
+      // Solo el de turno puede apostar; fuera de su turno, no.
+      expect(v.blackjack.actingPlayerId).toBe(pid[0]);
+      expect((await view(clients[1])).blackjack.actingPlayerId).toBeNull();
+      expect((await clients[1].call('POST', '/g/table/bj/bet', { version: v.version, amount: 10 })).body.error).toBe('not_your_turn');
+    });
+
+    it('valida la apuesta: mínimo, tope y versión', async () => {
+      const { a, v } = await threeAtTable();
+      expect((await a.call('POST', '/g/table/bj/bet', { version: v.version, amount: 5 })).body.error).toBe('illegal_bet');
+      expect((await a.call('POST', '/g/table/bj/bet', { version: v.version, amount: 251 })).body.error).toBe('illegal_bet');
+      expect((await a.call('POST', '/g/table/bj/bet', { version: v.version - 1, amount: 50 })).body.error).toBe('stale_state');
+      expect((await bjBet(a, v, 250)).blackjack.bet).toBe(250);
+    });
+
+    it('el tope lo marca el que menos fichas tiene', async () => {
+      const { a, v, pid } = await threeAtTable();
+      // Primera mano en tablas (sin cambios de fichas) y uno de los rivales queda con 100.
+      await stackDeck('Ts Td 8s 8d');
+      const tie = await bjAct(a, await bjBet(a, v, 10), 'stand');
+      expect(tie.blackjack.result).toBe('push');
+      await conn.pool.query('update poker_seats set stack = 100 where player_id = $1', [pid[2]]);
+      const next = await a.ok('POST', '/g/table/deal');
+      // Le toca al segundo: min(1000 / (2·2), 100 / 2) = 50.
+      expect(next.blackjack).toMatchObject({ playerId: pid[1], phase: 'betting', maxBet: 50 });
+      const rival = next.blackjack.rivals.map((r: { playerId: string }) => r.playerId);
+      expect(rival).toEqual(expect.arrayContaining([pid[0], pid[2]]));
+    });
+
+    it('ganar: cobra la apuesta de cada rival; las fichas de la mesa no cambian', async () => {
+      const { a, v, pid } = await threeAtTable();
+      const before = total(v);
+      await stackDeck('Ts Td 9s 7d');
+      const played = await bjBet(a, v, 50);
+      expect(played.blackjack).toMatchObject({ phase: 'player', bet: 50, player: ['Ts', '9s'], dealer: ['Td', '??'], playerTotal: 19, dealerTotal: 10 });
+      // Los demás ven lo mismo, sin la carta tapada.
+      expect((await view(a)).blackjack.dealer).toEqual(['Td', '??']);
+      const done = await bjAct(a, played, 'stand');
+      expect(done.blackjack).toMatchObject({ phase: 'done', result: 'win', dealer: ['Td', '7d'], dealerTotal: 17 });
+      expect(Object.fromEntries(done.seats.map((s: { playerId: string; stack: number }) => [s.playerId, s.stack])))
+        .toEqual({ [pid[0]]: 1100, [pid[1]]: 950, [pid[2]]: 950 });
+      expect(total(done)).toBe(before);
+      expect(done.blackjack.deltas).toEqual(expect.arrayContaining([{ playerId: pid[0], delta: 100 }, { playerId: pid[1], delta: -50 }]));
+    });
+
+    it('perder le paga a cada rival; doblar duplica la apuesta y da una sola carta', async () => {
+      const { a, v, pid, byPlayer } = await threeAtTable();
+      await stackDeck('Ts Td 7s 9d');
+      let cur = await bjAct(a, await bjBet(a, v, 50), 'stand');
+      expect(cur.blackjack.result).toBe('lose');
+      expect(cur.seats.find((s: { playerId: string }) => s.playerId === pid[0]).stack).toBe(900);
+      // Segunda mano: le toca al siguiente. Con 5+6 dobla y recibe un 10: 21 contra 17.
+      cur = await a.ok('POST', '/g/table/deal');
+      expect(cur.blackjack.playerId).toBe(pid[1]);
+      await stackDeck('5s Td 6s 7d Th');
+      const second = byPlayer(pid[1]);
+      cur = await bjBet(second, cur, 50);
+      expect(cur.blackjack.canDouble).toBe(true);
+      cur = await bjAct(second, cur, 'double');
+      expect(cur.blackjack).toMatchObject({ phase: 'done', result: 'win', bet: 100, player: ['5s', '6s', 'Th'] });
+      expect(Object.fromEntries(cur.seats.map((s: { playerId: string; stack: number }) => [s.playerId, s.stack])))
+        .toEqual({ [pid[0]]: 800, [pid[1]]: 1250, [pid[2]]: 950 });
+      expect(total(cur)).toBe(3000);
+    });
+
+    it('sin tiempo se apuesta el mínimo y después se planta; dos turnos perdidos lo sacan de la mesa', async () => {
+      const { a, v, pid } = await threeAtTable();
+      expect(v.blackjack.phase).toBe('betting');
+      await conn.pool.query(`update poker_tables set turn_deadline = now() - interval '1 second'`);
+      await sweepTurns(app);
+      let cur = await view(a);
+      expect(cur.blackjack.bet).toBe(10);
+      let missed = 1;
+      if (cur.blackjack.phase === 'player') {
+        await conn.pool.query(`update poker_tables set turn_deadline = now() - interval '1 second'`);
+        await sweepTurns(app);
+        cur = await view(a);
+        missed = 2;
+      }
+      expect(cur.blackjack.phase).toBe('done');
+      expect(total(cur)).toBe(3000);
+      // Dos turnos seguidos sin responder lo dejan afuera de las próximas manos; con uno solo (blackjack natural), no.
+      expect(cur.seats.find((s: { playerId: string }) => s.playerId === pid[0]).status).toBe(missed === 2 ? 'out' : 'sitting');
+    });
+
+    it('mientras hay una mano nadie se levanta, recompra, reparte ni cierra la mesa', async () => {
+      const { a, b, v } = await threeAtTable();
+      expect((await b.call('POST', '/g/table/leave')).body.error).toBe('in_hand');
+      expect((await a.call('POST', '/g/table/deal')).body.error).toBe('hand_in_progress');
+      expect((await a.call('POST', '/g/table/close', {}, 'bj-close-1')).body.error).toBe('hand_in_progress');
+      expect(v.blackjack.phase).toBe('betting');
+    });
+
+    it('al cerrar, las fichas pasan a ser los resultados de la partida', async () => {
+      const { a, v, pid } = await threeAtTable();
+      await stackDeck('Ts Td 9s 7d');
+      await bjAct(a, await bjBet(a, v, 50), 'stand');
+      const closed = await a.idem('/g/table/close');
+      expect(closed.table.status).toBe('waiting');
+      const session = await a.ok('GET', `/g/sessions/${closed.sessionId}`);
+      const finals = Object.fromEntries(session.participants.map((p: { playerId: string; finalAmount: number }) => [p.playerId, p.finalAmount]));
+      expect(finals).toEqual({ [pid[0]]: 1100, [pid[1]]: 950, [pid[2]]: 950 });
+      // La partida solo de blackjack también se puede analizar (sin manos de póker): no falla.
+      expect((await a.call('GET', `/g/sessions/${closed.sessionId}/analysis`)).status).toBe(200);
+      // La mesa vuelve a ser de póker.
+      expect((await view(a)).game).toBe('holdem');
+    });
+  });
+
+  describe('blackjack en cada subida de ciegas', () => {
+    const rewind = (minutes: number) => conn.pool.query(`update poker_tables set blinds_started_at = now() - make_interval(mins => $1)`, [minutes]);
+    const total = (v: { seats: { stack: number }[] }) => v.seats.reduce((n, x) => n + x.stack, 0);
+
+    async function twoAtTable(body: object = {}) {
+      const ctx = await setup();
+      await ctx.a.ok('POST', '/g/table/join');
+      await ctx.b.ok('POST', '/g/table/join');
+      const v = await ctx.a.idem('/g/table/start', { blindMinutes: 5, ...body });
+      return { ...ctx, v };
+    }
+    /** Juega la mano de blackjack en curso: el que le toca se planta. */
+    async function finishBj(ctx: Awaited<ReturnType<typeof twoAtTable>>, v: { blackjack: { phase: string; actingPlayerId: string | null }; version: number }) {
+      let cur: { blackjack: { phase: string; playerId: string }; version: number } = v as never;
+      for (let i = 0; cur.blackjack.phase === 'player' && i < 12; i++) {
+        cur = await ctx.byPlayer(cur.blackjack.playerId).ok('POST', '/g/table/bj/act', { version: cur.version, action: 'stand' });
+      }
+      return cur as typeof cur & { seats: { stack: number }[] };
+    }
+
+    it('en el nivel inicial no hay blackjack: la mano siguiente es de póker', async () => {
+      const { a, byPlayer, v } = await twoAtTable();
+      let cur = await byPlayer(v.hand.toActPlayerId).ok('POST', '/g/table/action', { version: v.version, action: { type: 'fold' } });
+      expect(cur.blackjack).toBeNull();
+      cur = await a.ok('POST', '/g/table/deal');
+      expect(cur.blackjack).toBeNull();
+      expect(cur.hand.street).toBe('preflop');
+    });
+
+    it('arma el interludio: apuesta fija = ciega grande, una mano por jugador en orden, y el reloj retoma al terminar', async () => {
+      const ctx = await twoAtTable();
+      const { a, byPlayer, v, pid } = ctx;
+      let cur = await byPlayer(v.hand.toActPlayerId).ok('POST', '/g/table/action', { version: v.version, action: { type: 'fold' } });
+      const chips = total(cur);
+      await rewind(6);
+      cur = await a.ok('POST', '/g/table/deal');
+      // Interludio: primera mano de dos, la juega el primero en la mesa, con la ciega grande del nivel 1 (40).
+      expect(cur.hand?.street === 'done' || cur.blackjack !== null).toBe(true);
+      expect(cur.blackjack).toMatchObject({ kind: 'interlude', playerId: pid[0], bet: 40, position: { index: 1, total: 2, level: 1 } });
+      expect((await conn.pool.query('select bj_started_at from poker_tables')).rows[0].bj_started_at).not.toBeNull();
+      cur = await finishBj(ctx, cur as never) as never;
+      expect(cur.blackjack).toMatchObject({ phase: 'done' });
+      // Segunda mano: le toca al otro; no se puede repartir póker todavía.
+      cur = await a.ok('POST', '/g/table/deal');
+      expect(cur.blackjack).toMatchObject({ kind: 'interlude', playerId: pid[1], bet: 40, position: { index: 2, total: 2, level: 1 } });
+      cur = await finishBj(ctx, cur as never) as never;
+      expect(total(cur as never)).toBe(chips);
+      const before = (await conn.pool.query('select blinds_started_at from poker_tables')).rows[0].blinds_started_at as Date;
+      // Terminado el interludio, sigue el póker con las ciegas nuevas y el reloj corrido.
+      cur = await a.ok('POST', '/g/table/deal');
+      expect(cur.blackjack).toBeNull();
+      expect(cur.hand).not.toBeNull();
+      expect([cur.smallBlind, cur.bigBlind]).toEqual([20, 40]);
+      const row = (await conn.pool.query('select bj_started_at, bj_level, blinds_started_at from poker_tables')).rows[0];
+      expect(row.bj_started_at).toBeNull();
+      expect(row.bj_level).toBe(1);
+      expect(new Date(row.blinds_started_at).getTime()).toBeGreaterThanOrEqual(new Date(before).getTime());
+      expect(cur.blinds.level).toBe(1);
+      // Las ciegas de la mano de póker están en el pozo.
+      expect(total(cur as never) + cur.hand.pot).toBe(chips);
+    });
+
+    it('si se apaga el interludio, no hay blackjack al subir las ciegas', async () => {
+      const ctx = await twoAtTable({ bjInterlude: false });
+      const { a, byPlayer, v } = ctx;
+      expect(v.bjInterlude).toBe(false);
+      await byPlayer(v.hand.toActPlayerId).ok('POST', '/g/table/action', { version: v.version, action: { type: 'fold' } });
+      await rewind(6);
+      const cur = await a.ok('POST', '/g/table/deal');
+      expect(cur.blackjack).toBeNull();
+      expect([cur.smallBlind, cur.bigBlind]).toEqual([20, 40]);
+    });
+
+    it('cada nivel de ciegas arma un solo interludio', async () => {
+      const ctx = await twoAtTable();
+      const { a, byPlayer, v } = ctx;
+      let cur = await byPlayer(v.hand.toActPlayerId).ok('POST', '/g/table/action', { version: v.version, action: { type: 'fold' } });
+      await rewind(6);
+      cur = await a.ok('POST', '/g/table/deal');
+      cur = await finishBj(ctx, cur as never) as never;
+      cur = await a.ok('POST', '/g/table/deal');
+      cur = await finishBj(ctx, cur as never) as never;
+      cur = await a.ok('POST', '/g/table/deal');
+      expect(cur.hand).not.toBeNull();
+      // Misma ciega: la mano siguiente es de póker.
+      cur = await byPlayer(cur.hand.toActPlayerId).ok('POST', '/g/table/action', { version: cur.version, action: { type: 'fold' } });
+      cur = await a.ok('POST', '/g/table/deal');
+      expect(cur.blackjack).toBeNull();
+      expect(cur.hand).not.toBeNull();
     });
   });
 

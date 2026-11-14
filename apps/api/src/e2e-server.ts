@@ -44,4 +44,9 @@ app.post<{ Body: { playerId: string } }>('/e2e/bust', async req => {
   await pool.query('update poker_seats set stack = 0 where player_id = $1', [req.body.playerId]);
   return { ok: true };
 });
+/** Adelanta el reloj de las ciegas de la mesa (para probar la subida de nivel sin esperar minutos). */
+app.post<{ Body: { minutes: number } }>('/e2e/rewind-blinds', async req => {
+  await pool.query(`update poker_tables set blinds_started_at = now() - make_interval(mins => $1)`, [req.body.minutes]);
+  return { ok: true };
+});
 await app.listen({ port: 3100, host: '127.0.0.1' });

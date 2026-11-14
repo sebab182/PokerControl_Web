@@ -8,7 +8,7 @@
 
 import { randomInt, randomUUID } from 'node:crypto';
 import {
-  CloseTableResponse, ErrorResponse, GroupParams, RebuyBody, RevealBody, SeatParams, StartTableBody, TableActionBody, TableView,
+  BjActBody, BjBetBody, CloseTableResponse, ErrorResponse, GroupParams, RebuyBody, RevealBody, SeatParams, StartTableBody, TableActionBody, TableView,
   type ApiTableView,
 } from '@pokercontrol/contracts';
 import {
@@ -20,6 +20,7 @@ import type { FastifyInstance } from 'fastify';
 import * as schema from '../db/schema';
 import type { LoggedAction } from '../db/schema';
 import { ApiError, notFound } from '../errors';
+import { activeBj, bjAct, bjBet, bjTimeout, bjView, dealNext, latestBj } from './blackjack';
 import { recordBoughtInHand, recordHandResult, recordHandStart } from '../hand-history';
 import { idempotent } from '../idempotency';
 import type { Conn, Tx } from '../repo';
@@ -157,8 +158,14 @@ async function buildView(db: Conn, table: TableRow, viewer: Viewer): Promise<Api
     }
   }
 
+  // La mano de blackjack se muestra mientras sea lo más reciente de la partida en curso (en el póker, hasta que se reparta otra mano).
+  const bjRow = await latestBj(db, table.id);
+  const showBj = table.status === 'playing' && !!bjRow && bjRow.sessionId === table.sessionId
+    && (table.game === 'blackjack' || !row || bjRow.startedAt.getTime() > row.startedAt.getTime());
+  const blackjack = showBj ? await bjView(db, table, bjRow, { myId, managed: managedIds }) : null;
+
   let hand: ApiTableView['hand'] = null;
-  if (row && state) {
+  if (row && state && table.game !== 'blackjack') {
     const v = publicView(state, [...(myId ? [myId] : []), ...managedIds]);
     const actor = live && state.toAct >= 0 ? state.players[state.toAct].id : null;
     const actingFor = actor && (actor === myId || managedIds.has(actor)) ? actor : null;
@@ -213,7 +220,7 @@ async function buildView(db: Conn, table: TableRow, viewer: Viewer): Promise<Api
     version: table.version,
     turnSeconds: table.turnSeconds,
     showAllCards: table.showAllCards,
-    turnDeadline: live && table.turnDeadline ? table.turnDeadline.toISOString() : null,
+    turnDeadline: (live || blackjack?.phase !== undefined && blackjack.phase !== 'done') && table.turnDeadline ? table.turnDeadline.toISOString() : null,
     serverTime: new Date(now).toISOString(),
     maxRebuy: maxRebuy(seats.map(x => x.seat), live),
     myPlayerId: myId,
@@ -221,6 +228,10 @@ async function buildView(db: Conn, table: TableRow, viewer: Viewer): Promise<Api
     canHost: mayHost(table, seats.map(x => x.seat), viewer, myId, now),
     isHost: table.status === 'playing' && table.startedBy === viewer.userId,
     hand,
+    game: table.game,
+    bjMinBet: table.bjMinBet,
+    bjInterlude: table.bjInterlude,
+    blackjack,
     seats: seats.map(({ seat, name }) => ({
       playerId: seat.playerId,
       name,
@@ -308,6 +319,20 @@ async function finishHand(tx: Tx, handId: number, state: HandState): Promise<voi
 }
 
 const bump = sql`${schema.pokerTables.version} + 1`;
+
+/**
+ * Reparte lo que sigue: una mano de blackjack (contra todos, o el interludio cuando suben las ciegas) o de póker. Si hubo
+ * interludio, al terminar el reloj de las ciegas ya se corrió, así que la mesa se vuelve a leer antes de repartir.
+ */
+async function dealNextHand(tx: Tx, table: TableRow): Promise<void> {
+  const blinds = currentBlinds(table);
+  if ((await dealNext(tx, table, { level: blinds.level, big: blinds.big })) === 'dealt') return;
+  const [fresh] = await tx.select().from(schema.pokerTables).where(eq(schema.pokerTables.id, table.id));
+  await dealHand(tx, fresh);
+}
+
+/** Vuelve a cero el estado del blackjack de la mesa (al cerrar o cancelar la partida). */
+const bjReset = { bjLevel: 0, bjQueue: [] as string[], bjStartedAt: null, bjLast: null };
 
 /**
  * El asiento guarda el usuario del jugador al sentarse. Si después se vincula o desvincula un usuario
@@ -438,6 +463,13 @@ export async function sweepTurns(app: FastifyInstance): Promise<string[]> {
       const [table] = await tx.select().from(schema.pokerTables).where(eq(schema.pokerTables.id, id)).for('update', { skipLocked: true });
       // Otro proceso la tomó, o el jugador actuó justo antes: no hay nada que vencer.
       if (!table?.turnDeadline || table.turnDeadline.getTime() > Date.now()) return null;
+      // Mano de blackjack: sin tiempo, apuesta la mínima o se planta.
+      const bj = await activeBj(tx, table.id);
+      if (bj) {
+        await bjTimeout(tx, table, bj);
+        const [fresh] = await tx.select({ version: schema.pokerTables.version }).from(schema.pokerTables).where(eq(schema.pokerTables.id, table.id));
+        return { groupId: table.groupId, version: fresh.version };
+      }
       const hand = await activeHand(tx, table.id);
       const state = hand?.state as HandState | undefined;
       const legal = state ? legalActions(state) : null;
@@ -516,6 +548,8 @@ async function standPlayer(tx: Tx, table: TableRow, playerId: string, self = fal
     await tx.delete(schema.pokerSeats).where(key);
     return;
   }
+  // En una mano de blackjack todos están expuestos (cubren la apuesta): nadie se levanta hasta que termine.
+  if (await activeBj(tx, table.id)) throw new ApiError(409, 'in_hand', 'Esperá a que termine la mano de blackjack.');
   const hand = await activeHand(tx, table.id);
   const state = hand?.state as HandState | undefined;
   const inHand = state?.players.find(p => p.id === playerId);
@@ -542,7 +576,7 @@ async function cancelGame(tx: Tx, table: TableRow): Promise<void> {
   await tx.delete(schema.pokerHands).where(and(eq(schema.pokerHands.tableId, table.id), eq(schema.pokerHands.sessionId, sessionId)));
   await tx.delete(schema.pokerSeats).where(eq(schema.pokerSeats.tableId, table.id));
   await tx.update(schema.pokerTables)
-    .set({ status: 'waiting', sessionId: null, startedBy: null, hostSeenAt: null, turnDeadline: null, version: bump })
+    .set({ status: 'waiting', sessionId: null, startedBy: null, hostSeenAt: null, turnDeadline: null, game: 'holdem', ...bjReset, version: bump })
     .where(eq(schema.pokerTables.id, table.id));
   await tx.delete(schema.sessions).where(and(eq(schema.sessions.groupId, table.groupId), eq(schema.sessions.id, sessionId)));
 }
@@ -556,6 +590,7 @@ async function rebuyPlayer(tx: Tx, table: TableRow, playerId: string, amount?: n
   const seats = (await loadSeats(tx, table.id)).map(s => s.seat);
   const seat = seats.find(s => s.playerId === playerId);
   if (!seat) throw notFound('Asiento');
+  if (await activeBj(tx, table.id)) throw new ApiError(409, 'in_hand', 'Esperá a que termine la mano de blackjack.');
   const hand = await activeHand(tx, table.id);
   const state = hand?.state as HandState | undefined;
   const inHand = state?.players.find(p => p.id === playerId);
@@ -715,6 +750,9 @@ export async function tableRoutes(app: FastifyInstance) {
         turnSeconds: req.body.turnSeconds ?? table.turnSeconds,
         blindMinutes: req.body.blindMinutes ?? table.blindMinutes,
         showAllCards: req.body.showAllCards ?? table.showAllCards,
+        game: req.body.game ?? 'holdem',
+        bjMinBet: req.body.bjMinBet ?? table.bjMinBet,
+        bjInterlude: req.body.bjInterlude ?? table.bjInterlude,
       };
       if (cfg.blindMinutes !== 0 && cfg.blindMinutes < 5) {
         throw new ApiError(422, 'invalid_blind_time', 'Las ciegas se duplican cada 0 (nunca) o entre 5 y 120 minutos.');
@@ -723,7 +761,8 @@ export async function tableRoutes(app: FastifyInstance) {
         throw new ApiError(422, 'invalid_turn_time', 'El tiempo por turno es 0 (sin límite) o entre 10 y 300 segundos.');
       }
       if (cfg.smallBlind > cfg.bigBlind) throw new ApiError(422, 'invalid_blinds', 'La ciega chica no puede superar a la grande.');
-      if (cfg.buyIn < cfg.bigBlind * 2) throw new ApiError(422, 'invalid_buy_in', 'La entrada debe ser al menos el doble de la ciega grande.');
+      if (cfg.game === 'holdem' && cfg.buyIn < cfg.bigBlind * 2) throw new ApiError(422, 'invalid_buy_in', 'La entrada debe ser al menos el doble de la ciega grande.');
+      if (cfg.game === 'blackjack' && cfg.buyIn < cfg.bjMinBet * 4) throw new ApiError(422, 'invalid_buy_in', 'La entrada debe ser al menos 4 veces la apuesta mínima.');
 
       const seats = (await loadSeats(tx, table.id)).map(s => s.seat);
       const present = seats.filter(s => isPresent(s));
@@ -756,10 +795,10 @@ export async function tableRoutes(app: FastifyInstance) {
           .where(and(eq(schema.pokerSeats.tableId, table.id), eq(schema.pokerSeats.playerId, seat.playerId)));
       }
       await tx.update(schema.pokerSeats).set({ stack: cfg.buyIn, status: 'sitting' }).where(eq(schema.pokerSeats.tableId, table.id));
-      await tx.update(schema.pokerTables).set({ ...cfg, status: 'playing', sessionId, sessionHandBase: table.handCount, startedBy: req.user.sub, hostSeenAt: now, blindsStartedAt: now, version: bump })
+      await tx.update(schema.pokerTables).set({ ...cfg, status: 'playing', sessionId, sessionHandBase: table.handCount, startedBy: req.user.sub, hostSeenAt: now, blindsStartedAt: now, ...bjReset, version: bump })
         .where(eq(schema.pokerTables.id, table.id));
       const [fresh] = await tx.select().from(schema.pokerTables).where(eq(schema.pokerTables.id, table.id));
-      await dealHand(tx, fresh);
+      await dealNextHand(tx, fresh);
       const [after] = await tx.select().from(schema.pokerTables).where(eq(schema.pokerTables.id, table.id));
       return buildView(tx, after, viewerOf(req));
     }));
@@ -774,8 +813,8 @@ export async function tableRoutes(app: FastifyInstance) {
     if (!mayHost(table, (await loadSeats(tx, table.id)).map(s => s.seat), viewer, me)) {
       throw new ApiError(403, 'not_host', 'Reparte quien inició la partida o un administrador.');
     }
-    if (await activeHand(tx, table.id)) throw new ApiError(409, 'hand_in_progress', 'Hay una mano en juego.');
-    await dealHand(tx, table);
+    if ((await activeHand(tx, table.id)) || (await activeBj(tx, table.id))) throw new ApiError(409, 'hand_in_progress', 'Hay una mano en juego.');
+    await dealNextHand(tx, table);
   }));
 
   app.post<G & { Body: Static<typeof TableActionBody> }>('/table/action', {
@@ -791,6 +830,26 @@ export async function tableRoutes(app: FastifyInstance) {
     const hand = await activeHand(tx, table.id);
     if (!hand) throw new ApiError(409, 'no_hand', 'No hay una mano en juego.');
     await playAction(tx, table, hand, playerId, req.body.action, false);
+  }));
+
+  // Blackjack contra todos: apostar y jugar la mano (pedir, plantarse, doblar). Solo le toca al jugador de la mano.
+  const bjPlayer = async (tx: Tx, req: { group: { id: string }; user: { sub: string }; role: Role }, table: TableRow, asPlayer?: string) =>
+    asPlayer ? managedPlayerId(tx, req, table, asPlayer) : requirePlayer(tx, req.group.id, req.user.sub);
+
+  app.post<G & { Body: Static<typeof BjBetBody> }>('/table/bj/bet', {
+    schema: { ...base, body: BjBetBody, response: { 200: TableView, ...err } },
+  }, async req => mutate(req, async (tx, table) => {
+    const playerId = await bjPlayer(tx, req, table, req.body.playerId);
+    if (req.body.version !== table.version) throw new ApiError(409, 'stale_state', 'La mesa cambió. Actualizá y volvé a intentar.');
+    await bjBet(tx, table, await activeBj(tx, table.id), playerId, req.body.amount);
+  }));
+
+  app.post<G & { Body: Static<typeof BjActBody> }>('/table/bj/act', {
+    schema: { ...base, body: BjActBody, response: { 200: TableView, ...err } },
+  }, async req => mutate(req, async (tx, table) => {
+    const playerId = await bjPlayer(tx, req, table, req.body.playerId);
+    if (req.body.version !== table.version) throw new ApiError(409, 'stale_state', 'La mesa cambió. Actualizá y volvé a intentar.');
+    await bjAct(tx, table, await activeBj(tx, table.id), playerId, req.body.action);
   }));
 
   // Mostrar cartas: al terminar la mano; una sola carta, solo el único jugador que queda.
@@ -831,7 +890,7 @@ export async function tableRoutes(app: FastifyInstance) {
       if (!mayHost(table, seats, viewer, me)) {
         throw new ApiError(403, 'not_host', 'Cierra la partida quien la inició o un administrador.');
       }
-      if (await activeHand(tx, table.id)) throw new ApiError(409, 'hand_in_progress', 'Esperá a que termine la mano.');
+      if ((await activeHand(tx, table.id)) || (await activeBj(tx, table.id))) throw new ApiError(409, 'hand_in_progress', 'Esperá a que termine la mano.');
       const sessionId = table.sessionId as string;
       for (const seat of seats) {
         await tx.update(schema.sessionParticipants).set({ finalAmount: seat.stack })
@@ -839,7 +898,7 @@ export async function tableRoutes(app: FastifyInstance) {
       }
       await closeSessionTx(tx, groupId, sessionId);
       await tx.delete(schema.pokerSeats).where(eq(schema.pokerSeats.tableId, table.id));
-      await tx.update(schema.pokerTables).set({ status: 'waiting', sessionId: null, startedBy: null, hostSeenAt: null, version: bump })
+      await tx.update(schema.pokerTables).set({ status: 'waiting', sessionId: null, startedBy: null, hostSeenAt: null, game: 'holdem', ...bjReset, version: bump })
         .where(eq(schema.pokerTables.id, table.id));
       const [fresh] = await tx.select().from(schema.pokerTables).where(eq(schema.pokerTables.id, table.id));
       return { sessionId, table: await buildView(tx, fresh, viewerOf(req)) };

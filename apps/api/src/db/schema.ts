@@ -4,7 +4,7 @@
  * que la base impida referencias cruzadas entre grupos.
  */
 
-import type { Action, HandState } from '@pokercontrol/core';
+import type { Action, BjState, HandState } from '@pokercontrol/core';
 
 /** Acción tal como se jugó: `amount` es lo igualado (call) o el total al que subió (raise/allin). */
 export type LoggedAction = Action & { amount?: number; auto?: boolean };
@@ -252,9 +252,25 @@ export const pokerTables = pgTable('poker_tables', {
   startedBy: text('started_by').references(() => users.id, { onDelete: 'set null' }),
   /** Última vez que quien inició tuvo la mesa abierta (esté sentado o no); si pasa ONLINE_MS, reparte cualquiera. */
   hostSeenAt: ts('host_seen_at'),
+  /** Juego de la mesa: póker, o blackjack contra todos (una mano por jugador, en rotación). */
+  game: text('game').notNull().default('holdem').$type<'holdem' | 'blackjack'>(),
+  /** Apuesta mínima del blackjack contra todos. */
+  bjMinBet: integer('bj_min_bet').notNull().default(10),
+  /** En el póker: cada vez que suben las ciegas, todos juegan una mano de blackjack (apuesta fija = ciega grande). */
+  bjInterlude: boolean('bj_interlude').notNull().default(true),
+  /** Último nivel de ciegas cuyo interludio ya se armó. */
+  bjLevel: integer('bj_level').notNull().default(0),
+  /** Jugadores que faltan jugar su mano en el interludio en curso, en orden. */
+  bjQueue: jsonb('bj_queue').notNull().default(sql`'[]'::jsonb`).$type<string[]>(),
+  /** Cuándo empezó el interludio en curso: el reloj de las ciegas se frena hasta que termina. */
+  bjStartedAt: ts('bj_started_at'),
+  /** Último jugador que jugó una mano del blackjack contra todos, para rotar. */
+  bjLast: text('bj_last'),
   createdAt: ts('created_at').notNull().defaultNow(),
 }, t => [
   unique('uq_poker_tables_group').on(t.groupId),
+  check('ck_poker_tables_game', sql`${t.game} in ('holdem', 'blackjack')`),
+  check('ck_poker_tables_bj_min_bet', sql`${t.bjMinBet} >= 1`),
   unique('uq_poker_tables_group_id').on(t.groupId, t.id),
   foreignKey({ columns: [t.groupId, t.sessionId], foreignColumns: [sessions.groupId, sessions.id], name: 'fk_poker_tables_session' }).onDelete('restrict'),
   check('ck_poker_tables_status', sql`${t.status} in ('waiting', 'playing')`),
@@ -315,6 +331,27 @@ export const pokerHands = pgTable('poker_hands', {
   unique('uq_poker_hands_table_no').on(t.tableId, t.handNo),
   index('idx_poker_hands_session').on(t.sessionId),
   check('ck_poker_hands_status', sql`${t.status} in ('active', 'done')`),
+]);
+
+/** Una fila por mano de blackjack. `state` guarda el mazo mientras la mano está activa; al terminar se vacía. */
+export const blackjackHands = pgTable('blackjack_hands', {
+  id: bigint('id', { mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
+  tableId: text('table_id').notNull().references(() => pokerTables.id, { onDelete: 'cascade' }),
+  sessionId: text('session_id').notNull().references(() => sessions.id, { onDelete: 'cascade' }),
+  /** solo: blackjack contra todos. interlude: la mano de cada jugador cuando suben las ciegas. */
+  kind: text('kind').notNull().$type<'solo' | 'interlude'>(),
+  /** Quien juega la mano (los demás son sus rivales). */
+  playerId: text('player_id').notNull(),
+  /** Nivel de ciegas del interludio. */
+  level: integer('level').notNull().default(0),
+  status: text('status').notNull().default('active').$type<'active' | 'done'>(),
+  state: jsonb('state').notNull().$type<BjState>(),
+  startedAt: ts('started_at').notNull().defaultNow(),
+  finishedAt: ts('finished_at'),
+}, t => [
+  index('idx_blackjack_hands_table').on(t.tableId, t.id),
+  check('ck_blackjack_hands_kind', sql`${t.kind} in ('solo', 'interlude')`),
+  check('ck_blackjack_hands_status', sql`${t.status} in ('active', 'done')`),
 ]);
 
 export const pokerActions = pgTable('poker_actions', {

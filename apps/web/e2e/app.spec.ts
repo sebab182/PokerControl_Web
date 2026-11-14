@@ -1,5 +1,5 @@
 import AxeBuilder from '@axe-core/playwright';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Browser, type Page } from '@playwright/test';
 
 const API = 'http://127.0.0.1:3100/api/v1';
 const MASTER_TOKEN = 'test:e2e-master:master@x.com:Master';
@@ -688,6 +688,117 @@ test('mesa online: sala de espera, iniciar, jugar una mano y cerrar', async ({ p
   await expect(page.getByText('Y si no te retirabas')).toBeVisible();
   await expect(page.getByText('No hubo all-in con showdown en esta partida.')).toBeVisible();
   await checkPage(page, 'análisis: qué hubiese pasado');
+  await context2.close();
+});
+
+/** Dos jugadores sentados a la mesa online: Seba (administrador, inicia y reparte) primero y Nico (lector) después. */
+async function twoSeated(page: Page, browser: Browser) {
+  await login(page, 'Seba');
+  const code = await createGroup(page);
+  await nav(page, 'Mesa');
+  await page.getByText('Quiero jugar yo también').click();
+  await page.getByLabel('Tu nick').fill('Seba');
+  await page.getByRole('button', { name: 'Crear mi jugador' }).click();
+  await expect(page.getByText('Seba (vos)')).toBeVisible();
+  const context2 = await browser.newContext();
+  const page2 = await context2.newPage();
+  await login(page2, 'Nico', 'reader');
+  await page2.goto('/');
+  await page2.getByLabel('Código de invitación').fill(code);
+  await page2.getByRole('button', { name: 'Unirme' }).click();
+  await page2.getByLabel('Tu nick').fill('Nico');
+  await page2.getByRole('button', { name: 'Crear mi jugador' }).click();
+  await nav(page2, 'Mesa');
+  await expect(page2.getByText('Nico (vos)')).toBeVisible();
+  await expect(page.getByText('Nico', { exact: true }).first()).toBeVisible({ timeout: 10000 });
+  return { page2, context2 };
+}
+
+/** Las fichas de cada uno según el blackjack (en pesos enteros). */
+const bjStacks = async (p: Page) => (await p.locator('.bj-stack strong').allInnerTexts()).map(t => Number(t.replace(/[^\d-]/g, '')));
+/** Si la mano sigue en juego (no fue blackjack natural), el que juega se planta. */
+async function bjStand(p: Page) {
+  await expect(p.getByTestId('bj-stand').or(p.getByTestId('bj-result'))).toBeVisible({ timeout: 15000 });
+  if (await p.getByTestId('bj-stand').isVisible()) await p.getByTestId('bj-stand').click();
+  await expect(p.getByTestId('bj-result')).toBeVisible({ timeout: 15000 });
+}
+
+test('blackjack contra todos: apostar, jugar la mano, rotar el turno y cerrar', async ({ page, browser }) => {
+  test.setTimeout(90000);
+  const { page2, context2 } = await twoSeated(page, browser);
+  await page.getByRole('button', { name: /Iniciar partida \(2 jugadores\)/ }).click();
+  await page.getByTestId('game-blackjack').click();
+  await expect(page.getByLabel('Apuesta mínima')).toBeVisible();
+  await page.getByRole('dialog').getByRole('button', { name: 'Iniciar partida' }).click();
+
+  // Los dos ven la mesa de blackjack; apuesta el primero (Seba), el otro espera.
+  for (const p of [page, page2]) await expect(p.getByTestId('bj')).toBeVisible({ timeout: 15000 });
+  await expect(page2.getByText('Seba está eligiendo su apuesta…')).toBeVisible();
+  await expect(page.getByRole('group', { name: 'Tu apuesta' })).toBeVisible();
+  await checkPage(page, 'blackjack: apuesta');
+  // Sobre el tope no se puede apostar: con 1000 de entrada y 1 rival, el tope es 500.
+  await page.getByRole('textbox', { name: /^Tu apuesta/ }).fill('600');
+  await page.getByTestId('bj-bet-button').click();
+  await expect(page.getByRole('alert').filter({ hasText: 'entre $10 y $500' })).toBeVisible();
+  await page.getByRole('textbox', { name: /^Tu apuesta/ }).fill('50');
+  await page.getByTestId('bj-bet-button').click();
+  await expect(page.getByTestId('bj-bet')).toContainText('$50', { timeout: 10000 });
+  await expect(page2.getByTestId('bj-bet')).toContainText('$50');
+  // El otro ve la mano de Seba, pero la carta tapada del croupier sigue tapada hasta que termina.
+  await expect(page2.getByTestId('bj-player').getByRole('img')).toHaveCount(2);
+  await bjStand(page);
+  await expect(page2.getByTestId('bj-result')).toBeVisible({ timeout: 10000 });
+  await expect(page2.getByTestId('bj-dealer').getByRole('img', { name: 'Carta oculta' })).toHaveCount(0);
+  await checkPage(page, 'blackjack: resultado');
+  await checkPage(page2, 'blackjack: resultado (lector)');
+  // Las fichas de la mesa no cambian: lo que gana uno lo pierde el otro.
+  expect((await bjStacks(page)).reduce((a, b) => a + b, 0)).toBe(2000);
+
+  // Reparte Seba (quien inició): le toca a Nico.
+  await page.getByTestId('bj-next').click();
+  await expect(page2.getByRole('group', { name: 'Tu apuesta' })).toBeVisible({ timeout: 10000 });
+  await expect(page.getByText('Nico está eligiendo su apuesta…')).toBeVisible();
+  await page2.getByTestId('bj-bet-button').click();
+  await bjStand(page2);
+  expect((await bjStacks(page2)).reduce((a, b) => a + b, 0)).toBe(2000);
+
+  // Cerrar la partida: las fichas pasan a ser el resultado.
+  await expect(page.getByTestId('bj-result')).toBeVisible();
+  await page.getByRole('button', { name: 'Cerrar partida' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Cerrar partida' }).click();
+  await expect(page.getByRole('link', { name: 'Ver resultados y saldos' })).toBeVisible({ timeout: 10000 });
+  await context2.close();
+});
+
+test('póker: al subir las ciegas todos juegan una mano de blackjack y después sigue el póker', async ({ page, browser, request }) => {
+  test.setTimeout(120000);
+  const { page2, context2 } = await twoSeated(page, browser);
+  await page.getByRole('button', { name: /Iniciar partida \(2 jugadores\)/ }).click();
+  await expect(page.getByTestId('bj-interlude-switch')).toBeChecked(); // por defecto, sí
+  await page.getByRole('dialog').getByRole('button', { name: 'Iniciar partida' }).click();
+  await expect(page.getByTestId('felt')).toBeVisible({ timeout: 15000 });
+  // Se juega la primera mano de póker: se retira quien tiene el turno.
+  await expect.poll(async () => (await page.getByRole('button', { name: 'Retirarme' }).count()) + (await page2.getByRole('button', { name: 'Retirarme' }).count()), { timeout: 15000 }).toBe(1);
+  const actor = (await page.getByRole('button', { name: 'Retirarme' }).count()) > 0 ? page : page2;
+  await actor.getByRole('button', { name: 'Retirarme' }).click();
+  await expect(page.getByRole('button', { name: 'Repartir próxima mano' })).toBeVisible({ timeout: 10000 });
+  // Suben las ciegas: la mano que sigue es de blackjack, una por jugador, con la ciega grande como apuesta.
+  await request.post('http://127.0.0.1:3100/e2e/rewind-blinds', { data: { minutes: 16 } });
+  await page.getByRole('button', { name: 'Repartir próxima mano' }).click();
+  for (const p of [page, page2]) {
+    await expect(p.getByRole('heading', { name: /Subieron las ciegas · blackjack 1 de 2/ })).toBeVisible({ timeout: 15000 });
+  }
+  await expect(page.getByTestId('bj-bet')).toContainText('$40');
+  await checkPage(page, 'interludio de blackjack');
+  await bjStand(page);
+  await page.getByTestId('bj-next').click();
+  await expect(page2.getByRole('heading', { name: /blackjack 2 de 2/ })).toBeVisible({ timeout: 10000 });
+  await bjStand(page2);
+  // Terminadas las dos manos, sigue el póker con las ciegas nuevas.
+  await page.getByRole('button', { name: 'Seguir con el póker' }).click();
+  await expect(page.getByTestId('felt')).toBeVisible({ timeout: 10000 });
+  await expect(page.getByTestId('blinds')).toContainText('Ciegas $20/$40');
+  await expect(page.getByTestId('bj')).toHaveCount(0);
   await context2.close();
 });
 

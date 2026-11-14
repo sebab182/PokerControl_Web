@@ -398,6 +398,35 @@ export const HandView = Obj({
   })),
   showdown: T.Array(Obj({ playerId: T.String(), hole: T.Array(T.String()), handName: T.String() })),
 }, 'HandView');
+export const BjResult = T.Union([
+  T.Literal('blackjack'), T.Literal('win'), T.Literal('push'), T.Literal('lose'), T.Literal('bust'), T.Literal('skipped'),
+]);
+/** Una mano de blackjack «contra todos»: un jugador contra el croupier y, por cabeza, contra todos los demás. */
+export const BjView = Obj({
+  handId: T.Integer(),
+  /** solo: blackjack contra todos. interlude: la mano de cada jugador cuando suben las ciegas. */
+  kind: T.Union([T.Literal('solo'), T.Literal('interlude')]),
+  /** Interludio: qué mano es (1 de N) y el nivel de ciegas que lo disparó. */
+  position: Nullable(Obj({ index: T.Integer(), total: T.Integer(), level: T.Integer() })),
+  /** Quien juega la mano; los demás son sus rivales. */
+  playerId: T.String(),
+  phase: T.Union([T.Literal('betting'), T.Literal('player'), T.Literal('done')]),
+  /** Apuesta por cabeza (ya duplicada si dobló), mínima y tope: con el tope nadie queda debiendo más de lo que tiene. */
+  bet: T.Integer(), minBet: T.Integer(), maxBet: T.Integer(),
+  player: T.Array(T.String()),
+  /** El croupier: su segunda carta va como "??" hasta que la muestra. */
+  dealer: T.Array(T.String()),
+  playerTotal: T.Integer(),
+  /** Total de las cartas del croupier que se ven. */
+  dealerTotal: Nullable(T.Integer()),
+  result: Nullable(BjResult),
+  canDouble: T.Boolean(),
+  /** Tu jugador (o uno que manejás) si te toca apostar o jugar. */
+  actingPlayerId: Nullable(T.String()),
+  rivals: T.Array(Obj({ playerId: T.String(), stack: T.Integer() })),
+  /** Al terminar: lo que ganó o perdió cada uno (el jugador y sus rivales). */
+  deltas: T.Array(Obj({ playerId: T.String(), delta: T.Integer() })),
+}, 'BjView');
 export const TableView = Obj({
   id: T.String(), status: TableStatus, sessionId: Nullable(T.String()),
   /** Ciegas de la mano en curso (o las que se usarán en la próxima). */
@@ -427,6 +456,14 @@ export const TableView = Obj({
   /** Vos iniciaste la partida: tu pantalla avisa que seguís (POST /table/ping) aunque no estés sentado. */
   isHost: T.Boolean(),
   hand: Nullable(HandView),
+  /** Juego de la mesa en curso: póker o blackjack contra todos. */
+  game: T.Union([T.Literal('holdem'), T.Literal('blackjack')]),
+  /** Apuesta mínima del blackjack contra todos. */
+  bjMinBet: T.Integer(),
+  /** En el póker: al subir las ciegas, todos juegan una mano de blackjack. */
+  bjInterlude: T.Boolean(),
+  /** La mano de blackjack en curso (o la última, hasta que se reparta otra cosa); null si no corresponde mostrarla. */
+  blackjack: Nullable(BjView),
 }, 'TableView');
 // ─── Video de la mesa (señalización WebRTC por el WebSocket) ─────────────────
 /**
@@ -479,6 +516,23 @@ export const StartTableBody = Obj({
   blindMinutes: T.Optional(T.Integer({ minimum: 0, maximum: 120 })),
   /** Al terminar cada mano se muestran las cartas de todos, también las de quienes se retiraron. */
   showAllCards: T.Optional(T.Boolean()),
+  /** Juego de la mesa: póker (por defecto) o blackjack contra todos. */
+  game: T.Optional(T.Union([T.Literal('holdem'), T.Literal('blackjack')])),
+  /** Blackjack contra todos: apuesta mínima. */
+  bjMinBet: T.Optional(Chips),
+  /** Póker: cada vez que suben las ciegas, todos juegan una mano de blackjack (por defecto sí). */
+  bjInterlude: T.Optional(T.Boolean()),
+});
+export const BjBetBody = Obj({
+  version: T.Integer(),
+  amount: Chips,
+  /** Solo administradores: jugar por un jugador sin usuario. */
+  playerId: T.Optional(T.String()),
+});
+export const BjActBody = Obj({
+  version: T.Integer(),
+  action: T.Union([T.Literal('hit'), T.Literal('stand'), T.Literal('double')]),
+  playerId: T.Optional(T.String()),
 });
 export const TableActionBody = Obj({
   version: T.Integer(),
@@ -537,6 +591,7 @@ export type ApiImportResult = Static<typeof ImportResult>;
 export type ApiCloseSessionResponse = Static<typeof CloseSessionResponse>;
 export type ApiTableView = Static<typeof TableView>;
 export type ApiHandView = Static<typeof HandView>;
+export type ApiBjView = Static<typeof BjView>;
 export type ApiTableAction = Static<typeof TableActionBody>['action'];
 export type ApiRtcKind = Static<typeof RtcKind>;
 export type ApiRtcClientMessage = Static<typeof RtcClientMessage>;

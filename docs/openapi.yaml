@@ -1311,6 +1311,10 @@ paths:
                   - canHost
                   - isHost
                   - hand
+                  - game
+                  - bjMinBet
+                  - bjInterlude
+                  - blackjack
                 properties:
                   id:
                     type: string
@@ -1621,6 +1625,155 @@ paths:
                                 type: string
                             handName:
                               type: string
+                    nullable: true
+                  game:
+                    anyOf:
+                      - type: string
+                        enum:
+                          - holdem
+                      - type: string
+                        enum:
+                          - blackjack
+                  bjMinBet:
+                    type: integer
+                  bjInterlude:
+                    type: boolean
+                  blackjack:
+                    additionalProperties: false
+                    title: BjView
+                    type: object
+                    required:
+                      - handId
+                      - kind
+                      - position
+                      - playerId
+                      - phase
+                      - bet
+                      - minBet
+                      - maxBet
+                      - player
+                      - dealer
+                      - playerTotal
+                      - dealerTotal
+                      - result
+                      - canDouble
+                      - actingPlayerId
+                      - rivals
+                      - deltas
+                    properties:
+                      handId:
+                        type: integer
+                      kind:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - solo
+                          - type: string
+                            enum:
+                              - interlude
+                      position:
+                        additionalProperties: false
+                        type: object
+                        required:
+                          - index
+                          - total
+                          - level
+                        properties:
+                          index:
+                            type: integer
+                          total:
+                            type: integer
+                          level:
+                            type: integer
+                        nullable: true
+                      playerId:
+                        type: string
+                      phase:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - betting
+                          - type: string
+                            enum:
+                              - player
+                          - type: string
+                            enum:
+                              - done
+                      bet:
+                        type: integer
+                      minBet:
+                        type: integer
+                      maxBet:
+                        type: integer
+                      player:
+                        type: array
+                        items:
+                          type: string
+                      dealer:
+                        type: array
+                        items:
+                          type: string
+                      playerTotal:
+                        type: integer
+                      dealerTotal:
+                        type: integer
+                        nullable: true
+                      result:
+                        anyOf:
+                          - anyOf:
+                              - type: string
+                                enum:
+                                  - blackjack
+                              - type: string
+                                enum:
+                                  - win
+                              - type: string
+                                enum:
+                                  - push
+                              - type: string
+                                enum:
+                                  - lose
+                              - type: string
+                                enum:
+                                  - bust
+                              - type: string
+                                enum:
+                                  - skipped
+                          - type: object
+                            nullable: true
+                            enum:
+                              - null
+                      canDouble:
+                        type: boolean
+                      actingPlayerId:
+                        type: string
+                        nullable: true
+                      rivals:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - playerId
+                            - stack
+                          properties:
+                            playerId:
+                              type: string
+                            stack:
+                              type: integer
+                      deltas:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - playerId
+                            - delta
+                          properties:
+                            playerId:
+                              type: string
+                            delta:
+                              type: integer
                     nullable: true
         4XX:
           description: Default Response
@@ -1676,6 +1829,10 @@ paths:
                   - canHost
                   - isHost
                   - hand
+                  - game
+                  - bjMinBet
+                  - bjInterlude
+                  - blackjack
                 properties:
                   id:
                     type: string
@@ -1986,6 +2143,155 @@ paths:
                                 type: string
                             handName:
                               type: string
+                    nullable: true
+                  game:
+                    anyOf:
+                      - type: string
+                        enum:
+                          - holdem
+                      - type: string
+                        enum:
+                          - blackjack
+                  bjMinBet:
+                    type: integer
+                  bjInterlude:
+                    type: boolean
+                  blackjack:
+                    additionalProperties: false
+                    title: BjView
+                    type: object
+                    required:
+                      - handId
+                      - kind
+                      - position
+                      - playerId
+                      - phase
+                      - bet
+                      - minBet
+                      - maxBet
+                      - player
+                      - dealer
+                      - playerTotal
+                      - dealerTotal
+                      - result
+                      - canDouble
+                      - actingPlayerId
+                      - rivals
+                      - deltas
+                    properties:
+                      handId:
+                        type: integer
+                      kind:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - solo
+                          - type: string
+                            enum:
+                              - interlude
+                      position:
+                        additionalProperties: false
+                        type: object
+                        required:
+                          - index
+                          - total
+                          - level
+                        properties:
+                          index:
+                            type: integer
+                          total:
+                            type: integer
+                          level:
+                            type: integer
+                        nullable: true
+                      playerId:
+                        type: string
+                      phase:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - betting
+                          - type: string
+                            enum:
+                              - player
+                          - type: string
+                            enum:
+                              - done
+                      bet:
+                        type: integer
+                      minBet:
+                        type: integer
+                      maxBet:
+                        type: integer
+                      player:
+                        type: array
+                        items:
+                          type: string
+                      dealer:
+                        type: array
+                        items:
+                          type: string
+                      playerTotal:
+                        type: integer
+                      dealerTotal:
+                        type: integer
+                        nullable: true
+                      result:
+                        anyOf:
+                          - anyOf:
+                              - type: string
+                                enum:
+                                  - blackjack
+                              - type: string
+                                enum:
+                                  - win
+                              - type: string
+                                enum:
+                                  - push
+                              - type: string
+                                enum:
+                                  - lose
+                              - type: string
+                                enum:
+                                  - bust
+                              - type: string
+                                enum:
+                                  - skipped
+                          - type: object
+                            nullable: true
+                            enum:
+                              - null
+                      canDouble:
+                        type: boolean
+                      actingPlayerId:
+                        type: string
+                        nullable: true
+                      rivals:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - playerId
+                            - stack
+                          properties:
+                            playerId:
+                              type: string
+                            stack:
+                              type: integer
+                      deltas:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - playerId
+                            - delta
+                          properties:
+                            playerId:
+                              type: string
+                            delta:
+                              type: integer
                     nullable: true
         4XX:
           description: Default Response
@@ -2041,6 +2347,10 @@ paths:
                   - canHost
                   - isHost
                   - hand
+                  - game
+                  - bjMinBet
+                  - bjInterlude
+                  - blackjack
                 properties:
                   id:
                     type: string
@@ -2351,6 +2661,155 @@ paths:
                                 type: string
                             handName:
                               type: string
+                    nullable: true
+                  game:
+                    anyOf:
+                      - type: string
+                        enum:
+                          - holdem
+                      - type: string
+                        enum:
+                          - blackjack
+                  bjMinBet:
+                    type: integer
+                  bjInterlude:
+                    type: boolean
+                  blackjack:
+                    additionalProperties: false
+                    title: BjView
+                    type: object
+                    required:
+                      - handId
+                      - kind
+                      - position
+                      - playerId
+                      - phase
+                      - bet
+                      - minBet
+                      - maxBet
+                      - player
+                      - dealer
+                      - playerTotal
+                      - dealerTotal
+                      - result
+                      - canDouble
+                      - actingPlayerId
+                      - rivals
+                      - deltas
+                    properties:
+                      handId:
+                        type: integer
+                      kind:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - solo
+                          - type: string
+                            enum:
+                              - interlude
+                      position:
+                        additionalProperties: false
+                        type: object
+                        required:
+                          - index
+                          - total
+                          - level
+                        properties:
+                          index:
+                            type: integer
+                          total:
+                            type: integer
+                          level:
+                            type: integer
+                        nullable: true
+                      playerId:
+                        type: string
+                      phase:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - betting
+                          - type: string
+                            enum:
+                              - player
+                          - type: string
+                            enum:
+                              - done
+                      bet:
+                        type: integer
+                      minBet:
+                        type: integer
+                      maxBet:
+                        type: integer
+                      player:
+                        type: array
+                        items:
+                          type: string
+                      dealer:
+                        type: array
+                        items:
+                          type: string
+                      playerTotal:
+                        type: integer
+                      dealerTotal:
+                        type: integer
+                        nullable: true
+                      result:
+                        anyOf:
+                          - anyOf:
+                              - type: string
+                                enum:
+                                  - blackjack
+                              - type: string
+                                enum:
+                                  - win
+                              - type: string
+                                enum:
+                                  - push
+                              - type: string
+                                enum:
+                                  - lose
+                              - type: string
+                                enum:
+                                  - bust
+                              - type: string
+                                enum:
+                                  - skipped
+                          - type: object
+                            nullable: true
+                            enum:
+                              - null
+                      canDouble:
+                        type: boolean
+                      actingPlayerId:
+                        type: string
+                        nullable: true
+                      rivals:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - playerId
+                            - stack
+                          properties:
+                            playerId:
+                              type: string
+                            stack:
+                              type: integer
+                      deltas:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - playerId
+                            - delta
+                          properties:
+                            playerId:
+                              type: string
+                            delta:
+                              type: integer
                     nullable: true
         4XX:
           description: Default Response
@@ -2406,6 +2865,10 @@ paths:
                   - canHost
                   - isHost
                   - hand
+                  - game
+                  - bjMinBet
+                  - bjInterlude
+                  - blackjack
                 properties:
                   id:
                     type: string
@@ -2716,6 +3179,155 @@ paths:
                                 type: string
                             handName:
                               type: string
+                    nullable: true
+                  game:
+                    anyOf:
+                      - type: string
+                        enum:
+                          - holdem
+                      - type: string
+                        enum:
+                          - blackjack
+                  bjMinBet:
+                    type: integer
+                  bjInterlude:
+                    type: boolean
+                  blackjack:
+                    additionalProperties: false
+                    title: BjView
+                    type: object
+                    required:
+                      - handId
+                      - kind
+                      - position
+                      - playerId
+                      - phase
+                      - bet
+                      - minBet
+                      - maxBet
+                      - player
+                      - dealer
+                      - playerTotal
+                      - dealerTotal
+                      - result
+                      - canDouble
+                      - actingPlayerId
+                      - rivals
+                      - deltas
+                    properties:
+                      handId:
+                        type: integer
+                      kind:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - solo
+                          - type: string
+                            enum:
+                              - interlude
+                      position:
+                        additionalProperties: false
+                        type: object
+                        required:
+                          - index
+                          - total
+                          - level
+                        properties:
+                          index:
+                            type: integer
+                          total:
+                            type: integer
+                          level:
+                            type: integer
+                        nullable: true
+                      playerId:
+                        type: string
+                      phase:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - betting
+                          - type: string
+                            enum:
+                              - player
+                          - type: string
+                            enum:
+                              - done
+                      bet:
+                        type: integer
+                      minBet:
+                        type: integer
+                      maxBet:
+                        type: integer
+                      player:
+                        type: array
+                        items:
+                          type: string
+                      dealer:
+                        type: array
+                        items:
+                          type: string
+                      playerTotal:
+                        type: integer
+                      dealerTotal:
+                        type: integer
+                        nullable: true
+                      result:
+                        anyOf:
+                          - anyOf:
+                              - type: string
+                                enum:
+                                  - blackjack
+                              - type: string
+                                enum:
+                                  - win
+                              - type: string
+                                enum:
+                                  - push
+                              - type: string
+                                enum:
+                                  - lose
+                              - type: string
+                                enum:
+                                  - bust
+                              - type: string
+                                enum:
+                                  - skipped
+                          - type: object
+                            nullable: true
+                            enum:
+                              - null
+                      canDouble:
+                        type: boolean
+                      actingPlayerId:
+                        type: string
+                        nullable: true
+                      rivals:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - playerId
+                            - stack
+                          properties:
+                            playerId:
+                              type: string
+                            stack:
+                              type: integer
+                      deltas:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - playerId
+                            - delta
+                          properties:
+                            playerId:
+                              type: string
+                            delta:
+                              type: integer
                     nullable: true
         4XX:
           description: Default Response
@@ -2776,6 +3388,10 @@ paths:
                   - canHost
                   - isHost
                   - hand
+                  - game
+                  - bjMinBet
+                  - bjInterlude
+                  - blackjack
                 properties:
                   id:
                     type: string
@@ -3086,6 +3702,155 @@ paths:
                                 type: string
                             handName:
                               type: string
+                    nullable: true
+                  game:
+                    anyOf:
+                      - type: string
+                        enum:
+                          - holdem
+                      - type: string
+                        enum:
+                          - blackjack
+                  bjMinBet:
+                    type: integer
+                  bjInterlude:
+                    type: boolean
+                  blackjack:
+                    additionalProperties: false
+                    title: BjView
+                    type: object
+                    required:
+                      - handId
+                      - kind
+                      - position
+                      - playerId
+                      - phase
+                      - bet
+                      - minBet
+                      - maxBet
+                      - player
+                      - dealer
+                      - playerTotal
+                      - dealerTotal
+                      - result
+                      - canDouble
+                      - actingPlayerId
+                      - rivals
+                      - deltas
+                    properties:
+                      handId:
+                        type: integer
+                      kind:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - solo
+                          - type: string
+                            enum:
+                              - interlude
+                      position:
+                        additionalProperties: false
+                        type: object
+                        required:
+                          - index
+                          - total
+                          - level
+                        properties:
+                          index:
+                            type: integer
+                          total:
+                            type: integer
+                          level:
+                            type: integer
+                        nullable: true
+                      playerId:
+                        type: string
+                      phase:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - betting
+                          - type: string
+                            enum:
+                              - player
+                          - type: string
+                            enum:
+                              - done
+                      bet:
+                        type: integer
+                      minBet:
+                        type: integer
+                      maxBet:
+                        type: integer
+                      player:
+                        type: array
+                        items:
+                          type: string
+                      dealer:
+                        type: array
+                        items:
+                          type: string
+                      playerTotal:
+                        type: integer
+                      dealerTotal:
+                        type: integer
+                        nullable: true
+                      result:
+                        anyOf:
+                          - anyOf:
+                              - type: string
+                                enum:
+                                  - blackjack
+                              - type: string
+                                enum:
+                                  - win
+                              - type: string
+                                enum:
+                                  - push
+                              - type: string
+                                enum:
+                                  - lose
+                              - type: string
+                                enum:
+                                  - bust
+                              - type: string
+                                enum:
+                                  - skipped
+                          - type: object
+                            nullable: true
+                            enum:
+                              - null
+                      canDouble:
+                        type: boolean
+                      actingPlayerId:
+                        type: string
+                        nullable: true
+                      rivals:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - playerId
+                            - stack
+                          properties:
+                            playerId:
+                              type: string
+                            stack:
+                              type: integer
+                      deltas:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - playerId
+                            - delta
+                          properties:
+                            playerId:
+                              type: string
+                            delta:
+                              type: integer
                     nullable: true
         4XX:
           description: Default Response
@@ -3145,6 +3910,10 @@ paths:
                   - canHost
                   - isHost
                   - hand
+                  - game
+                  - bjMinBet
+                  - bjInterlude
+                  - blackjack
                 properties:
                   id:
                     type: string
@@ -3455,6 +4224,155 @@ paths:
                                 type: string
                             handName:
                               type: string
+                    nullable: true
+                  game:
+                    anyOf:
+                      - type: string
+                        enum:
+                          - holdem
+                      - type: string
+                        enum:
+                          - blackjack
+                  bjMinBet:
+                    type: integer
+                  bjInterlude:
+                    type: boolean
+                  blackjack:
+                    additionalProperties: false
+                    title: BjView
+                    type: object
+                    required:
+                      - handId
+                      - kind
+                      - position
+                      - playerId
+                      - phase
+                      - bet
+                      - minBet
+                      - maxBet
+                      - player
+                      - dealer
+                      - playerTotal
+                      - dealerTotal
+                      - result
+                      - canDouble
+                      - actingPlayerId
+                      - rivals
+                      - deltas
+                    properties:
+                      handId:
+                        type: integer
+                      kind:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - solo
+                          - type: string
+                            enum:
+                              - interlude
+                      position:
+                        additionalProperties: false
+                        type: object
+                        required:
+                          - index
+                          - total
+                          - level
+                        properties:
+                          index:
+                            type: integer
+                          total:
+                            type: integer
+                          level:
+                            type: integer
+                        nullable: true
+                      playerId:
+                        type: string
+                      phase:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - betting
+                          - type: string
+                            enum:
+                              - player
+                          - type: string
+                            enum:
+                              - done
+                      bet:
+                        type: integer
+                      minBet:
+                        type: integer
+                      maxBet:
+                        type: integer
+                      player:
+                        type: array
+                        items:
+                          type: string
+                      dealer:
+                        type: array
+                        items:
+                          type: string
+                      playerTotal:
+                        type: integer
+                      dealerTotal:
+                        type: integer
+                        nullable: true
+                      result:
+                        anyOf:
+                          - anyOf:
+                              - type: string
+                                enum:
+                                  - blackjack
+                              - type: string
+                                enum:
+                                  - win
+                              - type: string
+                                enum:
+                                  - push
+                              - type: string
+                                enum:
+                                  - lose
+                              - type: string
+                                enum:
+                                  - bust
+                              - type: string
+                                enum:
+                                  - skipped
+                          - type: object
+                            nullable: true
+                            enum:
+                              - null
+                      canDouble:
+                        type: boolean
+                      actingPlayerId:
+                        type: string
+                        nullable: true
+                      rivals:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - playerId
+                            - stack
+                          properties:
+                            playerId:
+                              type: string
+                            stack:
+                              type: integer
+                      deltas:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - playerId
+                            - delta
+                          properties:
+                            playerId:
+                              type: string
+                            delta:
+                              type: integer
                     nullable: true
         4XX:
           description: Default Response
@@ -3527,6 +4445,10 @@ paths:
                   - canHost
                   - isHost
                   - hand
+                  - game
+                  - bjMinBet
+                  - bjInterlude
+                  - blackjack
                 properties:
                   id:
                     type: string
@@ -3837,6 +4759,155 @@ paths:
                                 type: string
                             handName:
                               type: string
+                    nullable: true
+                  game:
+                    anyOf:
+                      - type: string
+                        enum:
+                          - holdem
+                      - type: string
+                        enum:
+                          - blackjack
+                  bjMinBet:
+                    type: integer
+                  bjInterlude:
+                    type: boolean
+                  blackjack:
+                    additionalProperties: false
+                    title: BjView
+                    type: object
+                    required:
+                      - handId
+                      - kind
+                      - position
+                      - playerId
+                      - phase
+                      - bet
+                      - minBet
+                      - maxBet
+                      - player
+                      - dealer
+                      - playerTotal
+                      - dealerTotal
+                      - result
+                      - canDouble
+                      - actingPlayerId
+                      - rivals
+                      - deltas
+                    properties:
+                      handId:
+                        type: integer
+                      kind:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - solo
+                          - type: string
+                            enum:
+                              - interlude
+                      position:
+                        additionalProperties: false
+                        type: object
+                        required:
+                          - index
+                          - total
+                          - level
+                        properties:
+                          index:
+                            type: integer
+                          total:
+                            type: integer
+                          level:
+                            type: integer
+                        nullable: true
+                      playerId:
+                        type: string
+                      phase:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - betting
+                          - type: string
+                            enum:
+                              - player
+                          - type: string
+                            enum:
+                              - done
+                      bet:
+                        type: integer
+                      minBet:
+                        type: integer
+                      maxBet:
+                        type: integer
+                      player:
+                        type: array
+                        items:
+                          type: string
+                      dealer:
+                        type: array
+                        items:
+                          type: string
+                      playerTotal:
+                        type: integer
+                      dealerTotal:
+                        type: integer
+                        nullable: true
+                      result:
+                        anyOf:
+                          - anyOf:
+                              - type: string
+                                enum:
+                                  - blackjack
+                              - type: string
+                                enum:
+                                  - win
+                              - type: string
+                                enum:
+                                  - push
+                              - type: string
+                                enum:
+                                  - lose
+                              - type: string
+                                enum:
+                                  - bust
+                              - type: string
+                                enum:
+                                  - skipped
+                          - type: object
+                            nullable: true
+                            enum:
+                              - null
+                      canDouble:
+                        type: boolean
+                      actingPlayerId:
+                        type: string
+                        nullable: true
+                      rivals:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - playerId
+                            - stack
+                          properties:
+                            playerId:
+                              type: string
+                            stack:
+                              type: integer
+                      deltas:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - playerId
+                            - delta
+                          properties:
+                            playerId:
+                              type: string
+                            delta:
+                              type: integer
                     nullable: true
         4XX:
           description: Default Response
@@ -3887,6 +4958,20 @@ paths:
                   type: integer
                 showAllCards:
                   type: boolean
+                game:
+                  anyOf:
+                    - type: string
+                      enum:
+                        - holdem
+                    - type: string
+                      enum:
+                        - blackjack
+                bjMinBet:
+                  minimum: 1
+                  maximum: 1000000000
+                  type: integer
+                bjInterlude:
+                  type: boolean
       parameters:
         - schema:
             type: string
@@ -3922,6 +5007,10 @@ paths:
                   - canHost
                   - isHost
                   - hand
+                  - game
+                  - bjMinBet
+                  - bjInterlude
+                  - blackjack
                 properties:
                   id:
                     type: string
@@ -4232,6 +5321,155 @@ paths:
                                 type: string
                             handName:
                               type: string
+                    nullable: true
+                  game:
+                    anyOf:
+                      - type: string
+                        enum:
+                          - holdem
+                      - type: string
+                        enum:
+                          - blackjack
+                  bjMinBet:
+                    type: integer
+                  bjInterlude:
+                    type: boolean
+                  blackjack:
+                    additionalProperties: false
+                    title: BjView
+                    type: object
+                    required:
+                      - handId
+                      - kind
+                      - position
+                      - playerId
+                      - phase
+                      - bet
+                      - minBet
+                      - maxBet
+                      - player
+                      - dealer
+                      - playerTotal
+                      - dealerTotal
+                      - result
+                      - canDouble
+                      - actingPlayerId
+                      - rivals
+                      - deltas
+                    properties:
+                      handId:
+                        type: integer
+                      kind:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - solo
+                          - type: string
+                            enum:
+                              - interlude
+                      position:
+                        additionalProperties: false
+                        type: object
+                        required:
+                          - index
+                          - total
+                          - level
+                        properties:
+                          index:
+                            type: integer
+                          total:
+                            type: integer
+                          level:
+                            type: integer
+                        nullable: true
+                      playerId:
+                        type: string
+                      phase:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - betting
+                          - type: string
+                            enum:
+                              - player
+                          - type: string
+                            enum:
+                              - done
+                      bet:
+                        type: integer
+                      minBet:
+                        type: integer
+                      maxBet:
+                        type: integer
+                      player:
+                        type: array
+                        items:
+                          type: string
+                      dealer:
+                        type: array
+                        items:
+                          type: string
+                      playerTotal:
+                        type: integer
+                      dealerTotal:
+                        type: integer
+                        nullable: true
+                      result:
+                        anyOf:
+                          - anyOf:
+                              - type: string
+                                enum:
+                                  - blackjack
+                              - type: string
+                                enum:
+                                  - win
+                              - type: string
+                                enum:
+                                  - push
+                              - type: string
+                                enum:
+                                  - lose
+                              - type: string
+                                enum:
+                                  - bust
+                              - type: string
+                                enum:
+                                  - skipped
+                          - type: object
+                            nullable: true
+                            enum:
+                              - null
+                      canDouble:
+                        type: boolean
+                      actingPlayerId:
+                        type: string
+                        nullable: true
+                      rivals:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - playerId
+                            - stack
+                          properties:
+                            playerId:
+                              type: string
+                            stack:
+                              type: integer
+                      deltas:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - playerId
+                            - delta
+                          properties:
+                            playerId:
+                              type: string
+                            delta:
+                              type: integer
                     nullable: true
         4XX:
           description: Default Response
@@ -4287,6 +5525,10 @@ paths:
                   - canHost
                   - isHost
                   - hand
+                  - game
+                  - bjMinBet
+                  - bjInterlude
+                  - blackjack
                 properties:
                   id:
                     type: string
@@ -4597,6 +5839,155 @@ paths:
                                 type: string
                             handName:
                               type: string
+                    nullable: true
+                  game:
+                    anyOf:
+                      - type: string
+                        enum:
+                          - holdem
+                      - type: string
+                        enum:
+                          - blackjack
+                  bjMinBet:
+                    type: integer
+                  bjInterlude:
+                    type: boolean
+                  blackjack:
+                    additionalProperties: false
+                    title: BjView
+                    type: object
+                    required:
+                      - handId
+                      - kind
+                      - position
+                      - playerId
+                      - phase
+                      - bet
+                      - minBet
+                      - maxBet
+                      - player
+                      - dealer
+                      - playerTotal
+                      - dealerTotal
+                      - result
+                      - canDouble
+                      - actingPlayerId
+                      - rivals
+                      - deltas
+                    properties:
+                      handId:
+                        type: integer
+                      kind:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - solo
+                          - type: string
+                            enum:
+                              - interlude
+                      position:
+                        additionalProperties: false
+                        type: object
+                        required:
+                          - index
+                          - total
+                          - level
+                        properties:
+                          index:
+                            type: integer
+                          total:
+                            type: integer
+                          level:
+                            type: integer
+                        nullable: true
+                      playerId:
+                        type: string
+                      phase:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - betting
+                          - type: string
+                            enum:
+                              - player
+                          - type: string
+                            enum:
+                              - done
+                      bet:
+                        type: integer
+                      minBet:
+                        type: integer
+                      maxBet:
+                        type: integer
+                      player:
+                        type: array
+                        items:
+                          type: string
+                      dealer:
+                        type: array
+                        items:
+                          type: string
+                      playerTotal:
+                        type: integer
+                      dealerTotal:
+                        type: integer
+                        nullable: true
+                      result:
+                        anyOf:
+                          - anyOf:
+                              - type: string
+                                enum:
+                                  - blackjack
+                              - type: string
+                                enum:
+                                  - win
+                              - type: string
+                                enum:
+                                  - push
+                              - type: string
+                                enum:
+                                  - lose
+                              - type: string
+                                enum:
+                                  - bust
+                              - type: string
+                                enum:
+                                  - skipped
+                          - type: object
+                            nullable: true
+                            enum:
+                              - null
+                      canDouble:
+                        type: boolean
+                      actingPlayerId:
+                        type: string
+                        nullable: true
+                      rivals:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - playerId
+                            - stack
+                          properties:
+                            playerId:
+                              type: string
+                            stack:
+                              type: integer
+                      deltas:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - playerId
+                            - delta
+                          properties:
+                            playerId:
+                              type: string
+                            delta:
+                              type: integer
                     nullable: true
         4XX:
           description: Default Response
@@ -4719,6 +6110,10 @@ paths:
                   - canHost
                   - isHost
                   - hand
+                  - game
+                  - bjMinBet
+                  - bjInterlude
+                  - blackjack
                 properties:
                   id:
                     type: string
@@ -5029,6 +6424,1236 @@ paths:
                                 type: string
                             handName:
                               type: string
+                    nullable: true
+                  game:
+                    anyOf:
+                      - type: string
+                        enum:
+                          - holdem
+                      - type: string
+                        enum:
+                          - blackjack
+                  bjMinBet:
+                    type: integer
+                  bjInterlude:
+                    type: boolean
+                  blackjack:
+                    additionalProperties: false
+                    title: BjView
+                    type: object
+                    required:
+                      - handId
+                      - kind
+                      - position
+                      - playerId
+                      - phase
+                      - bet
+                      - minBet
+                      - maxBet
+                      - player
+                      - dealer
+                      - playerTotal
+                      - dealerTotal
+                      - result
+                      - canDouble
+                      - actingPlayerId
+                      - rivals
+                      - deltas
+                    properties:
+                      handId:
+                        type: integer
+                      kind:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - solo
+                          - type: string
+                            enum:
+                              - interlude
+                      position:
+                        additionalProperties: false
+                        type: object
+                        required:
+                          - index
+                          - total
+                          - level
+                        properties:
+                          index:
+                            type: integer
+                          total:
+                            type: integer
+                          level:
+                            type: integer
+                        nullable: true
+                      playerId:
+                        type: string
+                      phase:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - betting
+                          - type: string
+                            enum:
+                              - player
+                          - type: string
+                            enum:
+                              - done
+                      bet:
+                        type: integer
+                      minBet:
+                        type: integer
+                      maxBet:
+                        type: integer
+                      player:
+                        type: array
+                        items:
+                          type: string
+                      dealer:
+                        type: array
+                        items:
+                          type: string
+                      playerTotal:
+                        type: integer
+                      dealerTotal:
+                        type: integer
+                        nullable: true
+                      result:
+                        anyOf:
+                          - anyOf:
+                              - type: string
+                                enum:
+                                  - blackjack
+                              - type: string
+                                enum:
+                                  - win
+                              - type: string
+                                enum:
+                                  - push
+                              - type: string
+                                enum:
+                                  - lose
+                              - type: string
+                                enum:
+                                  - bust
+                              - type: string
+                                enum:
+                                  - skipped
+                          - type: object
+                            nullable: true
+                            enum:
+                              - null
+                      canDouble:
+                        type: boolean
+                      actingPlayerId:
+                        type: string
+                        nullable: true
+                      rivals:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - playerId
+                            - stack
+                          properties:
+                            playerId:
+                              type: string
+                            stack:
+                              type: integer
+                      deltas:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - playerId
+                            - delta
+                          properties:
+                            playerId:
+                              type: string
+                            delta:
+                              type: integer
+                    nullable: true
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /api/v1/groups/{groupId}/table/bj/bet:
+    post:
+      tags: *a3
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              type: object
+              required:
+                - version
+                - amount
+              properties:
+                version:
+                  type: integer
+                amount:
+                  minimum: 1
+                  maximum: 1000000000
+                  type: integer
+                playerId:
+                  type: string
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: TableView
+                type: object
+                required:
+                  - id
+                  - status
+                  - sessionId
+                  - smallBlind
+                  - bigBlind
+                  - buyIn
+                  - blinds
+                  - version
+                  - turnSeconds
+                  - showAllCards
+                  - turnDeadline
+                  - serverTime
+                  - seats
+                  - maxRebuy
+                  - myPlayerId
+                  - host
+                  - canHost
+                  - isHost
+                  - hand
+                  - game
+                  - bjMinBet
+                  - bjInterlude
+                  - blackjack
+                properties:
+                  id:
+                    type: string
+                  status:
+                    anyOf:
+                      - type: string
+                        enum:
+                          - waiting
+                      - type: string
+                        enum:
+                          - playing
+                  sessionId:
+                    type: string
+                    nullable: true
+                  smallBlind:
+                    type: integer
+                  bigBlind:
+                    type: integer
+                  buyIn:
+                    type: integer
+                  blinds:
+                    additionalProperties: false
+                    title: TableBlinds
+                    type: object
+                    required:
+                      - minutes
+                      - level
+                      - small
+                      - big
+                      - atCap
+                      - nextAt
+                    properties:
+                      minutes:
+                        type: integer
+                      level:
+                        type: integer
+                      small:
+                        type: integer
+                      big:
+                        type: integer
+                      atCap:
+                        type: boolean
+                      nextAt:
+                        type: string
+                        nullable: true
+                  version:
+                    type: integer
+                  turnSeconds:
+                    type: integer
+                  showAllCards:
+                    type: boolean
+                  turnDeadline:
+                    type: string
+                    nullable: true
+                  serverTime:
+                    type: string
+                  seats:
+                    type: array
+                    items:
+                      additionalProperties: false
+                      title: TableSeat
+                      type: object
+                      required:
+                        - playerId
+                        - name
+                        - stack
+                        - status
+                        - online
+                        - isYou
+                        - managed
+                        - rebuys
+                        - bought
+                        - net
+                      properties:
+                        playerId:
+                          type: string
+                        name:
+                          type: string
+                        stack:
+                          type: integer
+                        status:
+                          anyOf:
+                            - type: string
+                              enum:
+                                - sitting
+                            - type: string
+                              enum:
+                                - out
+                        online:
+                          type: boolean
+                        isYou:
+                          type: boolean
+                        managed:
+                          type: boolean
+                        rebuys:
+                          type: integer
+                        bought:
+                          type: integer
+                        net:
+                          type: integer
+                  maxRebuy:
+                    type: integer
+                  myPlayerId:
+                    type: string
+                    nullable: true
+                  host:
+                    type: string
+                    nullable: true
+                  canHost:
+                    type: boolean
+                  isHost:
+                    type: boolean
+                  hand:
+                    additionalProperties: false
+                    title: HandView
+                    type: object
+                    required:
+                      - handNo
+                      - gameHandNo
+                      - street
+                      - board
+                      - pot
+                      - currentBet
+                      - minRaise
+                      - button
+                      - toActPlayerId
+                      - players
+                      - legal
+                      - actingPlayerId
+                      - lastAction
+                      - payouts
+                      - showdown
+                    properties:
+                      handNo:
+                        type: integer
+                      gameHandNo:
+                        type: integer
+                      street:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - preflop
+                          - type: string
+                            enum:
+                              - flop
+                          - type: string
+                            enum:
+                              - turn
+                          - type: string
+                            enum:
+                              - river
+                          - type: string
+                            enum:
+                              - done
+                      board:
+                        type: array
+                        items:
+                          type: string
+                      pot:
+                        type: integer
+                      currentBet:
+                        type: integer
+                      minRaise:
+                        type: integer
+                      button:
+                        type: integer
+                      toActPlayerId:
+                        type: string
+                        nullable: true
+                      players:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          title: HandPlayerView
+                          type: object
+                          required:
+                            - playerId
+                            - stack
+                            - bet
+                            - totalBet
+                            - folded
+                            - allIn
+                            - pending
+                            - hole
+                            - shown
+                          properties:
+                            playerId:
+                              type: string
+                            stack:
+                              type: integer
+                            bet:
+                              type: integer
+                            totalBet:
+                              type: integer
+                            folded:
+                              type: boolean
+                            allIn:
+                              type: boolean
+                            pending:
+                              type: boolean
+                            hole:
+                              type: array
+                              items:
+                                type: string
+                            shown:
+                              type: array
+                              items:
+                                type: integer
+                      legal:
+                        additionalProperties: false
+                        title: LegalActions
+                        type: object
+                        required:
+                          - toCall
+                          - canCheck
+                          - canCall
+                          - callAmount
+                          - canRaise
+                          - minRaiseTo
+                          - maxRaiseTo
+                          - mustBuy
+                        properties:
+                          toCall:
+                            type: integer
+                          canCheck:
+                            type: boolean
+                          canCall:
+                            type: boolean
+                          callAmount:
+                            type: integer
+                          canRaise:
+                            type: boolean
+                          minRaiseTo:
+                            type: integer
+                          maxRaiseTo:
+                            type: integer
+                          mustBuy:
+                            type: boolean
+                        nullable: true
+                      actingPlayerId:
+                        type: string
+                        nullable: true
+                      lastAction:
+                        additionalProperties: false
+                        type: object
+                        required:
+                          - playerId
+                          - type
+                        properties:
+                          playerId:
+                            type: string
+                          type:
+                            anyOf:
+                              - type: string
+                                enum:
+                                  - fold
+                              - type: string
+                                enum:
+                                  - check
+                              - type: string
+                                enum:
+                                  - call
+                              - type: string
+                                enum:
+                                  - raise
+                              - type: string
+                                enum:
+                                  - allin
+                          amount:
+                            type: integer
+                          auto:
+                            type: boolean
+                        nullable: true
+                      payouts:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - playerId
+                            - amount
+                          properties:
+                            playerId:
+                              type: string
+                            amount:
+                              type: integer
+                            reason:
+                              type: string
+                            cards:
+                              type: array
+                              items:
+                                type: string
+                      showdown:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - playerId
+                            - hole
+                            - handName
+                          properties:
+                            playerId:
+                              type: string
+                            hole:
+                              type: array
+                              items:
+                                type: string
+                            handName:
+                              type: string
+                    nullable: true
+                  game:
+                    anyOf:
+                      - type: string
+                        enum:
+                          - holdem
+                      - type: string
+                        enum:
+                          - blackjack
+                  bjMinBet:
+                    type: integer
+                  bjInterlude:
+                    type: boolean
+                  blackjack:
+                    additionalProperties: false
+                    title: BjView
+                    type: object
+                    required:
+                      - handId
+                      - kind
+                      - position
+                      - playerId
+                      - phase
+                      - bet
+                      - minBet
+                      - maxBet
+                      - player
+                      - dealer
+                      - playerTotal
+                      - dealerTotal
+                      - result
+                      - canDouble
+                      - actingPlayerId
+                      - rivals
+                      - deltas
+                    properties:
+                      handId:
+                        type: integer
+                      kind:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - solo
+                          - type: string
+                            enum:
+                              - interlude
+                      position:
+                        additionalProperties: false
+                        type: object
+                        required:
+                          - index
+                          - total
+                          - level
+                        properties:
+                          index:
+                            type: integer
+                          total:
+                            type: integer
+                          level:
+                            type: integer
+                        nullable: true
+                      playerId:
+                        type: string
+                      phase:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - betting
+                          - type: string
+                            enum:
+                              - player
+                          - type: string
+                            enum:
+                              - done
+                      bet:
+                        type: integer
+                      minBet:
+                        type: integer
+                      maxBet:
+                        type: integer
+                      player:
+                        type: array
+                        items:
+                          type: string
+                      dealer:
+                        type: array
+                        items:
+                          type: string
+                      playerTotal:
+                        type: integer
+                      dealerTotal:
+                        type: integer
+                        nullable: true
+                      result:
+                        anyOf:
+                          - anyOf:
+                              - type: string
+                                enum:
+                                  - blackjack
+                              - type: string
+                                enum:
+                                  - win
+                              - type: string
+                                enum:
+                                  - push
+                              - type: string
+                                enum:
+                                  - lose
+                              - type: string
+                                enum:
+                                  - bust
+                              - type: string
+                                enum:
+                                  - skipped
+                          - type: object
+                            nullable: true
+                            enum:
+                              - null
+                      canDouble:
+                        type: boolean
+                      actingPlayerId:
+                        type: string
+                        nullable: true
+                      rivals:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - playerId
+                            - stack
+                          properties:
+                            playerId:
+                              type: string
+                            stack:
+                              type: integer
+                      deltas:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - playerId
+                            - delta
+                          properties:
+                            playerId:
+                              type: string
+                            delta:
+                              type: integer
+                    nullable: true
+        4XX:
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Error
+                type: object
+                required:
+                  - error
+                  - message
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /api/v1/groups/{groupId}/table/bj/act:
+    post:
+      tags: *a3
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              type: object
+              required:
+                - version
+                - action
+              properties:
+                version:
+                  type: integer
+                action:
+                  anyOf:
+                    - type: string
+                      enum:
+                        - hit
+                    - type: string
+                      enum:
+                        - stand
+                    - type: string
+                      enum:
+                        - double
+                playerId:
+                  type: string
+      parameters:
+        - schema:
+            type: string
+          in: path
+          name: groupId
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                title: TableView
+                type: object
+                required:
+                  - id
+                  - status
+                  - sessionId
+                  - smallBlind
+                  - bigBlind
+                  - buyIn
+                  - blinds
+                  - version
+                  - turnSeconds
+                  - showAllCards
+                  - turnDeadline
+                  - serverTime
+                  - seats
+                  - maxRebuy
+                  - myPlayerId
+                  - host
+                  - canHost
+                  - isHost
+                  - hand
+                  - game
+                  - bjMinBet
+                  - bjInterlude
+                  - blackjack
+                properties:
+                  id:
+                    type: string
+                  status:
+                    anyOf:
+                      - type: string
+                        enum:
+                          - waiting
+                      - type: string
+                        enum:
+                          - playing
+                  sessionId:
+                    type: string
+                    nullable: true
+                  smallBlind:
+                    type: integer
+                  bigBlind:
+                    type: integer
+                  buyIn:
+                    type: integer
+                  blinds:
+                    additionalProperties: false
+                    title: TableBlinds
+                    type: object
+                    required:
+                      - minutes
+                      - level
+                      - small
+                      - big
+                      - atCap
+                      - nextAt
+                    properties:
+                      minutes:
+                        type: integer
+                      level:
+                        type: integer
+                      small:
+                        type: integer
+                      big:
+                        type: integer
+                      atCap:
+                        type: boolean
+                      nextAt:
+                        type: string
+                        nullable: true
+                  version:
+                    type: integer
+                  turnSeconds:
+                    type: integer
+                  showAllCards:
+                    type: boolean
+                  turnDeadline:
+                    type: string
+                    nullable: true
+                  serverTime:
+                    type: string
+                  seats:
+                    type: array
+                    items:
+                      additionalProperties: false
+                      title: TableSeat
+                      type: object
+                      required:
+                        - playerId
+                        - name
+                        - stack
+                        - status
+                        - online
+                        - isYou
+                        - managed
+                        - rebuys
+                        - bought
+                        - net
+                      properties:
+                        playerId:
+                          type: string
+                        name:
+                          type: string
+                        stack:
+                          type: integer
+                        status:
+                          anyOf:
+                            - type: string
+                              enum:
+                                - sitting
+                            - type: string
+                              enum:
+                                - out
+                        online:
+                          type: boolean
+                        isYou:
+                          type: boolean
+                        managed:
+                          type: boolean
+                        rebuys:
+                          type: integer
+                        bought:
+                          type: integer
+                        net:
+                          type: integer
+                  maxRebuy:
+                    type: integer
+                  myPlayerId:
+                    type: string
+                    nullable: true
+                  host:
+                    type: string
+                    nullable: true
+                  canHost:
+                    type: boolean
+                  isHost:
+                    type: boolean
+                  hand:
+                    additionalProperties: false
+                    title: HandView
+                    type: object
+                    required:
+                      - handNo
+                      - gameHandNo
+                      - street
+                      - board
+                      - pot
+                      - currentBet
+                      - minRaise
+                      - button
+                      - toActPlayerId
+                      - players
+                      - legal
+                      - actingPlayerId
+                      - lastAction
+                      - payouts
+                      - showdown
+                    properties:
+                      handNo:
+                        type: integer
+                      gameHandNo:
+                        type: integer
+                      street:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - preflop
+                          - type: string
+                            enum:
+                              - flop
+                          - type: string
+                            enum:
+                              - turn
+                          - type: string
+                            enum:
+                              - river
+                          - type: string
+                            enum:
+                              - done
+                      board:
+                        type: array
+                        items:
+                          type: string
+                      pot:
+                        type: integer
+                      currentBet:
+                        type: integer
+                      minRaise:
+                        type: integer
+                      button:
+                        type: integer
+                      toActPlayerId:
+                        type: string
+                        nullable: true
+                      players:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          title: HandPlayerView
+                          type: object
+                          required:
+                            - playerId
+                            - stack
+                            - bet
+                            - totalBet
+                            - folded
+                            - allIn
+                            - pending
+                            - hole
+                            - shown
+                          properties:
+                            playerId:
+                              type: string
+                            stack:
+                              type: integer
+                            bet:
+                              type: integer
+                            totalBet:
+                              type: integer
+                            folded:
+                              type: boolean
+                            allIn:
+                              type: boolean
+                            pending:
+                              type: boolean
+                            hole:
+                              type: array
+                              items:
+                                type: string
+                            shown:
+                              type: array
+                              items:
+                                type: integer
+                      legal:
+                        additionalProperties: false
+                        title: LegalActions
+                        type: object
+                        required:
+                          - toCall
+                          - canCheck
+                          - canCall
+                          - callAmount
+                          - canRaise
+                          - minRaiseTo
+                          - maxRaiseTo
+                          - mustBuy
+                        properties:
+                          toCall:
+                            type: integer
+                          canCheck:
+                            type: boolean
+                          canCall:
+                            type: boolean
+                          callAmount:
+                            type: integer
+                          canRaise:
+                            type: boolean
+                          minRaiseTo:
+                            type: integer
+                          maxRaiseTo:
+                            type: integer
+                          mustBuy:
+                            type: boolean
+                        nullable: true
+                      actingPlayerId:
+                        type: string
+                        nullable: true
+                      lastAction:
+                        additionalProperties: false
+                        type: object
+                        required:
+                          - playerId
+                          - type
+                        properties:
+                          playerId:
+                            type: string
+                          type:
+                            anyOf:
+                              - type: string
+                                enum:
+                                  - fold
+                              - type: string
+                                enum:
+                                  - check
+                              - type: string
+                                enum:
+                                  - call
+                              - type: string
+                                enum:
+                                  - raise
+                              - type: string
+                                enum:
+                                  - allin
+                          amount:
+                            type: integer
+                          auto:
+                            type: boolean
+                        nullable: true
+                      payouts:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - playerId
+                            - amount
+                          properties:
+                            playerId:
+                              type: string
+                            amount:
+                              type: integer
+                            reason:
+                              type: string
+                            cards:
+                              type: array
+                              items:
+                                type: string
+                      showdown:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - playerId
+                            - hole
+                            - handName
+                          properties:
+                            playerId:
+                              type: string
+                            hole:
+                              type: array
+                              items:
+                                type: string
+                            handName:
+                              type: string
+                    nullable: true
+                  game:
+                    anyOf:
+                      - type: string
+                        enum:
+                          - holdem
+                      - type: string
+                        enum:
+                          - blackjack
+                  bjMinBet:
+                    type: integer
+                  bjInterlude:
+                    type: boolean
+                  blackjack:
+                    additionalProperties: false
+                    title: BjView
+                    type: object
+                    required:
+                      - handId
+                      - kind
+                      - position
+                      - playerId
+                      - phase
+                      - bet
+                      - minBet
+                      - maxBet
+                      - player
+                      - dealer
+                      - playerTotal
+                      - dealerTotal
+                      - result
+                      - canDouble
+                      - actingPlayerId
+                      - rivals
+                      - deltas
+                    properties:
+                      handId:
+                        type: integer
+                      kind:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - solo
+                          - type: string
+                            enum:
+                              - interlude
+                      position:
+                        additionalProperties: false
+                        type: object
+                        required:
+                          - index
+                          - total
+                          - level
+                        properties:
+                          index:
+                            type: integer
+                          total:
+                            type: integer
+                          level:
+                            type: integer
+                        nullable: true
+                      playerId:
+                        type: string
+                      phase:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - betting
+                          - type: string
+                            enum:
+                              - player
+                          - type: string
+                            enum:
+                              - done
+                      bet:
+                        type: integer
+                      minBet:
+                        type: integer
+                      maxBet:
+                        type: integer
+                      player:
+                        type: array
+                        items:
+                          type: string
+                      dealer:
+                        type: array
+                        items:
+                          type: string
+                      playerTotal:
+                        type: integer
+                      dealerTotal:
+                        type: integer
+                        nullable: true
+                      result:
+                        anyOf:
+                          - anyOf:
+                              - type: string
+                                enum:
+                                  - blackjack
+                              - type: string
+                                enum:
+                                  - win
+                              - type: string
+                                enum:
+                                  - push
+                              - type: string
+                                enum:
+                                  - lose
+                              - type: string
+                                enum:
+                                  - bust
+                              - type: string
+                                enum:
+                                  - skipped
+                          - type: object
+                            nullable: true
+                            enum:
+                              - null
+                      canDouble:
+                        type: boolean
+                      actingPlayerId:
+                        type: string
+                        nullable: true
+                      rivals:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - playerId
+                            - stack
+                          properties:
+                            playerId:
+                              type: string
+                            stack:
+                              type: integer
+                      deltas:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - playerId
+                            - delta
+                          properties:
+                            playerId:
+                              type: string
+                            delta:
+                              type: integer
                     nullable: true
         4XX:
           description: Default Response
@@ -5103,6 +7728,10 @@ paths:
                   - canHost
                   - isHost
                   - hand
+                  - game
+                  - bjMinBet
+                  - bjInterlude
+                  - blackjack
                 properties:
                   id:
                     type: string
@@ -5413,6 +8042,155 @@ paths:
                                 type: string
                             handName:
                               type: string
+                    nullable: true
+                  game:
+                    anyOf:
+                      - type: string
+                        enum:
+                          - holdem
+                      - type: string
+                        enum:
+                          - blackjack
+                  bjMinBet:
+                    type: integer
+                  bjInterlude:
+                    type: boolean
+                  blackjack:
+                    additionalProperties: false
+                    title: BjView
+                    type: object
+                    required:
+                      - handId
+                      - kind
+                      - position
+                      - playerId
+                      - phase
+                      - bet
+                      - minBet
+                      - maxBet
+                      - player
+                      - dealer
+                      - playerTotal
+                      - dealerTotal
+                      - result
+                      - canDouble
+                      - actingPlayerId
+                      - rivals
+                      - deltas
+                    properties:
+                      handId:
+                        type: integer
+                      kind:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - solo
+                          - type: string
+                            enum:
+                              - interlude
+                      position:
+                        additionalProperties: false
+                        type: object
+                        required:
+                          - index
+                          - total
+                          - level
+                        properties:
+                          index:
+                            type: integer
+                          total:
+                            type: integer
+                          level:
+                            type: integer
+                        nullable: true
+                      playerId:
+                        type: string
+                      phase:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - betting
+                          - type: string
+                            enum:
+                              - player
+                          - type: string
+                            enum:
+                              - done
+                      bet:
+                        type: integer
+                      minBet:
+                        type: integer
+                      maxBet:
+                        type: integer
+                      player:
+                        type: array
+                        items:
+                          type: string
+                      dealer:
+                        type: array
+                        items:
+                          type: string
+                      playerTotal:
+                        type: integer
+                      dealerTotal:
+                        type: integer
+                        nullable: true
+                      result:
+                        anyOf:
+                          - anyOf:
+                              - type: string
+                                enum:
+                                  - blackjack
+                              - type: string
+                                enum:
+                                  - win
+                              - type: string
+                                enum:
+                                  - push
+                              - type: string
+                                enum:
+                                  - lose
+                              - type: string
+                                enum:
+                                  - bust
+                              - type: string
+                                enum:
+                                  - skipped
+                          - type: object
+                            nullable: true
+                            enum:
+                              - null
+                      canDouble:
+                        type: boolean
+                      actingPlayerId:
+                        type: string
+                        nullable: true
+                      rivals:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - playerId
+                            - stack
+                          properties:
+                            playerId:
+                              type: string
+                            stack:
+                              type: integer
+                      deltas:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - playerId
+                            - delta
+                          properties:
+                            playerId:
+                              type: string
+                            delta:
+                              type: integer
                     nullable: true
         4XX:
           description: Default Response
@@ -5480,6 +8258,10 @@ paths:
                   - canHost
                   - isHost
                   - hand
+                  - game
+                  - bjMinBet
+                  - bjInterlude
+                  - blackjack
                 properties:
                   id:
                     type: string
@@ -5791,6 +8573,155 @@ paths:
                             handName:
                               type: string
                     nullable: true
+                  game:
+                    anyOf:
+                      - type: string
+                        enum:
+                          - holdem
+                      - type: string
+                        enum:
+                          - blackjack
+                  bjMinBet:
+                    type: integer
+                  bjInterlude:
+                    type: boolean
+                  blackjack:
+                    additionalProperties: false
+                    title: BjView
+                    type: object
+                    required:
+                      - handId
+                      - kind
+                      - position
+                      - playerId
+                      - phase
+                      - bet
+                      - minBet
+                      - maxBet
+                      - player
+                      - dealer
+                      - playerTotal
+                      - dealerTotal
+                      - result
+                      - canDouble
+                      - actingPlayerId
+                      - rivals
+                      - deltas
+                    properties:
+                      handId:
+                        type: integer
+                      kind:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - solo
+                          - type: string
+                            enum:
+                              - interlude
+                      position:
+                        additionalProperties: false
+                        type: object
+                        required:
+                          - index
+                          - total
+                          - level
+                        properties:
+                          index:
+                            type: integer
+                          total:
+                            type: integer
+                          level:
+                            type: integer
+                        nullable: true
+                      playerId:
+                        type: string
+                      phase:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - betting
+                          - type: string
+                            enum:
+                              - player
+                          - type: string
+                            enum:
+                              - done
+                      bet:
+                        type: integer
+                      minBet:
+                        type: integer
+                      maxBet:
+                        type: integer
+                      player:
+                        type: array
+                        items:
+                          type: string
+                      dealer:
+                        type: array
+                        items:
+                          type: string
+                      playerTotal:
+                        type: integer
+                      dealerTotal:
+                        type: integer
+                        nullable: true
+                      result:
+                        anyOf:
+                          - anyOf:
+                              - type: string
+                                enum:
+                                  - blackjack
+                              - type: string
+                                enum:
+                                  - win
+                              - type: string
+                                enum:
+                                  - push
+                              - type: string
+                                enum:
+                                  - lose
+                              - type: string
+                                enum:
+                                  - bust
+                              - type: string
+                                enum:
+                                  - skipped
+                          - type: object
+                            nullable: true
+                            enum:
+                              - null
+                      canDouble:
+                        type: boolean
+                      actingPlayerId:
+                        type: string
+                        nullable: true
+                      rivals:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - playerId
+                            - stack
+                          properties:
+                            playerId:
+                              type: string
+                            stack:
+                              type: integer
+                      deltas:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          type: object
+                          required:
+                            - playerId
+                            - delta
+                          properties:
+                            playerId:
+                              type: string
+                            delta:
+                              type: integer
+                    nullable: true
         4XX:
           description: Default Response
           content:
@@ -5855,6 +8786,10 @@ paths:
                       - canHost
                       - isHost
                       - hand
+                      - game
+                      - bjMinBet
+                      - bjInterlude
+                      - blackjack
                     properties:
                       id:
                         type: string
@@ -6165,6 +9100,155 @@ paths:
                                     type: string
                                 handName:
                                   type: string
+                        nullable: true
+                      game:
+                        anyOf:
+                          - type: string
+                            enum:
+                              - holdem
+                          - type: string
+                            enum:
+                              - blackjack
+                      bjMinBet:
+                        type: integer
+                      bjInterlude:
+                        type: boolean
+                      blackjack:
+                        additionalProperties: false
+                        title: BjView
+                        type: object
+                        required:
+                          - handId
+                          - kind
+                          - position
+                          - playerId
+                          - phase
+                          - bet
+                          - minBet
+                          - maxBet
+                          - player
+                          - dealer
+                          - playerTotal
+                          - dealerTotal
+                          - result
+                          - canDouble
+                          - actingPlayerId
+                          - rivals
+                          - deltas
+                        properties:
+                          handId:
+                            type: integer
+                          kind:
+                            anyOf:
+                              - type: string
+                                enum:
+                                  - solo
+                              - type: string
+                                enum:
+                                  - interlude
+                          position:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - index
+                              - total
+                              - level
+                            properties:
+                              index:
+                                type: integer
+                              total:
+                                type: integer
+                              level:
+                                type: integer
+                            nullable: true
+                          playerId:
+                            type: string
+                          phase:
+                            anyOf:
+                              - type: string
+                                enum:
+                                  - betting
+                              - type: string
+                                enum:
+                                  - player
+                              - type: string
+                                enum:
+                                  - done
+                          bet:
+                            type: integer
+                          minBet:
+                            type: integer
+                          maxBet:
+                            type: integer
+                          player:
+                            type: array
+                            items:
+                              type: string
+                          dealer:
+                            type: array
+                            items:
+                              type: string
+                          playerTotal:
+                            type: integer
+                          dealerTotal:
+                            type: integer
+                            nullable: true
+                          result:
+                            anyOf:
+                              - anyOf:
+                                  - type: string
+                                    enum:
+                                      - blackjack
+                                  - type: string
+                                    enum:
+                                      - win
+                                  - type: string
+                                    enum:
+                                      - push
+                                  - type: string
+                                    enum:
+                                      - lose
+                                  - type: string
+                                    enum:
+                                      - bust
+                                  - type: string
+                                    enum:
+                                      - skipped
+                              - type: object
+                                nullable: true
+                                enum:
+                                  - null
+                          canDouble:
+                            type: boolean
+                          actingPlayerId:
+                            type: string
+                            nullable: true
+                          rivals:
+                            type: array
+                            items:
+                              additionalProperties: false
+                              type: object
+                              required:
+                                - playerId
+                                - stack
+                              properties:
+                                playerId:
+                                  type: string
+                                stack:
+                                  type: integer
+                          deltas:
+                            type: array
+                            items:
+                              additionalProperties: false
+                              type: object
+                              required:
+                                - playerId
+                                - delta
+                              properties:
+                                playerId:
+                                  type: string
+                                delta:
+                                  type: integer
                         nullable: true
         4XX:
           description: Default Response
