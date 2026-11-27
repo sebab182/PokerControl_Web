@@ -19,10 +19,11 @@ import {
   type BjAction, type BjState,
 } from '@pokercontrol/core';
 import type { ApiBjView } from '@pokercontrol/contracts';
-import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, sql } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import { ApiError } from '../errors';
 import type { Conn, Tx } from '../repo';
+import { finalizeNets, gameNets, groupPlayers, plays } from './game-nets';
 import { closeSessionTx, defaultSessionName } from './sessions';
 
 type TableRow = typeof schema.pokerTables.$inferSelect;
@@ -49,37 +50,10 @@ async function seatRows(db: Conn, tableId: string): Promise<SeatRow[]> {
     .orderBy(asc(schema.pokerSeats.joinedAt), asc(schema.pokerSeats.playerId));
 }
 
-const ONLINE_MS = 45_000;
-
-/** Tiene turno: sentado y conectado (o sentado a mano por un administrador). Los demás del grupo solo cubren la apuesta. */
-const plays = (s: SeatRow, now = Date.now()): boolean =>
-  s.status === 'sitting' && (s.addedBy !== null || now - s.lastSeenAt.getTime() < ONLINE_MS);
-
 const deadlineFor = (table: Pick<TableRow, 'turnSeconds'>): Date | null =>
   table.turnSeconds > 0 ? new Date(Date.now() + table.turnSeconds * 1000) : null;
 
 // ─── Saldos y partida de blackjack ───────────────────────────────────────────
-
-/**
- * Saldo de cada participante de una partida de blackjack: lo que ganó menos lo que perdió en sus manos. Arranca en 0
- * (no hay compra inicial) y puede ser negativo.
- */
-export async function bjNets(db: Conn, sessionId: string | null): Promise<Map<string, number>> {
-  if (!sessionId) return new Map();
-  const parts = await db.select({ playerId: schema.sessionParticipants.playerId }).from(schema.sessionParticipants)
-    .where(eq(schema.sessionParticipants.sessionId, sessionId));
-  const nets = new Map(parts.map(p => [p.playerId, 0]));
-  const hands = await db.select({ state: schema.blackjackHands.state }).from(schema.blackjackHands)
-    .where(and(eq(schema.blackjackHands.sessionId, sessionId), eq(schema.blackjackHands.status, 'done')));
-  for (const h of hands) for (const [id, delta] of Object.entries(h.state.deltas)) nets.set(id, (nets.get(id) ?? 0) + delta);
-  return nets;
-}
-
-/** Los jugadores activos del grupo: la banca del blackjack, estén o no conectados. */
-export async function groupPlayers(db: Conn, groupId: string): Promise<{ id: string; userId: string | null }[]> {
-  return db.select({ id: schema.players.id, userId: schema.players.userId }).from(schema.players)
-    .where(and(eq(schema.players.groupId, groupId), isNull(schema.players.archivedAt)));
-}
 
 /** Abre la partida de blackjack del interludio: una partida propia, con todo el grupo y sin compra inicial. */
 async function openInterludeSession(tx: Tx, table: TableRow, bigBlind: number): Promise<string> {
@@ -120,14 +94,6 @@ export async function closeInterlude(tx: Tx, table: TableRow): Promise<void> {
   await tx.update(schema.pokerTables).set({ bjSessionId: null }).where(eq(schema.pokerTables.id, table.id));
 }
 
-/** Deja como resultado de cada participante su saldo de blackjack (para cerrar la partida). */
-export async function finalizeNets(tx: Tx, sessionId: string): Promise<void> {
-  for (const [playerId, net] of await bjNets(tx, sessionId)) {
-    await tx.update(schema.sessionParticipants).set({ finalAmount: net })
-      .where(and(eq(schema.sessionParticipants.sessionId, sessionId), eq(schema.sessionParticipants.playerId, playerId)));
-  }
-}
-
 // ─── Reparto ─────────────────────────────────────────────────────────────────
 
 /**
@@ -138,7 +104,7 @@ async function startHand(
   tx: Tx, table: TableRow, playerId: string, kind: 'solo' | 'interlude', step: number, bigBlind: number,
 ): Promise<BjState | null> {
   const sessionId = (kind === 'interlude' ? table.bjSessionId : table.sessionId) as string;
-  const bank = [...(await bjNets(tx, sessionId))].map(([id, stack]) => ({ id, stack }));
+  const bank = [...(await gameNets(tx, sessionId))].map(([id, stack]) => ({ id, stack }));
   const me = bank.find(s => s.id === playerId);
   const rivals = bank.filter(s => s.id !== playerId);
   if (!me || rivals.length === 0) return null;

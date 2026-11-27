@@ -237,6 +237,13 @@ describe('playerStats y ranking', () => {
     expect(playerStats(players[0], '1', onlyBj, [])).toBeNull();
     expect(buildPlayerReport('1', onlyBj)).toBeNull();
   });
+  it('las partidas de ruleta también se registran aparte y no cuentan en las estadísticas', () => {
+    const roulette = [{ ...closed('ru', 't1', '2026-03-01T22:00:00.000Z', [participant('1', 'Ana', [], 300), participant('2', 'Beto', [], -300)]), game: 'roulette' as const }];
+    expect(playerHistory([...sessions, ...roulette], '1').map(h => h.sessionId)).toEqual(['b', 'a']);
+    expect(playerStats(players[0], '1', roulette, [])).toBeNull();
+    expect(buildPlayerReport('1', roulette)).toBeNull();
+    expect(globalRanking(players, [...sessions, ...roulette], [])).toEqual(globalRanking(players, sessions, []));
+  });
   it('devuelve null sin actividad', () => {
     expect(playerStats(undefined, '9', sessions, [])).toBeNull();
   });

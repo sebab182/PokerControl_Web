@@ -4,13 +4,13 @@ import type {
   Debt, Player, PlayerHistoryEntry, PlayerStats, RankingEntry, Session,
 } from './types';
 
-/** Las partidas de blackjack se registran aparte: no cuentan en el ranking ni en las estadísticas (sí en saldos y deudas). */
-export const isBlackjackSession = (s: Pick<Session, 'game'>): boolean => s.game === 'blackjack';
+/** Las partidas de blackjack y de ruleta se registran aparte: no cuentan en el ranking ni en las estadísticas (sí en saldos y deudas). */
+export const isSideGameSession = (s: Pick<Session, 'game'>): boolean => !!s.game && s.game !== 'poker';
 
 /** Historial de un jugador en partidas cerradas, de la más nueva a la más vieja. */
 export function playerHistory(sessions: Session[], playerId: string, seasonId?: string): PlayerHistoryEntry[] {
   return sessions
-    .filter(s => s.status === 'closed' && !isBlackjackSession(s) && (!seasonId || s.seasonId === seasonId))
+    .filter(s => s.status === 'closed' && !isSideGameSession(s) && (!seasonId || s.seasonId === seasonId))
     .map((s): PlayerHistoryEntry | null => {
       const participant = s.participants.find(p => p.playerId === playerId);
       if (!participant || participant.finalAmount === null) return null;

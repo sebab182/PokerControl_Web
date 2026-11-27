@@ -9,3 +9,4 @@ export * from './share';
 export * from './balances';
 export * from './holdem';
 export * from './blackjack';
+export * from './roulette';

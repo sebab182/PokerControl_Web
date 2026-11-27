@@ -820,6 +820,49 @@ test('blackjack contra todos con un solo conectado: el resto del grupo es la ban
   await expect(page.getByRole('group', { name: 'Tu apuesta' })).toBeVisible({ timeout: 10000 });
 });
 
+test('ruleta contra todos: apostar, listo, gira una sola bola y los saldos suman 0', async ({ page, browser }) => {
+  test.setTimeout(90000);
+  const { page2, context2 } = await twoSeated(page, browser);
+  await page.getByRole('button', { name: /Iniciar partida \(2 jugadores\)/ }).click();
+  await page.getByTestId('game-roulette').click();
+  await expect(page.getByLabel('Ficha mínima')).toBeVisible();
+  await expect(page.getByLabel('Apuesta máxima por ronda')).toBeVisible();
+  await expect(page.getByLabel('Segundos para apostar')).toBeVisible();
+  await expect(page.getByLabel('Entrada por jugador')).toHaveCount(0);
+  await page.getByRole('dialog').getByRole('button', { name: 'Iniciar partida' }).click();
+
+  for (const p of [page, page2]) await expect(p.getByTestId('rou')).toBeVisible({ timeout: 15000 });
+  await checkPage(page, 'ruleta: tablero');
+  // Seba apuesta 20 al rojo y 10 al 7; Nico, 30 al negro.
+  await page.getByTestId('rou-chip-2').click();
+  await page.getByTestId('rou-cell-red').click();
+  await page.getByTestId('rou-chip-1').click();
+  await page.getByTestId('rou-cell-straight-7').click();
+  await expect(page.getByTestId('rou-total')).toContainText('$30');
+  await page.getByTestId('rou-ready').click();
+  await expect(page.getByTestId('rou-status')).toBeVisible({ timeout: 10000 });
+  await page2.getByTestId('rou-chip-5').click();
+  await page2.getByTestId('rou-cell-black').click();
+  await page2.getByTestId('rou-chip-1').click();
+  await page2.getByTestId('rou-cell-black').click();
+  await page2.getByTestId('rou-cell-black').click();
+  await page2.getByTestId('rou-ready').click();
+
+  // Listos los dos: gira una sola bola y los dos ven el mismo número.
+  for (const p of [page, page2]) await expect(p.getByTestId('rou-result')).toBeVisible({ timeout: 15000 });
+  const last = async (p: Page) => (await p.getByTestId('rou-last').innerText()).trim();
+  expect(await last(page)).toBe(await last(page2));
+  await checkPage(page, 'ruleta: resultado');
+  await checkPage(page2, 'ruleta: resultado (lector)');
+  expect((await bjStacks(page)).reduce((a, b) => a + b, 0)).toBe(0);
+  expect((await bjStacks(page2)).reduce((a, b) => a + b, 0)).toBe(0);
+
+  await page.getByRole('button', { name: 'Cerrar partida' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Cerrar partida' }).click();
+  await expect(page.getByRole('link', { name: 'Ver resultados y saldos' })).toBeVisible({ timeout: 10000 });
+  await context2.close();
+});
+
 test('póker: al subir las ciegas todos juegan una mano de blackjack y después sigue el póker', async ({ page, browser, request, isMobile }) => {
   test.setTimeout(120000);
   const { page2, context2 } = await twoSeated(page, browser);

@@ -134,6 +134,13 @@
       "when": 1794686898817,
       "tag": "0018_blackjack_max_bet",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1795822374126,
+      "tag": "0019_roulette",
+      "breakpoints": true
     }
   ]
 }
