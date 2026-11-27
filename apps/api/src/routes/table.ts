@@ -8,7 +8,7 @@
 
 import { randomInt, randomUUID } from 'node:crypto';
 import {
-  BjActBody, BjBetBody, CloseTableResponse, ErrorResponse, GroupParams, RebuyBody, RevealBody, SeatParams, StartTableBody, TableActionBody, TableView,
+  BjActBody, BjBetBody, CloseTableResponse, ErrorResponse, GroupParams, RouletteBetsBody, RebuyBody, RevealBody, SeatParams, StartTableBody, TableActionBody, TableView,
   type ApiTableView,
 } from '@pokercontrol/contracts';
 import {
@@ -20,7 +20,9 @@ import type { FastifyInstance } from 'fastify';
 import * as schema from '../db/schema';
 import type { LoggedAction } from '../db/schema';
 import { ApiError, notFound } from '../errors';
-import { activeBj, bjAct, bjBet, bjNets, bjTimeout, bjView, closeInterlude, dealNext, finalizeNets, groupPlayers, latestBj } from './blackjack';
+import { activeBj, bjAct, bjBet, bjTimeout, bjView, closeInterlude, dealNext, latestBj } from './blackjack';
+import { finalizeNets, gameNets, groupPlayers } from './game-nets';
+import { hasOpenBets, latestRound, placeBets, rouletteTimeout, rouletteView, settleOpenRound, spinActive } from './roulette';
 import { recordBoughtInHand, recordHandResult, recordHandStart } from '../hand-history';
 import { idempotent } from '../idempotency';
 import type { Conn, Tx } from '../repo';
@@ -158,17 +160,20 @@ async function buildView(db: Conn, table: TableRow, viewer: Viewer): Promise<Api
     }
   }
 
+  // La ronda de ruleta en curso (o la última): se arma con las apuestas, que no se ven hasta que gira.
+  const rouletteState = table.game === 'roulette' && table.status === 'playing'
+    ? await rouletteView(db, table, await latestRound(db, table.id), { myId, managed: managedIds }) : null;
   // Saldo de cada uno en el blackjack contra todos: lo ganado menos lo perdido (no hay compra inicial y puede ser negativo).
-  const bjNet = table.game === 'blackjack' && table.sessionId ? await bjNets(db, table.sessionId) : new Map<string, number>();
+  const bjNet = table.game !== 'holdem' && table.sessionId ? await gameNets(db, table.sessionId) : new Map<string, number>();
   // La mano de blackjack se muestra mientras sea lo más reciente de la partida en curso (en el póker, hasta que se reparta otra mano).
   const bjRow = await latestBj(db, table.id);
   // Las manos del interludio se registran en su propia partida, distinta de la de póker: se reconocen por la mano más nueva.
-  const showBj = table.status === 'playing' && !!bjRow
+  const showBj = table.status === 'playing' && !!bjRow && table.game !== 'roulette'
     && (table.game === 'blackjack' ? bjRow.sessionId === table.sessionId : !row || bjRow.startedAt.getTime() > row.startedAt.getTime());
   const blackjack = showBj ? await bjView(db, table, bjRow, { myId, managed: managedIds }) : null;
 
   let hand: ApiTableView['hand'] = null;
-  if (row && state && table.game !== 'blackjack') {
+  if (row && state && table.game === 'holdem') {
     const v = publicView(state, [...(myId ? [myId] : []), ...managedIds]);
     const actor = live && state.toAct >= 0 ? state.players[state.toAct].id : null;
     const actingFor = actor && (actor === myId || managedIds.has(actor)) ? actor : null;
@@ -230,7 +235,7 @@ async function buildView(db: Conn, table: TableRow, viewer: Viewer): Promise<Api
     showAllCards: table.showAllCards,
     turnDeadline: (live || blackjack?.phase !== undefined && blackjack.phase !== 'done') && table.turnDeadline ? table.turnDeadline.toISOString() : null,
     serverTime: new Date(now).toISOString(),
-    maxRebuy: table.game === 'blackjack' ? 0 : maxRebuy(seats.map(x => x.seat), live),
+    maxRebuy: table.game !== 'holdem' ? 0 : maxRebuy(seats.map(x => x.seat), live),
     myPlayerId: myId,
     host: await hostName(db, table, seats),
     canHost: mayHost(table, seats.map(x => x.seat), viewer, myId, now),
@@ -239,13 +244,17 @@ async function buildView(db: Conn, table: TableRow, viewer: Viewer): Promise<Api
     game: table.game,
     bjMinBet: table.bjMinBet,
     bjMaxBet: table.bjMaxBet,
+    rouMinBet: table.rouMinBet,
+    rouMaxBet: table.rouMaxBet,
+    rouBetSeconds: table.rouBetSeconds,
+    roulette: rouletteState,
     bjInterlude: table.bjInterlude,
     blackjack,
     seats: seats.map(({ seat, name }) => ({
       playerId: seat.playerId,
       name,
       // Durante una mano, el stack real de quien juega está en el estado de la mano. En el blackjack no hay fichas: es el saldo.
-      stack: table.game === 'blackjack' ? bjNet.get(seat.playerId) ?? 0 : live?.players.find(p => p.id === seat.playerId)?.stack ?? seat.stack,
+      stack: table.game !== 'holdem' ? bjNet.get(seat.playerId) ?? 0 : live?.players.find(p => p.id === seat.playerId)?.stack ?? seat.stack,
       status: seat.status,
       online: isPresent(seat, now),
       isYou: seat.playerId === myId,
@@ -253,7 +262,7 @@ async function buildView(db: Conn, table: TableRow, viewer: Viewer): Promise<Api
       rebuys: Math.max(0, (purchases.get(seat.playerId)?.count ?? 0) - 1),
       bought: purchases.get(seat.playerId)?.total ?? 0,
       // Con las fichas de la mesa (sin contar lo que está en juego en la mano) menos lo comprado; en el blackjack, el saldo.
-      net: table.game === 'blackjack' ? bjNet.get(seat.playerId) ?? 0 : purchases.has(seat.playerId) ? seat.stack - (purchases.get(seat.playerId)?.total ?? 0) : 0,
+      net: table.game !== 'holdem' ? bjNet.get(seat.playerId) ?? 0 : purchases.has(seat.playerId) ? seat.stack - (purchases.get(seat.playerId)?.total ?? 0) : 0,
     })),
   };
 }
@@ -334,6 +343,8 @@ const bump = sql`${schema.pokerTables.version} + 1`;
  * interludio, al terminar el reloj de las ciegas ya se corrió, así que la mesa se vuelve a leer antes de repartir.
  */
 async function dealNextHand(tx: Tx, table: TableRow): Promise<void> {
+  // En la ruleta no se reparte: la ronda se abre con la primera apuesta.
+  if (table.game === 'roulette') return;
   const blinds = currentBlinds(table);
   if ((await dealNext(tx, table, { step: blinds.step, big: blinds.big })) === 'dealt') return;
   const [fresh] = await tx.select().from(schema.pokerTables).where(eq(schema.pokerTables.id, table.id));
@@ -479,6 +490,15 @@ export async function sweepTurns(app: FastifyInstance): Promise<string[]> {
         const [fresh] = await tx.select({ version: schema.pokerTables.version }).from(schema.pokerTables).where(eq(schema.pokerTables.id, table.id));
         return { groupId: table.groupId, version: fresh.version };
       }
+      // Ruleta: se vence el tiempo para apostar y gira la bola.
+      if (table.game === 'roulette') {
+        if (!(await rouletteTimeout(tx, table))) {
+          await tx.update(schema.pokerTables).set({ turnDeadline: null }).where(eq(schema.pokerTables.id, table.id));
+          return null;
+        }
+        const [fresh] = await tx.select({ version: schema.pokerTables.version }).from(schema.pokerTables).where(eq(schema.pokerTables.id, table.id));
+        return { groupId: table.groupId, version: fresh.version };
+      }
       const hand = await activeHand(tx, table.id);
       const state = hand?.state as HandState | undefined;
       const legal = state ? legalActions(state) : null;
@@ -532,11 +552,11 @@ async function sitPlayer(
   let stack = 0;
   if (table.status === 'playing') {
     // En el blackjack no hay compra: se entra con saldo 0.
-    stack = table.game === 'blackjack' ? 0 : table.buyIn;
+    stack = table.game !== 'holdem' ? 0 : table.buyIn;
     const [participant] = await tx.insert(schema.sessionParticipants)
       .values({ groupId: table.groupId, sessionId: table.sessionId as string, playerId: p.id }).onConflictDoNothing()
       .returning({ id: schema.sessionParticipants.id });
-    if (participant && table.game !== 'blackjack') await tx.insert(schema.buys).values({ participantId: participant.id, amount: table.buyIn, occurredAt: new Date() });
+    if (participant && table.game === 'holdem') await tx.insert(schema.buys).values({ participantId: participant.id, amount: table.buyIn, occurredAt: new Date() });
   }
   await tx.insert(schema.pokerSeats).values({
     tableId: table.id, groupId: table.groupId, playerId: p.id, userId: p.userId, addedBy: by, stack,
@@ -558,6 +578,8 @@ async function standPlayer(tx: Tx, table: TableRow, playerId: string, self = fal
     await tx.delete(schema.pokerSeats).where(key);
     return;
   }
+  // Con apuestas hechas en la ruleta no se puede levantar hasta que gire la bola.
+  if (await hasOpenBets(tx, table.id, playerId)) throw new ApiError(409, 'in_hand', 'Esperá a que gire la ruleta.');
   // En una mano de blackjack todos están expuestos (cubren la apuesta): nadie se levanta hasta que termine.
   if (await activeBj(tx, table.id)) throw new ApiError(409, 'in_hand', 'Esperá a que termine la mano de blackjack.');
   const hand = await activeHand(tx, table.id);
@@ -571,7 +593,7 @@ async function standPlayer(tx: Tx, table: TableRow, playerId: string, self = fal
     await tx.update(schema.pokerTables).set({ turnDeadline: new Date() }).where(eq(schema.pokerTables.id, table.id));
   }
   // Se fue una persona (no un jugador manejado por un administrador): ¿queda alguna?
-  if (seat.userId !== null && table.game !== 'blackjack') {
+  if (seat.userId !== null && table.game === 'holdem') {
     const seats = (await loadSeats(tx, table.id)).map(x => x.seat);
     if (!seats.some(x => x.userId !== null && x.status === 'sitting')) await cancelGame(tx, table);
   }
@@ -598,7 +620,7 @@ async function cancelGame(tx: Tx, table: TableRow): Promise<void> {
  */
 async function rebuyPlayer(tx: Tx, table: TableRow, playerId: string, amount?: number): Promise<void> {
   if (table.status !== 'playing') throw new ApiError(409, 'not_playing', 'No hay una partida en juego.');
-  if (table.game === 'blackjack') throw new ApiError(409, 'no_rebuy', 'En el blackjack no hay compras: se juega con saldo y puede quedar en negativo.');
+  if (table.game !== 'holdem') throw new ApiError(409, 'no_rebuy', 'No hay compras: se juega con saldo y puede quedar en negativo.');
   const seats = (await loadSeats(tx, table.id)).map(s => s.seat);
   const seat = seats.find(s => s.playerId === playerId);
   if (!seat) throw notFound('Asiento');
@@ -765,6 +787,9 @@ export async function tableRoutes(app: FastifyInstance) {
         game: req.body.game ?? 'holdem',
         bjMinBet: req.body.bjMinBet ?? table.bjMinBet,
         bjMaxBet: req.body.bjMaxBet ?? Math.max(table.bjMaxBet, (req.body.bjMinBet ?? table.bjMinBet) * 10),
+        rouMinBet: req.body.rouMinBet ?? table.rouMinBet,
+        rouMaxBet: req.body.rouMaxBet ?? Math.max(table.rouMaxBet, (req.body.rouMinBet ?? table.rouMinBet) * 10),
+        rouBetSeconds: req.body.rouBetSeconds ?? table.rouBetSeconds,
         bjInterlude: req.body.bjInterlude ?? table.bjInterlude,
       };
       if (cfg.blindMinutes !== 0 && cfg.blindMinutes < 5) {
@@ -776,12 +801,13 @@ export async function tableRoutes(app: FastifyInstance) {
       if (cfg.smallBlind > cfg.bigBlind) throw new ApiError(422, 'invalid_blinds', 'La ciega chica no puede superar a la grande.');
       if (cfg.game === 'holdem' && cfg.buyIn < cfg.bigBlind * 2) throw new ApiError(422, 'invalid_buy_in', 'La entrada debe ser al menos el doble de la ciega grande.');
       if (cfg.game === 'blackjack' && cfg.bjMaxBet < cfg.bjMinBet) throw new ApiError(422, 'invalid_bet', 'La apuesta máxima no puede ser menor que la mínima.');
+      if (cfg.game === 'roulette' && cfg.rouMaxBet < cfg.rouMinBet) throw new ApiError(422, 'invalid_bet', 'La apuesta máxima no puede ser menor que la ficha mínima.');
 
       const seats = (await loadSeats(tx, table.id)).map(s => s.seat);
       const present = seats.filter(s => isPresent(s));
       if (playerId && !present.some(s => s.playerId === playerId)) throw new ApiError(409, 'not_seated', 'Sentate en la mesa para iniciar la partida.');
-      const blackjack = cfg.game === 'blackjack';
-      // El blackjack contra todos se juega con uno solo conectado: la banca son todos los jugadores del grupo.
+      // Blackjack y ruleta contra todos: sin compra inicial, con uno solo conectado y la banca es todo el grupo.
+      const blackjack = cfg.game !== 'holdem';
       if (present.length < (blackjack ? 1 : 2)) {
         throw new ApiError(422, 'not_enough_players', blackjack ? 'Hace falta al menos 1 jugador conectado.' : 'Hacen falta al menos 2 jugadores conectados.');
       }
@@ -800,8 +826,9 @@ export async function tableRoutes(app: FastifyInstance) {
       const sessionId = randomUUID();
       const now = new Date();
       await tx.insert(schema.sessions).values({
-        id: sessionId, groupId, seasonId: season.id, name: `${blackjack ? 'Blackjack' : 'Mesa online'} · ${defaultSessionName(now, req.group.timezone)}`,
-        status: 'active', createdAt: now, game: blackjack ? 'blackjack' : 'poker',
+        id: sessionId, groupId, seasonId: season.id,
+        name: `${cfg.game === 'blackjack' ? 'Blackjack' : cfg.game === 'roulette' ? 'Ruleta' : 'Mesa online'} · ${defaultSessionName(now, req.group.timezone)}`,
+        status: 'active', createdAt: now, game: cfg.game === 'holdem' ? 'poker' : cfg.game,
       });
       // Póker: juegan los conectados. Blackjack contra todos: todos los jugadores del grupo entran con su entrada (son la
       // banca, ganan o pierden aunque no estén conectados) y solo juegan turno los que están conectados.
@@ -849,6 +876,7 @@ export async function tableRoutes(app: FastifyInstance) {
     if (!mayHost(table, (await loadSeats(tx, table.id)).map(s => s.seat), viewer, me)) {
       throw new ApiError(403, 'not_host', 'Reparte quien inició la partida o un administrador.');
     }
+    if (table.game === 'roulette') throw new ApiError(409, 'no_deal', 'En la ruleta no se reparte: la ronda se abre con la primera apuesta.');
     if ((await activeHand(tx, table.id)) || (await activeBj(tx, table.id))) throw new ApiError(409, 'hand_in_progress', 'Hay una mano en juego.');
     await dealNextHand(tx, table);
   }));
@@ -886,6 +914,28 @@ export async function tableRoutes(app: FastifyInstance) {
     const playerId = await bjPlayer(tx, req, table, req.body.playerId);
     if (req.body.version !== table.version) throw new ApiError(409, 'stale_state', 'La mesa cambió. Actualizá y volvé a intentar.');
     await bjAct(tx, table, await activeBj(tx, table.id), playerId, req.body.action);
+  }));
+
+  // Ruleta: guardar las apuestas de un jugador en la ronda (la primera abre la ronda y arranca el tiempo) y girar ya.
+  app.put<G & { Body: Static<typeof RouletteBetsBody> }>('/table/roulette/bets', {
+    schema: { ...base, body: RouletteBetsBody, response: { 200: TableView, ...err } },
+  }, async req => mutate(req, async (tx, table) => {
+    const playerId = req.body.playerId
+      ? await managedPlayerId(tx, req, table, req.body.playerId)
+      : await requirePlayer(tx, req.group.id, req.user.sub);
+    await placeBets(tx, table, playerId, req.body.bets, req.body.ready);
+  }));
+
+  app.post<G>('/table/roulette/spin', {
+    schema: { ...base, response: { 200: TableView, ...err } },
+  }, async req => mutate(req, async (tx, table) => {
+    if (table.status !== 'playing' || table.game !== 'roulette') throw new ApiError(409, 'not_playing', 'No hay una partida de ruleta en juego.');
+    const viewer = viewerOf(req);
+    const me = viewer.canManage ? null : await requirePlayer(tx, req.group.id, req.user.sub);
+    if (!mayHost(table, (await loadSeats(tx, table.id)).map(s => s.seat), viewer, me)) {
+      throw new ApiError(403, 'not_host', 'Gira quien inició la partida o un administrador.');
+    }
+    await spinActive(tx, table);
   }));
 
   // Mostrar cartas: al terminar la mano; una sola carta, solo el único jugador que queda.
@@ -927,11 +977,13 @@ export async function tableRoutes(app: FastifyInstance) {
         throw new ApiError(403, 'not_host', 'Cierra la partida quien la inició o un administrador.');
       }
       if ((await activeHand(tx, table.id)) || (await activeBj(tx, table.id))) throw new ApiError(409, 'hand_in_progress', 'Esperá a que termine la mano.');
+      // Una ronda de ruleta con apuestas tiene que girar antes de cerrar; una vacía se descarta.
+      if ((await settleOpenRound(tx, table)) === 'open') throw new ApiError(409, 'hand_in_progress', 'Esperá a que gire la ruleta.');
       const sessionId = table.sessionId as string;
       // Si se cierra entre dos manos de un interludio, esa partida de blackjack también se cierra, con lo jugado hasta ahí.
       await closeInterlude(tx, table);
-      if (table.game === 'blackjack') {
-        // El resultado de cada uno es su saldo de blackjack (puede ser negativo); los fichas de los asientos no cuentan.
+      if (table.game !== 'holdem') {
+        // El resultado de cada uno es su saldo de blackjack o ruleta (puede ser negativo); las fichas de los asientos no cuentan.
         await finalizeNets(tx, sessionId);
       } else {
         for (const seat of seats) {

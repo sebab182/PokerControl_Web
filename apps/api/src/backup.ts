@@ -189,7 +189,7 @@ export function planImport(data: BackupData, now: string = new Date().toISOStrin
       status,
       closedAt: status === 'closed' ? validDate(s.closedAt) ?? createdAt : null,
       seasonId,
-      game: s.game === 'blackjack' ? 'blackjack' : 'poker',
+      game: s.game === 'blackjack' || s.game === 'roulette' ? s.game : 'poker',
       participants: [...participants.values()],
     });
   }

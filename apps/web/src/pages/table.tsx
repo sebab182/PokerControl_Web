@@ -1,4 +1,4 @@
-import type { ApiEmojiServerMessage, ApiGroup, ApiLiveCurrent, ApiLiveRoomRef, ApiPlayer, ApiRtcServerMessage, ApiTableAction, ApiTableView } from '@pokercontrol/contracts';
+import type { ApiEmojiServerMessage, ApiGroup, ApiLiveCurrent, ApiLiveRoomRef, ApiPlayer, ApiRouletteBet, ApiRtcServerMessage, ApiTableAction, ApiTableView } from '@pokercontrol/contracts';
 import { formatMoney, parseAmount } from '@pokercontrol/core';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
@@ -10,6 +10,7 @@ import {
 } from '../components/ui';
 import { useGroup } from '../context';
 import { BjDock, BjFelt, bjAsHand } from './blackjack';
+import { RouletteDock, RouletteFelt, rouAsHand, useRouletteSounds } from './roulette';
 import { LiveRoom } from './live';
 import { useTableSounds, useTickTock } from '../tableSounds';
 import { DECKS, type Deck, type TablePrefs, primeHandSound, useTablePrefs, useTurnAlert, useWakeLock } from '../tablePrefs';
@@ -189,7 +190,7 @@ function TableView() {
   const view = query.data;
   const me = view?.seats.find(s => s.isYou);
   // Mientras se muestra una mano de blackjack, la mano de póker (si la hay) queda de fondo.
-  const tableHand = view ? (view.blackjack ? bjAsHand(view, view.blackjack) : view.hand) : null;
+  const tableHand = view ? (view.blackjack ? bjAsHand(view, view.blackjack) : view.roulette ? rouAsHand(view, view.roulette) : view.hand) : null;
 
   // Con la pestaña en segundo plano, el título avisa cuando te toca.
   const myTurn = !!view?.hand?.legal || (!!view?.blackjack?.actingPlayerId && view.blackjack.phase !== 'done');
@@ -208,6 +209,7 @@ function TableView() {
   const handNo = view?.hand?.handNo;
   // Mezclar, repartir, retirarse, mostrar y el aviso de mano nueva (ver tableSounds.ts).
   useTableSounds(view, prefs);
+  useRouletteSounds(view?.roulette ?? null, prefs.sound);
   useEffect(() => {
     document.addEventListener('pointerdown', primeHandSound, { once: true });
     return () => document.removeEventListener('pointerdown', primeHandSound);
@@ -239,7 +241,7 @@ function TableView() {
   // Presencia: en la sala de espera se sienta solo al entrar; con partida en curso solo
   // renueva a quien ya está sentado (sumarse tiene costo: una nueva entrada).
   // En el blackjack contra todos el jugador del grupo ya tiene sus fichas: al conectarse se sienta solo y entra a jugar.
-  const canBeat = !!view && !!group.playerId && !standing && (view.status === 'waiting' || me?.status === 'sitting' || (view.game === 'blackjack' && !!me));
+  const canBeat = !!view && !!group.playerId && !standing && (view.status === 'waiting' || me?.status === 'sitting' || (view.game !== 'holdem' && !!me));
   const beat = useRef<() => void>(() => {});
   beat.current = () => {
     api<ApiTableView>(path('/table/join'), { method: 'POST' }).then(next => qc.setQueryData(queryKey, next)).catch(() => {});
@@ -301,6 +303,14 @@ function TableView() {
     });
   };
   const deal = () => run(() => post('deal'));
+  /** Ruleta: guarda las apuestas de un jugador (las tuyas o las de uno sin usuario que manejás) y si ya está listo. */
+  const rouPut = async (bets: ApiRouletteBet[], ready: boolean) => {
+    const acting = view.roulette?.actingPlayerId;
+    const next = await api<ApiTableView>(path('/table/roulette/bets'), {
+      method: 'PUT', body: { bets, ready, ...(acting && acting !== view.myPlayerId ? { playerId: acting } : {}) },
+    });
+    qc.setQueryData(queryKey, next);
+  };
   /** Apostar o jugar la mano de blackjack: si el turno es de un jugador sin usuario que manejás, se juega por él. */
   const bjPost = async (suffix: string, body: object) => {
     try {
@@ -362,7 +372,7 @@ function TableView() {
             : <Playing view={view} updatedAt={query.dataUpdatedAt} busy={busy} sound={prefs.sound}
               fab={prefs.emojis ? <EmojiFab placement="felt" live={live} onSend={socket.sendEmoji} /> : null} onJoin={join} onLeave={leave} onLeaveGame={() => { void leaveGame(); }} onDeal={deal} onClose={close}
               bar={tableHand && <TableBar view={view} hand={tableHand} updatedAt={query.dataUpdatedAt} live={live} onPrefs={() => setPrefsOpen(true)}
-                status={view.blackjack ? <BjStatus view={view} bj={view.blackjack} updatedAt={query.dataUpdatedAt} /> : undefined} />}
+                status={view.blackjack ? <BjStatus view={view} bj={view.blackjack} updatedAt={query.dataUpdatedAt} /> : view.roulette ? <RouletteStatus view={view} r={view.roulette} updatedAt={query.dataUpdatedAt} /> : undefined} />}
               onReveal={(playerIds, cards) => run(async () => {
                 // Varios a la vez (los jugadores que manejás): uno por vez, cada uno con la mesa ya actualizada.
                 for (const playerId of playerIds) {
@@ -380,6 +390,8 @@ function TableView() {
                   else throw e;
                 }
               })}
+              onRouBets={(bets, ready) => run(() => rouPut(bets, ready))}
+              onRouSpin={() => run(() => post('roulette/spin'))}
               onBjBet={amount => run(() => bjPost('bj/bet', { amount }))}
               onBjAct={action => run(() => bjPost('bj/act', { action }))}
               onRebuy={amount => run(() => post('rebuy', { amount }, { idempotent: true }))} />}
@@ -474,8 +486,8 @@ function Waiting({ view, canEdit, standing, busy, onJoin, onLeave, onStart, onAd
 }
 
 type StartConfig = {
-  game: 'holdem' | 'blackjack'; buyIn?: number; turnSeconds: number; smallBlind?: number; bigBlind?: number; blindMinutes?: number;
-  showAllCards?: boolean; bjMinBet?: number; bjMaxBet?: number; bjInterlude?: boolean;
+  game: 'holdem' | 'blackjack' | 'roulette'; buyIn?: number; turnSeconds: number; smallBlind?: number; bigBlind?: number; blindMinutes?: number;
+  showAllCards?: boolean; bjMinBet?: number; bjMaxBet?: number; rouMinBet?: number; rouMaxBet?: number; rouBetSeconds?: number; bjInterlude?: boolean;
 };
 
 function StartModal({ view, open, onClose, onStart, busy }: {
@@ -489,11 +501,24 @@ function StartModal({ view, open, onClose, onStart, busy }: {
   const [turn, setTurn] = useState(String(view.turnSeconds));
   const [blindMin, setBlindMin] = useState(String(view.blinds.minutes));
   const [showAll, setShowAll] = useState(view.showAllCards);
-  const [game, setGame] = useState<'holdem' | 'blackjack'>('holdem');
+  const [game, setGame] = useState<'holdem' | 'blackjack' | 'roulette'>('holdem');
+  const [rouMin, setRouMin] = useState(String(view.rouMinBet));
+  const [rouMax, setRouMax] = useState(String(view.rouMaxBet));
+  const [rouSecs, setRouSecs] = useState(String(view.rouBetSeconds));
   const [bjMin, setBjMin] = useState(String(view.bjMinBet));
   const [bjMax, setBjMax] = useState(String(view.bjMaxBet));
   const [interlude, setInterlude] = useState(view.bjInterlude);
   const submit = () => {
+    if (game === 'roulette') {
+      const min = parseAmount(rouMin);
+      const max = parseAmount(rouMax);
+      const secs = parseAmount(rouSecs);
+      if (min === null || max === null || !Number.isInteger(min) || !Number.isInteger(max) || min <= 0 || max <= 0) return setError('Ingresá montos enteros mayores a 0.');
+      if (max < min) return setError('La apuesta máxima no puede ser menor que la ficha mínima.');
+      if (secs === null || !Number.isInteger(secs) || secs < 10 || secs > 300) return setError('El tiempo para apostar es de 10 a 300 segundos.');
+      setError('');
+      return onStart({ game, rouMinBet: min, rouMaxBet: max, rouBetSeconds: secs, turnSeconds: view.turnSeconds });
+    }
     if (game === 'blackjack') {
       const min = parseAmount(bjMin);
       const max = parseAmount(bjMax);
@@ -528,9 +553,22 @@ function StartModal({ view, open, onClose, onStart, busy }: {
       <div className="row-wrap" role="group" aria-label="Juego" style={{ marginBottom: 12 }}>
         <Btn variant={game === 'holdem' ? 'primary' : 'ghost'} aria-pressed={game === 'holdem'} onClick={() => setGame('holdem')} data-testid="game-holdem">Póker</Btn>
         <Btn variant={game === 'blackjack' ? 'primary' : 'ghost'} aria-pressed={game === 'blackjack'} onClick={() => setGame('blackjack')} data-testid="game-blackjack">Blackjack contra todos</Btn>
+        <Btn variant={game === 'roulette' ? 'primary' : 'ghost'} aria-pressed={game === 'roulette'} onClick={() => setGame('roulette')} data-testid="game-roulette">Ruleta</Btn>
       </div>
       {game === 'holdem' && <TextField label="Entrada por jugador" value={buyIn} onChange={setBuyIn} decimal />}
-      {game === 'blackjack' ? (
+      {game === 'roulette' ? (
+        <>
+          <div className="row">
+            <TextField label="Ficha mínima" value={rouMin} onChange={setRouMin} decimal />
+            <TextField label="Apuesta máxima por ronda" value={rouMax} onChange={setRouMax} decimal />
+          </div>
+          <TextField label="Segundos para apostar" value={rouSecs} onChange={setRouSecs} decimal />
+          <p className="xs muted" style={{ marginTop: -6, marginBottom: 12 }}>
+            Todos los conectados apuestan a la vez y gira una sola bola. Cada uno juega contra la casa, y lo que la casa gana o pierde se reparte en partes iguales
+            entre todo el grupo, esté o no conectado. No hay compra inicial: se juega con saldo que arranca en 0 y puede quedar en negativo.
+          </p>
+        </>
+      ) : game === 'blackjack' ? (
         <>
           <div className="row">
             <TextField label="Apuesta mínima" value={bjMin} onChange={setBjMin} decimal />
@@ -581,20 +619,24 @@ function StartModal({ view, open, onClose, onStart, busy }: {
 // ─── Partida en curso ────────────────────────────────────────────────────────
 type Seat = ApiTableView['seats'][number];
 
-function Playing({ view, updatedAt, bar, fab, busy, sound, onJoin, onLeave, onLeaveGame, onDeal, onClose, onAction, onBjBet, onBjAct, onRebuy, onReveal }: {
+function Playing({ view, updatedAt, bar, fab, busy, sound, onJoin, onLeave, onLeaveGame, onDeal, onClose, onAction, onBjBet, onBjAct, onRouBets, onRouSpin, onRebuy, onReveal }: {
   view: ApiTableView; updatedAt: number; bar: ReactNode; fab: ReactNode; busy: boolean; sound: boolean; onJoin: () => void; onLeave: () => void; onLeaveGame: () => void; onDeal: () => void;
-  onClose: () => void; onAction: (a: ApiTableAction) => void; onBjBet: (amount: number) => void; onBjAct: (a: 'hit' | 'stand' | 'double') => void; onRebuy: (amount: number) => void;
+  onClose: () => void; onAction: (a: ApiTableAction) => void; onBjBet: (amount: number) => void; onBjAct: (a: 'hit' | 'stand' | 'double') => void; onRouBets: (bets: ApiRouletteBet[], ready: boolean) => void; onRouSpin: () => void; onRebuy: (amount: number) => void;
   onReveal: (playerIds: string[], cards?: number[]) => void;
 }) {
   const me = view.seats.find(s => s.isYou);
   // Con una mano de blackjack a la vista (juego de la mesa o interludio de las ciegas) no se muestra la de póker.
   const bj = view.blackjack;
   const bjHand = bj ? bjAsHand(view, bj) : null;
-  const hand = bj ? null : view.hand;
-  const live = (!!hand && hand.street !== 'done') || (!!bj && bj.phase !== 'done');
+  const rou = view.roulette;
+  const rouHand = rou ? rouAsHand(view, rou) : null;
+  const hand = bj || rou ? null : view.hand;
+  // La ruleta está en juego mientras haya apuestas hechas en la ronda abierta.
+  const rouLive = !!rou && rou.status === 'betting' && rou.totals.some(t => t.total > 0);
+  const live = (!!hand && hand.street !== 'done') || (!!bj && bj.phase !== 'done') || rouLive;
   // Sin fichas se puede recomprar entre manos, si ya te retiraste de la que está en juego o mientras seguís pendiente de pagar.
   const myPlayer = hand?.players.find(p => p.playerId === me?.playerId);
-  const canRebuy = view.game !== 'blackjack' && !!me && me.stack === 0 && (!live || !myPlayer || myPlayer.folded || myPlayer.pending);
+  const canRebuy = view.game === 'holdem' && !!me && me.stack === 0 && (!live || !myPlayer || myPlayer.folded || myPlayer.pending);
   // Vos y los jugadores sin usuario que manejás, en el orden de la mesa.
   const mine = (hand?.players ?? [])
     .map(p => view.seats.find(s => s.playerId === p.playerId))
@@ -606,6 +648,13 @@ function Playing({ view, updatedAt, bar, fab, busy, sound, onJoin, onLeave, onLe
 
   return (
     <>
+      {rou && rouHand && (
+        <div className="table-stage">
+          {bar}
+          <RouletteFelt view={view} r={rou} hand={rouHand} fab={fab} />
+          <RouletteDock view={view} r={rou} busy={busy} timer={<TurnTimer view={view} updatedAt={updatedAt} />} onBets={onRouBets} onSpin={onRouSpin} />
+        </div>
+      )}
       {bj && (
         <div className="table-stage">
           {bar}
@@ -629,16 +678,16 @@ function Playing({ view, updatedAt, bar, fab, busy, sound, onJoin, onLeave, onLe
         </div>
       )}
 
-      {!bj && waitingSeats.length > 0 && (
+      {!bj && !rou && waitingSeats.length > 0 && (
         <p className="muted small center" style={{ margin: '12px 0' }}>
           Esperan la próxima mano: {waitingSeats.map(s => `${s.isYou ? 'vos' : s.name} (${formatMoney(s.stack)}${s.status === 'out' ? ', afuera' : ''})`).join(', ')}
         </p>
       )}
 
       <div className="stack table-extra">
-        {!hand && !bj && canDeal && <Btn block busy={busy} onClick={onDeal}>Repartir</Btn>}
-        {!hand && !bj && waitingDeal}
-        {!me && view.myPlayerId && <Btn variant="ghost" block busy={busy} onClick={onJoin}>{view.game === 'blackjack' ? 'Sumarme a la mesa' : `Sumarme a la mesa por ${formatMoney(view.buyIn)}`}</Btn>}
+        {!hand && !bj && !rou && canDeal && <Btn block busy={busy} onClick={onDeal}>Repartir</Btn>}
+        {!hand && !bj && !rou && waitingDeal}
+        {!me && view.myPlayerId && <Btn variant="ghost" block busy={busy} onClick={onJoin}>{view.game !== 'holdem' ? 'Sumarme a la mesa' : `Sumarme a la mesa por ${formatMoney(view.buyIn)}`}</Btn>}
         {me?.status === 'out' && <Btn variant="ghost" block busy={busy} onClick={onJoin}>Volver a sentarme</Btn>}
         {view.canHost && !live && <Btn variant="danger" block busy={busy} onClick={onClose}>Cerrar partida</Btn>}
         {me?.status === 'sitting' && <Btn variant="ghost" block busy={busy} onClick={onLeaveGame}>Salir de la partida</Btn>}
@@ -939,6 +988,18 @@ function Status({ view, hand, updatedAt }: { view: ApiTableView; hand: Hand; upd
   );
 }
 
+
+/** Estado de la barra de la mesa durante la ruleta. */
+function RouletteStatus({ view, r, updatedAt }: { view: ApiTableView; r: NonNullable<ApiTableView['roulette']>; updatedAt: number }) {
+  const betting = r.status === 'betting';
+  return (
+    <p className={`table-status ${betting ? 'notice notice-info' : 'notice notice-ok'}`} role="status" aria-live="polite">
+      <span className="xs muted">Ruleta · </span>
+      {betting ? 'Se está apostando.' : r.result !== null ? `Salió el ${r.result}.` : 'Apostá para empezar.'}
+      {betting && <TurnTimer view={view} updatedAt={updatedAt} />}
+    </p>
+  );
+}
 
 /** Estado de la barra de la mesa durante una mano de blackjack. */
 function BjStatus({ view, bj, updatedAt }: { view: ApiTableView; bj: NonNullable<ApiTableView['blackjack']>; updatedAt: number }) {

@@ -10,6 +10,7 @@ import { planImport } from './backup';
 import { EmojiClientMessage, TABLE_EMOJIS } from '@pokercontrol/contracts';
 import { Value } from '@sinclair/typebox/value';
 import { backfillHandHistory, backfillHandInsights } from './hand-history';
+import { setRouletteDraw } from './routes/roulette';
 import { sweepTurns } from './routes/table';
 
 // En CI no hay .env: TEST_DATABASE_URL llega por el entorno.
@@ -1225,7 +1226,8 @@ describe('roles', () => {
       // Pagos: se autorizan por dueño del pagador, no por rol (ver test de pagos a nombre propio).
       'POST /api/v1/groups/{groupId}/payments', 'DELETE /api/v1/groups/{groupId}/payments/{paymentId}',
       // La mesa online la juega cualquier miembro.
-      ...['join', 'leave', 'ping', 'start', 'deal', 'action', 'rebuy', 'reveal', 'close', 'bj/bet', 'bj/act'].map(a => `POST /api/v1/groups/{groupId}/table/${a}`),
+      ...['join', 'leave', 'ping', 'start', 'deal', 'action', 'rebuy', 'reveal', 'close', 'bj/bet', 'bj/act', 'roulette/spin'].map(a => `POST /api/v1/groups/{groupId}/table/${a}`),
+      'PUT /api/v1/groups/{groupId}/table/roulette/bets',
       // Sala remota: la ven y entran los miembros; armarla y mandar fotos lo decide cada ruta (administrador u operador).
       'POST /api/v1/groups/{groupId}/sessions/{id}/live',
       ...['join', 'photos', 'new-hand', 'close'].map(a => `POST /api/v1/groups/{groupId}/live/{code}/${a}`),
@@ -2983,6 +2985,223 @@ describe('mesa online', () => {
       cur = await a.ok('POST', '/g/table/deal');
       expect(cur.blackjack).toBeNull();
       expect(cur.hand).not.toBeNull();
+    });
+  });
+
+  describe('ruleta contra todos', () => {
+    const afterEachReset = () => setRouletteDraw();
+    const bets = (c: Client, list: object[], ready = false, extra: object = {}) => c.ok('PUT', '/g/table/roulette/bets', { bets: list, ready, ...extra });
+    /** Fija el número que sale en la próxima bola. */
+    const fix = (n: number) => setRouletteDraw(() => n);
+    const nets = (v: { seats: { playerId: string; stack: number }[] }) => Object.fromEntries(v.seats.map(x => [x.playerId, x.stack]));
+    const sum = (o: Record<string, number>) => Object.values(o).reduce((a, b) => a + b, 0);
+
+    /** Tres jugadores en el grupo, todos sentados y conectados, con la mesa iniciada como ruleta. */
+    async function threeAtTable(body: object = {}) {
+      const ctx = await setup(1);
+      for (const c of ctx.clients) await c.ok('POST', '/g/table/join');
+      const v = await ctx.a.idem('/g/table/start', { game: 'roulette', rouMinBet: 10, rouMaxBet: 100, rouBetSeconds: 30, ...body });
+      return { ...ctx, v };
+    }
+    /** Igual, pero solo el primero está conectado: los otros dos son del grupo y no juegan. */
+    async function onlyHost() {
+      const ctx = await setup(1);
+      await ctx.a.ok('POST', '/g/table/join');
+      const v = await ctx.a.idem('/g/table/start', { game: 'roulette', rouMinBet: 10, rouMaxBet: 100 });
+      return { ...ctx, v };
+    }
+
+    it('arranca sin ronda: se abre con la primera apuesta; todos participan y nadie compra', async () => {
+      try {
+        const { v, pid } = await threeAtTable();
+        expect(v.game).toBe('roulette');
+        expect(v.hand).toBeNull();
+        expect(v.blackjack).toBeNull();
+        expect([v.rouMinBet, v.rouMaxBet, v.rouBetSeconds]).toEqual([10, 100, 30]);
+        expect(v.roulette).toMatchObject({ roundNo: 0, status: 'done', result: null, mine: [], totals: [], history: [], minBet: 10, maxBet: 100 });
+        expect(Object.values(nets(v))).toEqual([0, 0, 0]);
+        const [session] = (await conn.pool.query(`select id, game from sessions`)).rows;
+        expect(session.game).toBe('roulette');
+        expect((await conn.pool.query(`select count(*)::int as n from session_participants`)).rows[0].n).toBe(3);
+        expect((await conn.pool.query(`select count(*)::int as n from buys`)).rows[0].n).toBe(0);
+        expect(v.roulette.actingPlayerId).toBe(pid[0]);
+      } finally { afterEachReset(); }
+    });
+
+    it('valida las apuestas: ficha, máximo, tipo y que estés sentado', async () => {
+      const { a, b, clients } = await threeAtTable();
+      expect((await a.call('PUT', '/g/table/roulette/bets', { bets: [{ type: 'red', amount: 15 }], ready: false })).body.error).toBe('illegal_bet');
+      expect((await a.call('PUT', '/g/table/roulette/bets', { bets: [{ type: 'red', amount: 60 }, { type: 'black', amount: 50 }], ready: false })).body.error).toBe('illegal_bet');
+      expect((await a.call('PUT', '/g/table/roulette/bets', { bets: [{ type: 'straight', n: 40, amount: 10 }], ready: false })).status).toBe(400);
+      expect((await a.call('PUT', '/g/table/roulette/bets', { bets: [{ type: 'dozen', n: 4, amount: 10 }], ready: false })).body.error).toBe('illegal_bet');
+      // Quien se levantó no puede apostar.
+      await b.ok('POST', '/g/table/leave');
+      expect((await b.call('PUT', '/g/table/roulette/bets', { bets: [{ type: 'red', amount: 10 }], ready: false })).body.error).toBe('not_seated');
+      expect(clients).toHaveLength(3);
+    });
+
+    it('la primera apuesta abre la ronda y arranca el tiempo; los demás ven solo los totales', async () => {
+      const { a, b, pid } = await threeAtTable();
+      const opened = await bets(a, [{ type: 'red', amount: 40 }, { type: 'straight', n: 7, amount: 10 }]);
+      expect(opened.roulette).toMatchObject({ roundNo: 1, status: 'betting' });
+      expect(opened.roulette.deadline).not.toBeNull();
+      const left = new Date(opened.roulette.deadline).getTime() - new Date(opened.serverTime).getTime();
+      expect(left).toBeGreaterThan(28_000);
+      expect(left).toBeLessThanOrEqual(30_000);
+      expect(opened.roulette.mine).toHaveLength(2);
+      // El otro ve cuánto apostó cada uno y si está listo, pero no qué apostó.
+      const seen = await view(b);
+      expect(seen.roulette.mine).toEqual([]);
+      expect(seen.roulette.totals).toEqual([{ playerId: pid[0], total: 50, ready: false }]);
+      expect(seen.roulette.bets).toEqual([]);
+      // Cambiar las apuestas reemplaza a las anteriores y no reinicia el tiempo.
+      const changed = await bets(a, [{ type: 'black', amount: 20 }]);
+      expect(changed.roulette.mine).toEqual([{ type: 'black', amount: 20 }]);
+      expect(changed.roulette.deadline).toBe(opened.roulette.deadline);
+    });
+
+    it('gira cuando están listos todos los conectados: pierde uno, gana otro y la casa no gana ni pierde', async () => {
+      try {
+        const { a, b, clients, pid } = await threeAtTable();
+        const c = clients[2];
+        fix(17); // negro, impar
+        await bets(a, [{ type: 'red', amount: 50 }], true);
+        await bets(b, [{ type: 'black', amount: 50 }], true);
+        expect((await view(a)).roulette.status).toBe('betting');
+        const done = await bets(c, [], true);
+        expect(done.roulette).toMatchObject({ status: 'done', result: 17, deadline: null, history: [17], house: 0 });
+        expect(nets(done)).toEqual({ [pid[0]]: -50, [pid[1]]: 50, [pid[2]]: 0 });
+        expect(done.roulette.nets).toEqual(expect.arrayContaining([{ playerId: pid[0], net: -50 }, { playerId: pid[1], net: 50 }]));
+        // Ya con la ronda terminada se ve el detalle de las apuestas de todos.
+        expect(done.roulette.bets.find((x: { playerId: string }) => x.playerId === pid[0]).bets).toEqual([{ type: 'red', amount: 50 }]);
+        expect((await view(c)).roulette.mine).toEqual([]);
+      } finally { afterEachReset(); }
+    });
+
+    it('banca compartida: un pleno no se lo cobra a un solo compañero; se reparte entre todo el grupo y los saldos suman 0', async () => {
+      try {
+        const { a, v, pid } = await onlyHost();
+        expect(v.seats.map((s: { status: string }) => s.status).sort()).toEqual(['out', 'out', 'sitting']);
+        fix(5);
+        const done = await bets(a, [{ type: 'straight', n: 5, amount: 30 }], true);
+        // 30 × 35 = 1050 a su favor; la casa pierde 1050 y cada uno de los 3 del grupo (incluido él) paga 350.
+        expect(done.roulette).toMatchObject({ result: 5, house: -1050 });
+        expect(nets(done)).toEqual({ [pid[0]]: 700, [pid[1]]: -350, [pid[2]]: -350 });
+        expect(sum(nets(done))).toBe(0);
+      } finally { afterEachReset(); }
+    });
+
+    it('si pierde, la casa gana y todos cobran su parte (también quien apostó); el 0 pierde las apuestas externas', async () => {
+      try {
+        const { a, pid } = await onlyHost();
+        fix(0);
+        const done = await bets(a, [{ type: 'red', amount: 100 }], true);
+        expect(done.roulette).toMatchObject({ result: 0, house: 100 });
+        const got = nets(done);
+        expect(sum(got)).toBe(0);
+        // 100 / 3 = 33 y sobra 1: quien apostó termina en −100 + 33 (o 34).
+        expect([-67, -66]).toContain(got[pid[0]]);
+        expect(Object.values(got).filter(v => v > 0)).toHaveLength(2);
+      } finally { afterEachReset(); }
+    });
+
+    it('sin apuestas no hay ronda: si todos están listos sin apostar, se descarta', async () => {
+      const { a, b, clients } = await threeAtTable();
+      const c = clients[2];
+      await bets(a, [], true);
+      await bets(b, [], true);
+      const none = await bets(c, [], true);
+      expect(none.roulette).toMatchObject({ roundNo: 0, status: 'done', result: null, totals: [] });
+      expect((await conn.pool.query(`select count(*)::int as n from roulette_rounds`)).rows[0].n).toBe(0);
+    });
+
+    it('al vencer el tiempo gira sola (el barrido de turnos)', async () => {
+      try {
+        const { a, pid } = await threeAtTable();
+        fix(14); // rojo
+        await bets(a, [{ type: 'red', amount: 20 }]);
+        expect((await view(a)).roulette.status).toBe('betting');
+        await conn.pool.query(`update poker_tables set turn_deadline = now() - interval '1 second'`);
+        await sweepTurns(app);
+        const done = await view(a);
+        expect(done.roulette).toMatchObject({ status: 'done', result: 14, history: [14], deadline: null });
+        expect(sum(nets(done))).toBe(0);
+        expect(nets(done)[pid[0]]).toBeGreaterThan(0);
+      } finally { afterEachReset(); }
+    });
+
+    it('quien inició o un administrador gira ya; los demás no', async () => {
+      try {
+        const { a, b } = await threeAtTable();
+        fix(3);
+        await bets(b, [{ type: 'odd', amount: 10 }]);
+        expect((await b.call('POST', '/g/table/roulette/spin')).body.error).toBe('not_host');
+        const done = await a.ok('POST', '/g/table/roulette/spin');
+        expect(done.roulette).toMatchObject({ status: 'done', result: 3 });
+        // Sin ronda abierta no hay nada que girar.
+        expect((await a.call('POST', '/g/table/roulette/spin')).body.error).toBe('no_round');
+      } finally { afterEachReset(); }
+    });
+
+    it('con apuestas hechas nadie se levanta ni se cierra la mesa hasta que gire; no se reparte ni se recompra', async () => {
+      try {
+        const { a, b } = await threeAtTable();
+        await bets(b, [{ type: 'red', amount: 10 }]);
+        expect((await b.call('POST', '/g/table/leave')).body.error).toBe('in_hand');
+        expect((await a.call('POST', '/g/table/close', {}, 'rou-close-1')).body.error).toBe('hand_in_progress');
+        expect((await a.call('POST', '/g/table/deal')).body.error).toBe('no_deal');
+        expect((await a.call('POST', '/g/table/rebuy', {}, 'rou-rebuy-1')).body.error).toBe('no_rebuy');
+        fix(8);
+        await a.ok('POST', '/g/table/roulette/spin');
+        await b.ok('POST', '/g/table/leave');
+      } finally { afterEachReset(); }
+    });
+
+    it('al cerrar, el resultado de cada uno es su saldo (puede ser negativo) y queda registrada aparte, fuera del ranking', async () => {
+      try {
+        const { a, pid } = await onlyHost();
+        fix(2);
+        await bets(a, [{ type: 'straight', n: 9, amount: 100 }, { type: 'red', amount: 100 }].slice(0, 1), true);
+        fix(9);
+        await bets(a, [{ type: 'straight', n: 9, amount: 100 }], true);
+        const closed = await a.idem('/g/table/close');
+        expect(closed.table.status).toBe('waiting');
+        const session = await a.ok('GET', `/g/sessions/${closed.sessionId}`);
+        expect(session.game).toBe('roulette');
+        expect(session.name).toMatch(/^Ruleta · /);
+        expect(session.participants.every((p: { buys: unknown[] }) => p.buys.length === 0)).toBe(true);
+        const finals = Object.fromEntries(session.participants.map((p: { playerId: string; finalAmount: number }) => [p.playerId, p.finalAmount]));
+        expect(sum(finals)).toBe(0);
+        // Primera ronda: pierde 100 (cobra su parte de la casa); la segunda: gana el pleno. Quien no apostó queda en negativo.
+        expect(finals[pid[1]]).toBeLessThan(0);
+        expect(await a.ok('GET', '/g/ranking')).toEqual([]);
+        expect(await a.ok('GET', `/g/players/${pid[0]}/stats`)).toBeNull();
+        const season = (await a.ok('GET', '/g/seasons'))[0];
+        expect((await a.ok('GET', `/g/seasons/${season.id}/sessions`)).map((x: { game: string }) => x.game)).toEqual(['roulette']);
+        // La mesa vuelve a ser de póker.
+        expect((await view(a)).game).toBe('holdem');
+      } finally { afterEachReset(); }
+    });
+
+    it('un administrador apuesta por un jugador sin usuario; los demás no', async () => {
+      try {
+        const ctx = await setup(1);
+        const { a, b } = ctx;
+        const guest = await a.ok('POST', '/g/players', { name: 'Invitada' });
+        await a.ok('POST', '/g/table/join');
+        await a.ok('POST', `/g/table/seats/${guest.id}`);
+        const v = await a.idem('/g/table/start', { game: 'roulette' });
+        expect(v.roulette.actingPlayerId).not.toBeNull();
+        const done = await bets(a, [{ type: 'red', amount: 10 }], false, { playerId: guest.id });
+        expect(done.roulette.totals).toEqual([{ playerId: guest.id, total: 10, ready: false }]);
+        expect((await b.call('PUT', '/g/table/roulette/bets', { bets: [], ready: true, playerId: guest.id })).status).toBeGreaterThanOrEqual(400);
+      } finally { afterEachReset(); }
+    });
+
+    it('la apuesta máxima no puede ser menor que la ficha mínima', async () => {
+      const ctx = await setup(1);
+      await ctx.a.ok('POST', '/g/table/join');
+      expect((await ctx.a.call('POST', '/g/table/start', { game: 'roulette', rouMinBet: 50, rouMaxBet: 10 }, 'rou-max-0001')).body.error).toBe('invalid_bet');
     });
   });
 

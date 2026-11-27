@@ -251,7 +251,7 @@ export function SeasonSessionsPage() {
           <div className="card row" key={s.id} data-testid={`session-${s.name}`}>
             <Link to={`/sessions/${s.id}`} className="grow" style={{ color: 'inherit', textDecoration: 'none', minWidth: 0 }}>
               <div className="row-between">
-                <h3 className="ellipsis">{s.name}{s.game === 'blackjack' && <span className="badge badge-muted" style={{ marginLeft: 8 }}>Blackjack</span>}</h3>
+                <h3 className="ellipsis">{s.name}{s.game && s.game !== 'poker' && <span className="badge badge-muted" style={{ marginLeft: 8 }}>{s.game === 'blackjack' ? 'Blackjack' : 'Ruleta'}</span>}</h3>
                 <span className={`badge ${s.status === 'active' ? 'badge-green' : s.status === 'voided' ? 'badge-red' : 'badge-muted'}`}>
                   {s.status === 'active' ? 'Activa' : s.status === 'voided' ? 'Anulada' : 'Cerrada'}
                 </span>

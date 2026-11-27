@@ -41,8 +41,8 @@ export interface Session {
   closedAt?: string | null;
   status: SessionStatus;
   seasonId?: string;
-  /** Qué se jugó: póker (por defecto) o blackjack. Las partidas de blackjack se registran aparte y no entran en el ranking ni en las estadísticas. */
-  game?: 'poker' | 'blackjack';
+  /** Qué se jugó: póker (por defecto), blackjack o ruleta. Las partidas de blackjack y ruleta se registran aparte y no entran en el ranking ni en las estadísticas. */
+  game?: 'poker' | 'blackjack' | 'roulette';
   participants: Participant[];
 }
 

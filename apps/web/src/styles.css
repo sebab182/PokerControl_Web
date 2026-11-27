@@ -808,3 +808,30 @@ input[type="text"], input[type="search"], select {
 .bj-result { display: grid; gap: 4px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface); }
 .bj-result .pos { color: var(--green); }
 .bj-result .neg { color: var(--red); }
+
+/* Ruleta contra todos: paño y asientos son los del póker */
+.rou-wheel { display: block; width: min(52vw, 190px); height: auto; margin: 0 auto; }
+.rou-spin { transition: transform 4s cubic-bezier(.15, .6, .2, 1); }
+.rou-spin-ball { transition: transform 4s cubic-bezier(.2, .5, .3, 1); }
+.rou-last { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.rou-num { display: inline-flex; align-items: center; justify-content: center; min-width: 26px; height: 26px; padding: 0 4px; border-radius: 999px; font-weight: 700; font-size: 13px; color: #fff; }
+.rou-num-big { min-width: 40px; height: 40px; font-size: 20px; }
+.rou-num.rou-red { background: #B91C1C; }
+.rou-num.rou-black { background: #1F2937; }
+.rou-num.rou-green { background: #15803D; }
+.rou-dock { display: grid; gap: 10px; }
+.rou-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.rou-chipbtn { min-height: 44px; min-width: 56px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font-weight: 700; cursor: pointer; }
+.rou-chipbtn[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.rou-board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+.rou-outside { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+.rou-outside-6 { grid-template-columns: repeat(3, 1fr); }
+.rou-cell { position: relative; display: flex; align-items: center; justify-content: center; min-height: 44px; padding: 4px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-alt); color: var(--text); font-weight: 700; font-size: 14px; cursor: pointer; }
+.rou-cell:disabled { opacity: .6; cursor: not-allowed; }
+.rou-cell.rou-red { background: #B91C1C; color: #fff; border-color: #7F1D1D; }
+.rou-cell.rou-black { background: #1F2937; color: #fff; border-color: #111827; }
+.rou-cell.rou-green { background: #15803D; color: #fff; border-color: #14532D; }
+.rou-zero { grid-column: 1 / -1; }
+.rou-has { outline: 2px solid var(--accent); outline-offset: 1px; }
+.rou-stake { position: absolute; right: 2px; bottom: 1px; padding: 0 5px; border-radius: 999px; background: #FDE68A; color: #1A1D21; font-size: 11px; line-height: 16px; }
+.rou-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 8px; }

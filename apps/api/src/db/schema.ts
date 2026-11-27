@@ -4,7 +4,7 @@
  * que la base impida referencias cruzadas entre grupos.
  */
 
-import type { Action, BjState, HandState } from '@pokercontrol/core';
+import type { Action, Bet, BjState, HandState } from '@pokercontrol/core';
 
 /** Acción tal como se jugó: `amount` es lo igualado (call) o el total al que subió (raise/allin). */
 export type LoggedAction = Action & { amount?: number; auto?: boolean };
@@ -106,10 +106,10 @@ export const sessions = pgTable('sessions', {
   closedAt: ts('closed_at'),
   status: text('status').notNull().$type<'active' | 'closed' | 'voided'>(),
   /** Qué se jugó. El blackjack se registra aparte: no entra en el ranking ni en las estadísticas (sí en saldos y deudas). */
-  game: text('game').notNull().default('poker').$type<'poker' | 'blackjack'>(),
+  game: text('game').notNull().default('poker').$type<'poker' | 'blackjack' | 'roulette'>(),
 }, t => [
   unique('uq_sessions_group_id').on(t.groupId, t.id),
-  check('ck_sessions_game', sql`${t.game} in ('poker', 'blackjack')`),
+  check('ck_sessions_game', sql`${t.game} in ('poker', 'blackjack', 'roulette')`),
   foreignKey({ columns: [t.groupId, t.seasonId], foreignColumns: [seasons.groupId, seasons.id], name: 'fk_sessions_season' }).onDelete('restrict'),
   // Una partida anulada fue cerrada: conserva su fecha de cierre.
   check('ck_sessions_status', sql`${t.status} in ('active', 'closed', 'voided')`),
@@ -256,7 +256,7 @@ export const pokerTables = pgTable('poker_tables', {
   /** Última vez que quien inició tuvo la mesa abierta (esté sentado o no); si pasa ONLINE_MS, reparte cualquiera. */
   hostSeenAt: ts('host_seen_at'),
   /** Juego de la mesa: póker, o blackjack contra todos (una mano por jugador, en rotación). */
-  game: text('game').notNull().default('holdem').$type<'holdem' | 'blackjack'>(),
+  game: text('game').notNull().default('holdem').$type<'holdem' | 'blackjack' | 'roulette'>(),
   /** Apuesta mínima del blackjack contra todos. */
   bjMinBet: integer('bj_min_bet').notNull().default(10),
   /** Apuesta máxima: el saldo de nadie la limita (no hay compra inicial y el saldo puede quedar en negativo). */
@@ -271,12 +271,18 @@ export const pokerTables = pgTable('poker_tables', {
   bjStartedAt: ts('bj_started_at'),
   /** Último jugador que jugó una mano del blackjack contra todos, para rotar. */
   bjLast: text('bj_last'),
+  /** Ruleta: ficha mínima, apuesta máxima total por jugador y por ronda, y segundos para apostar. */
+  rouMinBet: integer('rou_min_bet').notNull().default(10),
+  rouMaxBet: integer('rou_max_bet').notNull().default(100),
+  rouBetSeconds: integer('rou_bet_seconds').notNull().default(30),
   /** Partida de blackjack del interludio en curso (aparte de la de póker); se cierra al terminar la vuelta. */
   bjSessionId: text('bj_session_id'),
   createdAt: ts('created_at').notNull().defaultNow(),
 }, t => [
   unique('uq_poker_tables_group').on(t.groupId),
-  check('ck_poker_tables_game', sql`${t.game} in ('holdem', 'blackjack')`),
+  check('ck_poker_tables_game', sql`${t.game} in ('holdem', 'blackjack', 'roulette')`),
+  check('ck_poker_tables_rou_bets', sql`${t.rouMinBet} >= 1 and ${t.rouMaxBet} >= ${t.rouMinBet}`),
+  check('ck_poker_tables_rou_seconds', sql`${t.rouBetSeconds} between 10 and 300`),
   check('ck_poker_tables_bj_min_bet', sql`${t.bjMinBet} >= 1`),
   check('ck_poker_tables_bj_max_bet', sql`${t.bjMaxBet} >= ${t.bjMinBet}`),
   unique('uq_poker_tables_group_id').on(t.groupId, t.id),
@@ -360,6 +366,30 @@ export const blackjackHands = pgTable('blackjack_hands', {
   index('idx_blackjack_hands_table').on(t.tableId, t.id),
   check('ck_blackjack_hands_kind', sql`${t.kind} in ('solo', 'interlude')`),
   check('ck_blackjack_hands_status', sql`${t.status} in ('active', 'done')`),
+]);
+
+/** Una fila por ronda de ruleta. `bets` guarda las apuestas de cada jugador; al girar se completan `result` y `deltas`. */
+export const rouletteRounds = pgTable('roulette_rounds', {
+  id: bigint('id', { mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
+  tableId: text('table_id').notNull().references(() => pokerTables.id, { onDelete: 'cascade' }),
+  sessionId: text('session_id').notNull().references(() => sessions.id, { onDelete: 'cascade' }),
+  roundNo: integer('round_no').notNull(),
+  status: text('status').notNull().default('betting').$type<'betting' | 'done'>(),
+  /** Apuestas de cada jugador en la ronda. */
+  bets: jsonb('bets').notNull().default(sql`'{}'::jsonb`).$type<Record<string, Bet[]>>(),
+  /** Quiénes tocaron «Listo» (también los que no apuestan). */
+  ready: jsonb('ready').notNull().default(sql`'[]'::jsonb`).$type<string[]>(),
+  /** Número sorteado (0 a 36); null mientras se apuesta. */
+  result: integer('result'),
+  /** Cambio de saldo de cada miembro del grupo al girar (suma 0). */
+  deltas: jsonb('deltas').notNull().default(sql`'{}'::jsonb`).$type<Record<string, number>>(),
+  startedAt: ts('started_at').notNull().defaultNow(),
+  finishedAt: ts('finished_at'),
+}, t => [
+  unique('uq_roulette_rounds_session_no').on(t.sessionId, t.roundNo),
+  index('idx_roulette_rounds_table').on(t.tableId, t.id),
+  check('ck_roulette_rounds_status', sql`${t.status} in ('betting', 'done')`),
+  check('ck_roulette_rounds_result', sql`${t.result} is null or ${t.result} between 0 and 36`),
 ]);
 
 export const pokerActions = pgTable('poker_actions', {

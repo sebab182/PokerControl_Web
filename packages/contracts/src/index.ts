@@ -116,7 +116,7 @@ export const SessionCalc = Obj({
   status: T.Union([T.Literal('ok'), T.Literal('faltan'), T.Literal('sobran')]),
 }, 'SessionCalc');
 /** Qué se jugó en la partida. El blackjack se registra aparte: no cuenta en el ranking ni en las estadísticas. */
-export const SessionGame = T.Union([T.Literal('poker'), T.Literal('blackjack')]);
+export const SessionGame = T.Union([T.Literal('poker'), T.Literal('blackjack'), T.Literal('roulette')]);
 export const Session = Obj({
   id: T.String(), name: T.String(), createdAt: T.String(), closedAt: Nullable(T.String()), status: SessionStatus, game: SessionGame,
   seasonId: T.String(), participants: T.Array(Participant), calc: SessionCalc, missingResults: T.Array(T.String()),
@@ -436,6 +436,39 @@ export const BjView = Obj({
   /** Al terminar: lo que ganó o perdió cada uno (el jugador y sus rivales). */
   deltas: T.Array(Obj({ playerId: T.String(), delta: T.Integer() })),
 }, 'BjView');
+/** Una apuesta de ruleta: el pleno (`n` de 0 a 36), docena y columna (`n` de 1 a 3) o una de las externas. */
+export const RouletteBet = Obj({
+  type: T.Union([
+    T.Literal('straight'), T.Literal('red'), T.Literal('black'), T.Literal('odd'), T.Literal('even'),
+    T.Literal('low'), T.Literal('high'), T.Literal('dozen'), T.Literal('column'),
+  ]),
+  n: T.Optional(T.Integer({ minimum: 0, maximum: 36 })),
+  amount: T.Integer({ minimum: 1, maximum: 1_000_000 }),
+}, 'RouletteBet');
+/** La ronda de ruleta en curso (o la última, hasta que se abre otra con la primera apuesta). */
+export const RouletteView = Obj({
+  roundNo: T.Integer(),
+  status: T.Union([T.Literal('betting'), T.Literal('done')]),
+  /** Cuándo se cierran las apuestas y gira; null si todavía no hay apuestas o la ronda terminó. */
+  deadline: Nullable(T.String()),
+  /** Tus apuestas (o las del jugador que manejás); vacío si no apostaste. */
+  mine: T.Array(RouletteBet),
+  /** Tu jugador (o uno que manejás) si podés apostar ahora; null si estás afuera o sos solo espectador. */
+  actingPlayerId: Nullable(T.String()),
+  /** Total apostado y si tocó «Listo», por jugador. El detalle de cada apuesta se ve recién cuando gira. */
+  totals: T.Array(Obj({ playerId: T.String(), total: T.Integer(), ready: T.Boolean() })),
+  /** Al girar: el detalle de las apuestas de cada jugador. */
+  bets: T.Array(Obj({ playerId: T.String(), bets: T.Array(RouletteBet) })),
+  /** Número sorteado; null mientras se apuesta. */
+  result: Nullable(T.Integer({ minimum: 0, maximum: 36 })),
+  /** Al girar: lo que ganó o perdió cada apostador con sus apuestas, lo que ganó la casa y el cambio de saldo de cada uno. */
+  nets: T.Array(Obj({ playerId: T.String(), net: T.Integer() })),
+  house: Nullable(T.Integer()),
+  deltas: T.Array(Obj({ playerId: T.String(), delta: T.Integer() })),
+  /** Últimos números que salieron, del más nuevo al más viejo. */
+  history: T.Array(T.Integer()),
+  minBet: T.Integer(), maxBet: T.Integer(),
+}, 'RouletteView');
 export const TableView = Obj({
   id: T.String(), status: TableStatus, sessionId: Nullable(T.String()),
   /** Ciegas de la mano en curso (o las que se usarán en la próxima). */
@@ -465,8 +498,8 @@ export const TableView = Obj({
   /** Vos iniciaste la partida: tu pantalla avisa que seguís (POST /table/ping) aunque no estés sentado. */
   isHost: T.Boolean(),
   hand: Nullable(HandView),
-  /** Juego de la mesa en curso: póker o blackjack contra todos. */
-  game: T.Union([T.Literal('holdem'), T.Literal('blackjack')]),
+  /** Juego de la mesa en curso: póker, blackjack o ruleta contra todos. */
+  game: T.Union([T.Literal('holdem'), T.Literal('blackjack'), T.Literal('roulette')]),
   /** Apuestas mínima y máxima del blackjack contra todos. */
   bjMinBet: T.Integer(),
   bjMaxBet: T.Integer(),
@@ -474,6 +507,10 @@ export const TableView = Obj({
   bjInterlude: T.Boolean(),
   /** La mano de blackjack en curso (o la última, hasta que se reparta otra cosa); null si no corresponde mostrarla. */
   blackjack: Nullable(BjView),
+  /** Ruleta: ficha mínima, apuesta máxima por jugador y por ronda, y segundos para apostar. */
+  rouMinBet: T.Integer(), rouMaxBet: T.Integer(), rouBetSeconds: T.Integer(),
+  /** La ronda de ruleta en curso o la última; null si no se juega a la ruleta o todavía no hubo apuestas. */
+  roulette: Nullable(RouletteView),
 }, 'TableView');
 // ─── Video de la mesa (señalización WebRTC por el WebSocket) ─────────────────
 /**
@@ -526,13 +563,22 @@ export const StartTableBody = Obj({
   blindMinutes: T.Optional(T.Integer({ minimum: 0, maximum: 120 })),
   /** Al terminar cada mano se muestran las cartas de todos, también las de quienes se retiraron. */
   showAllCards: T.Optional(T.Boolean()),
-  /** Juego de la mesa: póker (por defecto) o blackjack contra todos. */
-  game: T.Optional(T.Union([T.Literal('holdem'), T.Literal('blackjack')])),
+  /** Juego de la mesa: póker (por defecto), blackjack contra todos o ruleta. */
+  game: T.Optional(T.Union([T.Literal('holdem'), T.Literal('blackjack'), T.Literal('roulette')])),
   /** Blackjack contra todos: apuesta mínima y máxima (no hay compra inicial: el saldo de cada uno arranca en 0). */
   bjMinBet: T.Optional(Chips),
   bjMaxBet: T.Optional(Chips),
+  /** Ruleta: ficha mínima, apuesta máxima por jugador y por ronda, y segundos para apostar (entre 10 y 300). */
+  rouMinBet: T.Optional(Chips), rouMaxBet: T.Optional(Chips), rouBetSeconds: T.Optional(T.Integer({ minimum: 10, maximum: 300 })),
   /** Póker: cada vez que suben las ciegas, todos juegan una mano de blackjack (por defecto sí). */
   bjInterlude: T.Optional(T.Boolean()),
+});
+/** Ruleta: las apuestas de un jugador en la ronda (reemplazan a las anteriores) y si ya está listo. */
+export const RouletteBetsBody = Obj({
+  bets: T.Array(RouletteBet, { maxItems: 20 }),
+  ready: T.Boolean(),
+  /** Solo administradores: apostar por un jugador sin usuario. */
+  playerId: T.Optional(T.String()),
 });
 export const BjBetBody = Obj({
   version: T.Integer(),
@@ -603,6 +649,8 @@ export type ApiCloseSessionResponse = Static<typeof CloseSessionResponse>;
 export type ApiTableView = Static<typeof TableView>;
 export type ApiHandView = Static<typeof HandView>;
 export type ApiBjView = Static<typeof BjView>;
+export type ApiRouletteView = Static<typeof RouletteView>;
+export type ApiRouletteBet = Static<typeof RouletteBet>;
 export type ApiTableAction = Static<typeof TableActionBody>['action'];
 export type ApiRtcKind = Static<typeof RtcKind>;
 export type ApiRtcClientMessage = Static<typeof RtcClientMessage>;
