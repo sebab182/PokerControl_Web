@@ -10,7 +10,7 @@ import {
 } from '../components/ui';
 import { useGroup } from '../context';
 import { BjDock, BjFelt, bjAsHand } from './blackjack';
-import { RouletteDock, RouletteFelt, rouAsHand, useRouletteSounds } from './roulette';
+import { RouletteStage, rouAsHand, useRouletteSounds } from './roulette';
 import { LiveRoom } from './live';
 import { useTableSounds, useTickTock } from '../tableSounds';
 import { DECKS, type Deck, type TablePrefs, primeHandSound, useTablePrefs, useTurnAlert, useWakeLock } from '../tablePrefs';
@@ -304,10 +304,10 @@ function TableView() {
   };
   const deal = () => run(() => post('deal'));
   /** Ruleta: guarda las apuestas de un jugador (las tuyas o las de uno sin usuario que manejás) y si ya está listo. */
-  const rouPut = async (bets: ApiRouletteBet[], ready: boolean) => {
+  const rouPut = async (bets: ApiRouletteBet[]) => {
     const acting = view.roulette?.actingPlayerId;
     const next = await api<ApiTableView>(path('/table/roulette/bets'), {
-      method: 'PUT', body: { bets, ready, ...(acting && acting !== view.myPlayerId ? { playerId: acting } : {}) },
+      method: 'PUT', body: { bets, ...(acting && acting !== view.myPlayerId ? { playerId: acting } : {}) },
     });
     qc.setQueryData(queryKey, next);
   };
@@ -390,7 +390,7 @@ function TableView() {
                   else throw e;
                 }
               })}
-              onRouBets={(bets, ready) => run(() => rouPut(bets, ready))}
+              onRouBets={rouPut}
               onRouSpin={() => run(() => post('roulette/spin'))}
               onBjBet={amount => run(() => bjPost('bj/bet', { amount }))}
               onBjAct={action => run(() => bjPost('bj/act', { action }))}
@@ -410,7 +410,7 @@ function TableView() {
       </div>
       <PrefsModal open={prefsOpen} onClose={() => setPrefsOpen(false)} prefs={prefs} onChange={setPrefs} />
       {canEdit && <AddPlayerModal view={view} open={addOpen} onClose={() => setAddOpen(false)} busy={busy} onAdd={admin.add} />}
-      <StartModal view={view} open={startOpen} onClose={() => setStartOpen(false)}
+      <StartModal view={view} isAdmin={canEdit} open={startOpen} onClose={() => setStartOpen(false)}
         onStart={cfg => run(async () => {
           await post('start', cfg, { idempotent: true, refresh: true });
           setStartOpen(false);
@@ -490,8 +490,8 @@ type StartConfig = {
   showAllCards?: boolean; bjMinBet?: number; bjMaxBet?: number; rouMinBet?: number; rouMaxBet?: number; rouBetSeconds?: number; bjInterlude?: boolean;
 };
 
-function StartModal({ view, open, onClose, onStart, busy }: {
-  view: ApiTableView; open: boolean; onClose: () => void; busy: boolean;
+function StartModal({ view, isAdmin, open, onClose, onStart, busy }: {
+  view: ApiTableView; isAdmin: boolean; open: boolean; onClose: () => void; busy: boolean;
   onStart: (cfg: StartConfig) => void;
 }) {
   const [error, setError] = useState('');
@@ -511,13 +511,14 @@ function StartModal({ view, open, onClose, onStart, busy }: {
   const submit = () => {
     if (game === 'roulette') {
       const min = parseAmount(rouMin);
-      const max = parseAmount(rouMax);
+      const max = isAdmin ? parseAmount(rouMax) : view.rouMaxBet;
       const secs = parseAmount(rouSecs);
       if (min === null || max === null || !Number.isInteger(min) || !Number.isInteger(max) || min <= 0 || max <= 0) return setError('Ingresá montos enteros mayores a 0.');
       if (max < min) return setError('La apuesta máxima no puede ser menor que la ficha mínima.');
       if (secs === null || !Number.isInteger(secs) || secs < 10 || secs > 300) return setError('El tiempo para apostar es de 10 a 300 segundos.');
       setError('');
-      return onStart({ game, rouMinBet: min, rouMaxBet: max, rouBetSeconds: secs, turnSeconds: view.turnSeconds });
+      // La apuesta máxima la fija solo un administrador: los demás no la mandan.
+      return onStart({ game, rouMinBet: min, ...(isAdmin ? { rouMaxBet: max } : {}), rouBetSeconds: secs, turnSeconds: view.turnSeconds });
     }
     if (game === 'blackjack') {
       const min = parseAmount(bjMin);
@@ -560,12 +561,14 @@ function StartModal({ view, open, onClose, onStart, busy }: {
         <>
           <div className="row">
             <TextField label="Ficha mínima" value={rouMin} onChange={setRouMin} decimal />
-            <TextField label="Apuesta máxima por ronda" value={rouMax} onChange={setRouMax} decimal />
+            {isAdmin
+              ? <TextField label="Apuesta máxima por ronda" value={rouMax} onChange={setRouMax} decimal />
+              : <p className="small" style={{ alignSelf: 'center' }} data-testid="rou-max-fixed">Máximo por ronda: <strong className="num">{formatMoney(view.rouMaxBet)}</strong> (lo fija un administrador)</p>}
           </div>
           <TextField label="Segundos para apostar" value={rouSecs} onChange={setRouSecs} decimal />
           <p className="xs muted" style={{ marginTop: -6, marginBottom: 12 }}>
-            Todos los conectados apuestan a la vez y gira una sola bola. Cada uno juega contra la casa, y lo que la casa gana o pierde se reparte en partes iguales
-            entre todo el grupo, esté o no conectado. No hay compra inicial: se juega con saldo que arranca en 0 y puede quedar en negativo.
+            Todos los conectados apuestan a la vez y gira una sola bola. Lo que gana o pierde cada apostador lo pagan o lo cobran, en partes iguales,
+            los demás del grupo (estén o no conectados), sin contar a quien apostó. No hay compra inicial: se juega con saldo que arranca en 0 y puede quedar en negativo.
           </p>
         </>
       ) : game === 'blackjack' ? (
@@ -621,7 +624,7 @@ type Seat = ApiTableView['seats'][number];
 
 function Playing({ view, updatedAt, bar, fab, busy, sound, onJoin, onLeave, onLeaveGame, onDeal, onClose, onAction, onBjBet, onBjAct, onRouBets, onRouSpin, onRebuy, onReveal }: {
   view: ApiTableView; updatedAt: number; bar: ReactNode; fab: ReactNode; busy: boolean; sound: boolean; onJoin: () => void; onLeave: () => void; onLeaveGame: () => void; onDeal: () => void;
-  onClose: () => void; onAction: (a: ApiTableAction) => void; onBjBet: (amount: number) => void; onBjAct: (a: 'hit' | 'stand' | 'double') => void; onRouBets: (bets: ApiRouletteBet[], ready: boolean) => void; onRouSpin: () => void; onRebuy: (amount: number) => void;
+  onClose: () => void; onAction: (a: ApiTableAction) => void; onBjBet: (amount: number) => void; onBjAct: (a: 'hit' | 'stand' | 'double') => void; onRouBets: (bets: ApiRouletteBet[]) => Promise<void>; onRouSpin: () => void; onRebuy: (amount: number) => void;
   onReveal: (playerIds: string[], cards?: number[]) => void;
 }) {
   const me = view.seats.find(s => s.isYou);
@@ -651,8 +654,7 @@ function Playing({ view, updatedAt, bar, fab, busy, sound, onJoin, onLeave, onLe
       {rou && rouHand && (
         <div className="table-stage">
           {bar}
-          <RouletteFelt view={view} r={rou} hand={rouHand} fab={fab} />
-          <RouletteDock view={view} r={rou} busy={busy} timer={<TurnTimer view={view} updatedAt={updatedAt} />} onBets={onRouBets} onSpin={onRouSpin} />
+          <RouletteStage view={view} r={rou} hand={rouHand} fab={fab} timer={<TurnTimer view={view} updatedAt={updatedAt} />} onBets={onRouBets} onSpin={onRouSpin} />
         </div>
       )}
       {bj && (
@@ -995,7 +997,7 @@ function RouletteStatus({ view, r, updatedAt }: { view: ApiTableView; r: NonNull
   return (
     <p className={`table-status ${betting ? 'notice notice-info' : 'notice notice-ok'}`} role="status" aria-live="polite">
       <span className="xs muted">Ruleta · </span>
-      {betting ? 'Se está apostando.' : r.result !== null ? `Salió el ${r.result}.` : 'Apostá para empezar.'}
+      {betting ? 'Se está apostando.' : r.roundNo > 0 ? `Terminó la ronda ${r.roundNo}.` : 'Apostá para empezar.'}
       {betting && <TurnTimer view={view} updatedAt={updatedAt} />}
     </p>
   );

@@ -3060,7 +3060,7 @@ describe('mesa online', () => {
       expect(changed.roulette.deadline).toBe(opened.roulette.deadline);
     });
 
-    it('gira cuando están listos todos los conectados: pierde uno, gana otro y la casa no gana ni pierde', async () => {
+    it('gira cuando están listos todos los conectados: pierde uno, gana otro y cada uno reparte entre los demás', async () => {
       try {
         const { a, b, clients, pid } = await threeAtTable();
         const c = clients[2];
@@ -3070,7 +3070,8 @@ describe('mesa online', () => {
         expect((await view(a)).roulette.status).toBe('betting');
         const done = await bets(c, [], true);
         expect(done.roulette).toMatchObject({ status: 'done', result: 17, deadline: null, history: [17], house: 0 });
-        expect(nets(done)).toEqual({ [pid[0]]: -50, [pid[1]]: 50, [pid[2]]: 0 });
+        // J0 pierde 50 (lo cobran J1 y J2: 25 cada uno); J1 gana 50 (lo pagan J0 y J2: 25 cada uno).
+        expect(nets(done)).toEqual({ [pid[0]]: -75, [pid[1]]: 75, [pid[2]]: 0 });
         expect(done.roulette.nets).toEqual(expect.arrayContaining([{ playerId: pid[0], net: -50 }, { playerId: pid[1], net: 50 }]));
         // Ya con la ronda terminada se ve el detalle de las apuestas de todos.
         expect(done.roulette.bets.find((x: { playerId: string }) => x.playerId === pid[0]).bets).toEqual([{ type: 'red', amount: 50 }]);
@@ -3078,31 +3079,61 @@ describe('mesa online', () => {
       } finally { afterEachReset(); }
     });
 
-    it('banca compartida: un pleno no se lo cobra a un solo compañero; se reparte entre todo el grupo y los saldos suman 0', async () => {
+    it('un pleno lo pagan los demás del grupo (estén o no conectados), sin contar a quien apostó; los saldos suman 0', async () => {
       try {
         const { a, v, pid } = await onlyHost();
         expect(v.seats.map((s: { status: string }) => s.status).sort()).toEqual(['out', 'out', 'sitting']);
         fix(5);
         const done = await bets(a, [{ type: 'straight', n: 5, amount: 30 }], true);
-        // 30 × 35 = 1050 a su favor; la casa pierde 1050 y cada uno de los 3 del grupo (incluido él) paga 350.
+        // 30 × 35 = 1050 a su favor: lo pagan los otros dos del grupo, 525 cada uno.
         expect(done.roulette).toMatchObject({ result: 5, house: -1050 });
-        expect(nets(done)).toEqual({ [pid[0]]: 700, [pid[1]]: -350, [pid[2]]: -350 });
+        expect(nets(done)).toEqual({ [pid[0]]: 1050, [pid[1]]: -525, [pid[2]]: -525 });
         expect(sum(nets(done))).toBe(0);
       } finally { afterEachReset(); }
     });
 
-    it('si pierde, la casa gana y todos cobran su parte (también quien apostó); el 0 pierde las apuestas externas', async () => {
+    it('si pierde, lo que perdió se reparte entre los demás, sin que cobre quien apostó; el 0 pierde las apuestas externas', async () => {
       try {
         const { a, pid } = await onlyHost();
         fix(0);
         const done = await bets(a, [{ type: 'red', amount: 100 }], true);
         expect(done.roulette).toMatchObject({ result: 0, house: 100 });
-        const got = nets(done);
-        expect(sum(got)).toBe(0);
-        // 100 / 3 = 33 y sobra 1: quien apostó termina en −100 + 33 (o 34).
-        expect([-67, -66]).toContain(got[pid[0]]);
-        expect(Object.values(got).filter(v => v > 0)).toHaveLength(2);
+        expect(nets(done)).toEqual({ [pid[0]]: -100, [pid[1]]: 50, [pid[2]]: 50 });
       } finally { afterEachReset(); }
+    });
+
+    it('repetir jugada: la última ronda queda en `last` y la ronda nueva arranca vacía', async () => {
+      try {
+        const { a, b } = await threeAtTable();
+        fix(14);
+        await bets(a, [{ type: 'red', amount: 20 }, { type: 'straight', n: 7, amount: 10 }]);
+        const done = await a.ok('POST', '/g/table/roulette/spin');
+        // Terminada la ronda no quedan apuestas armadas, pero sí lo que apostó para repetirlo.
+        expect(done.roulette.mine).toEqual([]);
+        expect(done.roulette.last).toEqual([{ type: 'red', amount: 20 }, { type: 'straight', n: 7, amount: 10 }]);
+        expect((await view(b)).roulette.last).toEqual([]);
+        // Al apostar de nuevo (otro jugador abre la ronda) sigue disponible la anterior.
+        const next = await bets(b, [{ type: 'black', amount: 10 }]);
+        expect(next.roulette).toMatchObject({ roundNo: 2, status: 'betting', mine: [{ type: 'black', amount: 10 }] });
+        expect((await view(a)).roulette).toMatchObject({ mine: [], last: [{ type: 'red', amount: 20 }, { type: 'straight', n: 7, amount: 10 }] });
+        const again = await bets(a, (await view(a)).roulette.last);
+        expect(again.roulette.mine).toHaveLength(2);
+      } finally { afterEachReset(); }
+    });
+
+    it('la apuesta máxima la fija solo un administrador', async () => {
+      const { a, b } = await setup(1);
+      await a.ok('POST', '/g/table/join');
+      await b.ok('POST', '/g/table/join');
+      // Quien no es administrador no puede cambiarla…
+      expect((await b.call('POST', '/g/table/start', { game: 'roulette', rouMaxBet: 5000 }, 'rou-max-1')).body.error).toBe('admin_only');
+      // …pero inicia la ruleta con la que hay.
+      const v = await b.idem('/g/table/start', { game: 'roulette', rouMinBet: 10 });
+      expect(v.rouMaxBet).toBe(100);
+      await b.idem('/g/table/close');
+      await a.ok('POST', '/g/table/join');
+      const v2 = await a.idem('/g/table/start', { game: 'roulette', rouMaxBet: 500 });
+      expect(v2.rouMaxBet).toBe(500);
     });
 
     it('sin apuestas no hay ronda: si todos están listos sin apostar, se descarta', async () => {

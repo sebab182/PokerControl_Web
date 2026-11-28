@@ -788,10 +788,14 @@ export async function tableRoutes(app: FastifyInstance) {
         bjMinBet: req.body.bjMinBet ?? table.bjMinBet,
         bjMaxBet: req.body.bjMaxBet ?? Math.max(table.bjMaxBet, (req.body.bjMinBet ?? table.bjMinBet) * 10),
         rouMinBet: req.body.rouMinBet ?? table.rouMinBet,
-        rouMaxBet: req.body.rouMaxBet ?? Math.max(table.rouMaxBet, (req.body.rouMinBet ?? table.rouMinBet) * 10),
+        // La apuesta máxima de la ruleta la fija solo un administrador; los demás juegan con la que ya está.
+        rouMaxBet: isEditor(req.role) ? req.body.rouMaxBet ?? Math.max(table.rouMaxBet, (req.body.rouMinBet ?? table.rouMinBet) * 10) : table.rouMaxBet,
         rouBetSeconds: req.body.rouBetSeconds ?? table.rouBetSeconds,
         bjInterlude: req.body.bjInterlude ?? table.bjInterlude,
       };
+      if (req.body.rouMaxBet !== undefined && req.body.rouMaxBet !== table.rouMaxBet && !isEditor(req.role)) {
+        throw new ApiError(403, 'admin_only', 'Solo un administrador puede cambiar la apuesta máxima de la ruleta.');
+      }
       if (cfg.blindMinutes !== 0 && cfg.blindMinutes < 5) {
         throw new ApiError(422, 'invalid_blind_time', 'Las ciegas se duplican cada 0 (nunca) o entre 5 y 120 minutos.');
       }
@@ -923,7 +927,7 @@ export async function tableRoutes(app: FastifyInstance) {
     const playerId = req.body.playerId
       ? await managedPlayerId(tx, req, table, req.body.playerId)
       : await requirePlayer(tx, req.group.id, req.user.sub);
-    await placeBets(tx, table, playerId, req.body.bets, req.body.ready);
+    await placeBets(tx, table, playerId, req.body.bets, req.body.ready ?? false);
   }));
 
   app.post<G>('/table/roulette/spin', {

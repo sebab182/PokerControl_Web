@@ -1812,6 +1812,7 @@ paths:
                       - status
                       - deadline
                       - mine
+                      - last
                       - actingPlayerId
                       - totals
                       - bets
@@ -1837,6 +1838,53 @@ paths:
                         type: string
                         nullable: true
                       mine:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          title: RouletteBet
+                          type: object
+                          required:
+                            - type
+                            - amount
+                          properties:
+                            type:
+                              anyOf:
+                                - type: string
+                                  enum:
+                                    - straight
+                                - type: string
+                                  enum:
+                                    - red
+                                - type: string
+                                  enum:
+                                    - black
+                                - type: string
+                                  enum:
+                                    - odd
+                                - type: string
+                                  enum:
+                                    - even
+                                - type: string
+                                  enum:
+                                    - low
+                                - type: string
+                                  enum:
+                                    - high
+                                - type: string
+                                  enum:
+                                    - dozen
+                                - type: string
+                                  enum:
+                                    - column
+                            n:
+                              minimum: 0
+                              maximum: 36
+                              type: integer
+                            amount:
+                              minimum: 1
+                              maximum: 1000000
+                              type: integer
+                      last:
                         type: array
                         items:
                           additionalProperties: false
@@ -2558,6 +2606,7 @@ paths:
                       - status
                       - deadline
                       - mine
+                      - last
                       - actingPlayerId
                       - totals
                       - bets
@@ -2583,6 +2632,53 @@ paths:
                         type: string
                         nullable: true
                       mine:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          title: RouletteBet
+                          type: object
+                          required:
+                            - type
+                            - amount
+                          properties:
+                            type:
+                              anyOf:
+                                - type: string
+                                  enum:
+                                    - straight
+                                - type: string
+                                  enum:
+                                    - red
+                                - type: string
+                                  enum:
+                                    - black
+                                - type: string
+                                  enum:
+                                    - odd
+                                - type: string
+                                  enum:
+                                    - even
+                                - type: string
+                                  enum:
+                                    - low
+                                - type: string
+                                  enum:
+                                    - high
+                                - type: string
+                                  enum:
+                                    - dozen
+                                - type: string
+                                  enum:
+                                    - column
+                            n:
+                              minimum: 0
+                              maximum: 36
+                              type: integer
+                            amount:
+                              minimum: 1
+                              maximum: 1000000
+                              type: integer
+                      last:
                         type: array
                         items:
                           additionalProperties: false
@@ -3304,6 +3400,7 @@ paths:
                       - status
                       - deadline
                       - mine
+                      - last
                       - actingPlayerId
                       - totals
                       - bets
@@ -3329,6 +3426,53 @@ paths:
                         type: string
                         nullable: true
                       mine:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          title: RouletteBet
+                          type: object
+                          required:
+                            - type
+                            - amount
+                          properties:
+                            type:
+                              anyOf:
+                                - type: string
+                                  enum:
+                                    - straight
+                                - type: string
+                                  enum:
+                                    - red
+                                - type: string
+                                  enum:
+                                    - black
+                                - type: string
+                                  enum:
+                                    - odd
+                                - type: string
+                                  enum:
+                                    - even
+                                - type: string
+                                  enum:
+                                    - low
+                                - type: string
+                                  enum:
+                                    - high
+                                - type: string
+                                  enum:
+                                    - dozen
+                                - type: string
+                                  enum:
+                                    - column
+                            n:
+                              minimum: 0
+                              maximum: 36
+                              type: integer
+                            amount:
+                              minimum: 1
+                              maximum: 1000000
+                              type: integer
+                      last:
                         type: array
                         items:
                           additionalProperties: false
@@ -4050,6 +4194,7 @@ paths:
                       - status
                       - deadline
                       - mine
+                      - last
                       - actingPlayerId
                       - totals
                       - bets
@@ -4075,6 +4220,53 @@ paths:
                         type: string
                         nullable: true
                       mine:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          title: RouletteBet
+                          type: object
+                          required:
+                            - type
+                            - amount
+                          properties:
+                            type:
+                              anyOf:
+                                - type: string
+                                  enum:
+                                    - straight
+                                - type: string
+                                  enum:
+                                    - red
+                                - type: string
+                                  enum:
+                                    - black
+                                - type: string
+                                  enum:
+                                    - odd
+                                - type: string
+                                  enum:
+                                    - even
+                                - type: string
+                                  enum:
+                                    - low
+                                - type: string
+                                  enum:
+                                    - high
+                                - type: string
+                                  enum:
+                                    - dozen
+                                - type: string
+                                  enum:
+                                    - column
+                            n:
+                              minimum: 0
+                              maximum: 36
+                              type: integer
+                            amount:
+                              minimum: 1
+                              maximum: 1000000
+                              type: integer
+                      last:
                         type: array
                         items:
                           additionalProperties: false
@@ -4801,6 +4993,7 @@ paths:
                       - status
                       - deadline
                       - mine
+                      - last
                       - actingPlayerId
                       - totals
                       - bets
@@ -4826,6 +5019,53 @@ paths:
                         type: string
                         nullable: true
                       mine:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          title: RouletteBet
+                          type: object
+                          required:
+                            - type
+                            - amount
+                          properties:
+                            type:
+                              anyOf:
+                                - type: string
+                                  enum:
+                                    - straight
+                                - type: string
+                                  enum:
+                                    - red
+                                - type: string
+                                  enum:
+                                    - black
+                                - type: string
+                                  enum:
+                                    - odd
+                                - type: string
+                                  enum:
+                                    - even
+                                - type: string
+                                  enum:
+                                    - low
+                                - type: string
+                                  enum:
+                                    - high
+                                - type: string
+                                  enum:
+                                    - dozen
+                                - type: string
+                                  enum:
+                                    - column
+                            n:
+                              minimum: 0
+                              maximum: 36
+                              type: integer
+                            amount:
+                              minimum: 1
+                              maximum: 1000000
+                              type: integer
+                      last:
                         type: array
                         items:
                           additionalProperties: false
@@ -5551,6 +5791,7 @@ paths:
                       - status
                       - deadline
                       - mine
+                      - last
                       - actingPlayerId
                       - totals
                       - bets
@@ -5576,6 +5817,53 @@ paths:
                         type: string
                         nullable: true
                       mine:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          title: RouletteBet
+                          type: object
+                          required:
+                            - type
+                            - amount
+                          properties:
+                            type:
+                              anyOf:
+                                - type: string
+                                  enum:
+                                    - straight
+                                - type: string
+                                  enum:
+                                    - red
+                                - type: string
+                                  enum:
+                                    - black
+                                - type: string
+                                  enum:
+                                    - odd
+                                - type: string
+                                  enum:
+                                    - even
+                                - type: string
+                                  enum:
+                                    - low
+                                - type: string
+                                  enum:
+                                    - high
+                                - type: string
+                                  enum:
+                                    - dozen
+                                - type: string
+                                  enum:
+                                    - column
+                            n:
+                              minimum: 0
+                              maximum: 36
+                              type: integer
+                            amount:
+                              minimum: 1
+                              maximum: 1000000
+                              type: integer
+                      last:
                         type: array
                         items:
                           additionalProperties: false
@@ -6314,6 +6602,7 @@ paths:
                       - status
                       - deadline
                       - mine
+                      - last
                       - actingPlayerId
                       - totals
                       - bets
@@ -6339,6 +6628,53 @@ paths:
                         type: string
                         nullable: true
                       mine:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          title: RouletteBet
+                          type: object
+                          required:
+                            - type
+                            - amount
+                          properties:
+                            type:
+                              anyOf:
+                                - type: string
+                                  enum:
+                                    - straight
+                                - type: string
+                                  enum:
+                                    - red
+                                - type: string
+                                  enum:
+                                    - black
+                                - type: string
+                                  enum:
+                                    - odd
+                                - type: string
+                                  enum:
+                                    - even
+                                - type: string
+                                  enum:
+                                    - low
+                                - type: string
+                                  enum:
+                                    - high
+                                - type: string
+                                  enum:
+                                    - dozen
+                                - type: string
+                                  enum:
+                                    - column
+                            n:
+                              minimum: 0
+                              maximum: 36
+                              type: integer
+                            amount:
+                              minimum: 1
+                              maximum: 1000000
+                              type: integer
+                      last:
                         type: array
                         items:
                           additionalProperties: false
@@ -7123,6 +7459,7 @@ paths:
                       - status
                       - deadline
                       - mine
+                      - last
                       - actingPlayerId
                       - totals
                       - bets
@@ -7148,6 +7485,53 @@ paths:
                         type: string
                         nullable: true
                       mine:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          title: RouletteBet
+                          type: object
+                          required:
+                            - type
+                            - amount
+                          properties:
+                            type:
+                              anyOf:
+                                - type: string
+                                  enum:
+                                    - straight
+                                - type: string
+                                  enum:
+                                    - red
+                                - type: string
+                                  enum:
+                                    - black
+                                - type: string
+                                  enum:
+                                    - odd
+                                - type: string
+                                  enum:
+                                    - even
+                                - type: string
+                                  enum:
+                                    - low
+                                - type: string
+                                  enum:
+                                    - high
+                                - type: string
+                                  enum:
+                                    - dozen
+                                - type: string
+                                  enum:
+                                    - column
+                            n:
+                              minimum: 0
+                              maximum: 36
+                              type: integer
+                            amount:
+                              minimum: 1
+                              maximum: 1000000
+                              type: integer
+                      last:
                         type: array
                         items:
                           additionalProperties: false
@@ -7869,6 +8253,7 @@ paths:
                       - status
                       - deadline
                       - mine
+                      - last
                       - actingPlayerId
                       - totals
                       - bets
@@ -7894,6 +8279,53 @@ paths:
                         type: string
                         nullable: true
                       mine:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          title: RouletteBet
+                          type: object
+                          required:
+                            - type
+                            - amount
+                          properties:
+                            type:
+                              anyOf:
+                                - type: string
+                                  enum:
+                                    - straight
+                                - type: string
+                                  enum:
+                                    - red
+                                - type: string
+                                  enum:
+                                    - black
+                                - type: string
+                                  enum:
+                                    - odd
+                                - type: string
+                                  enum:
+                                    - even
+                                - type: string
+                                  enum:
+                                    - low
+                                - type: string
+                                  enum:
+                                    - high
+                                - type: string
+                                  enum:
+                                    - dozen
+                                - type: string
+                                  enum:
+                                    - column
+                            n:
+                              minimum: 0
+                              maximum: 36
+                              type: integer
+                            amount:
+                              minimum: 1
+                              maximum: 1000000
+                              type: integer
+                      last:
                         type: array
                         items:
                           additionalProperties: false
@@ -8682,6 +9114,7 @@ paths:
                       - status
                       - deadline
                       - mine
+                      - last
                       - actingPlayerId
                       - totals
                       - bets
@@ -8707,6 +9140,53 @@ paths:
                         type: string
                         nullable: true
                       mine:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          title: RouletteBet
+                          type: object
+                          required:
+                            - type
+                            - amount
+                          properties:
+                            type:
+                              anyOf:
+                                - type: string
+                                  enum:
+                                    - straight
+                                - type: string
+                                  enum:
+                                    - red
+                                - type: string
+                                  enum:
+                                    - black
+                                - type: string
+                                  enum:
+                                    - odd
+                                - type: string
+                                  enum:
+                                    - even
+                                - type: string
+                                  enum:
+                                    - low
+                                - type: string
+                                  enum:
+                                    - high
+                                - type: string
+                                  enum:
+                                    - dozen
+                                - type: string
+                                  enum:
+                                    - column
+                            n:
+                              minimum: 0
+                              maximum: 36
+                              type: integer
+                            amount:
+                              minimum: 1
+                              maximum: 1000000
+                              type: integer
+                      last:
                         type: array
                         items:
                           additionalProperties: false
@@ -9447,6 +9927,7 @@ paths:
                       - status
                       - deadline
                       - mine
+                      - last
                       - actingPlayerId
                       - totals
                       - bets
@@ -9472,6 +9953,53 @@ paths:
                         type: string
                         nullable: true
                       mine:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          title: RouletteBet
+                          type: object
+                          required:
+                            - type
+                            - amount
+                          properties:
+                            type:
+                              anyOf:
+                                - type: string
+                                  enum:
+                                    - straight
+                                - type: string
+                                  enum:
+                                    - red
+                                - type: string
+                                  enum:
+                                    - black
+                                - type: string
+                                  enum:
+                                    - odd
+                                - type: string
+                                  enum:
+                                    - even
+                                - type: string
+                                  enum:
+                                    - low
+                                - type: string
+                                  enum:
+                                    - high
+                                - type: string
+                                  enum:
+                                    - dozen
+                                - type: string
+                                  enum:
+                                    - column
+                            n:
+                              minimum: 0
+                              maximum: 36
+                              type: integer
+                            amount:
+                              minimum: 1
+                              maximum: 1000000
+                              type: integer
+                      last:
                         type: array
                         items:
                           additionalProperties: false
@@ -10219,6 +10747,7 @@ paths:
                       - status
                       - deadline
                       - mine
+                      - last
                       - actingPlayerId
                       - totals
                       - bets
@@ -10244,6 +10773,53 @@ paths:
                         type: string
                         nullable: true
                       mine:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          title: RouletteBet
+                          type: object
+                          required:
+                            - type
+                            - amount
+                          properties:
+                            type:
+                              anyOf:
+                                - type: string
+                                  enum:
+                                    - straight
+                                - type: string
+                                  enum:
+                                    - red
+                                - type: string
+                                  enum:
+                                    - black
+                                - type: string
+                                  enum:
+                                    - odd
+                                - type: string
+                                  enum:
+                                    - even
+                                - type: string
+                                  enum:
+                                    - low
+                                - type: string
+                                  enum:
+                                    - high
+                                - type: string
+                                  enum:
+                                    - dozen
+                                - type: string
+                                  enum:
+                                    - column
+                            n:
+                              minimum: 0
+                              maximum: 36
+                              type: integer
+                            amount:
+                              minimum: 1
+                              maximum: 1000000
+                              type: integer
+                      last:
                         type: array
                         items:
                           additionalProperties: false
@@ -10438,7 +11014,6 @@ paths:
               type: object
               required:
                 - bets
-                - ready
               properties:
                 bets:
                   maxItems: 20
@@ -11028,6 +11603,7 @@ paths:
                       - status
                       - deadline
                       - mine
+                      - last
                       - actingPlayerId
                       - totals
                       - bets
@@ -11053,6 +11629,53 @@ paths:
                         type: string
                         nullable: true
                       mine:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          title: RouletteBet
+                          type: object
+                          required:
+                            - type
+                            - amount
+                          properties:
+                            type:
+                              anyOf:
+                                - type: string
+                                  enum:
+                                    - straight
+                                - type: string
+                                  enum:
+                                    - red
+                                - type: string
+                                  enum:
+                                    - black
+                                - type: string
+                                  enum:
+                                    - odd
+                                - type: string
+                                  enum:
+                                    - even
+                                - type: string
+                                  enum:
+                                    - low
+                                - type: string
+                                  enum:
+                                    - high
+                                - type: string
+                                  enum:
+                                    - dozen
+                                - type: string
+                                  enum:
+                                    - column
+                            n:
+                              minimum: 0
+                              maximum: 36
+                              type: integer
+                            amount:
+                              minimum: 1
+                              maximum: 1000000
+                              type: integer
+                      last:
                         type: array
                         items:
                           additionalProperties: false
@@ -11774,6 +12397,7 @@ paths:
                       - status
                       - deadline
                       - mine
+                      - last
                       - actingPlayerId
                       - totals
                       - bets
@@ -11799,6 +12423,53 @@ paths:
                         type: string
                         nullable: true
                       mine:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          title: RouletteBet
+                          type: object
+                          required:
+                            - type
+                            - amount
+                          properties:
+                            type:
+                              anyOf:
+                                - type: string
+                                  enum:
+                                    - straight
+                                - type: string
+                                  enum:
+                                    - red
+                                - type: string
+                                  enum:
+                                    - black
+                                - type: string
+                                  enum:
+                                    - odd
+                                - type: string
+                                  enum:
+                                    - even
+                                - type: string
+                                  enum:
+                                    - low
+                                - type: string
+                                  enum:
+                                    - high
+                                - type: string
+                                  enum:
+                                    - dozen
+                                - type: string
+                                  enum:
+                                    - column
+                            n:
+                              minimum: 0
+                              maximum: 36
+                              type: integer
+                            amount:
+                              minimum: 1
+                              maximum: 1000000
+                              type: integer
+                      last:
                         type: array
                         items:
                           additionalProperties: false
@@ -12539,6 +13210,7 @@ paths:
                       - status
                       - deadline
                       - mine
+                      - last
                       - actingPlayerId
                       - totals
                       - bets
@@ -12564,6 +13236,53 @@ paths:
                         type: string
                         nullable: true
                       mine:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          title: RouletteBet
+                          type: object
+                          required:
+                            - type
+                            - amount
+                          properties:
+                            type:
+                              anyOf:
+                                - type: string
+                                  enum:
+                                    - straight
+                                - type: string
+                                  enum:
+                                    - red
+                                - type: string
+                                  enum:
+                                    - black
+                                - type: string
+                                  enum:
+                                    - odd
+                                - type: string
+                                  enum:
+                                    - even
+                                - type: string
+                                  enum:
+                                    - low
+                                - type: string
+                                  enum:
+                                    - high
+                                - type: string
+                                  enum:
+                                    - dozen
+                                - type: string
+                                  enum:
+                                    - column
+                            n:
+                              minimum: 0
+                              maximum: 36
+                              type: integer
+                            amount:
+                              minimum: 1
+                              maximum: 1000000
+                              type: integer
+                      last:
                         type: array
                         items:
                           additionalProperties: false
@@ -13297,6 +14016,7 @@ paths:
                       - status
                       - deadline
                       - mine
+                      - last
                       - actingPlayerId
                       - totals
                       - bets
@@ -13322,6 +14042,53 @@ paths:
                         type: string
                         nullable: true
                       mine:
+                        type: array
+                        items:
+                          additionalProperties: false
+                          title: RouletteBet
+                          type: object
+                          required:
+                            - type
+                            - amount
+                          properties:
+                            type:
+                              anyOf:
+                                - type: string
+                                  enum:
+                                    - straight
+                                - type: string
+                                  enum:
+                                    - red
+                                - type: string
+                                  enum:
+                                    - black
+                                - type: string
+                                  enum:
+                                    - odd
+                                - type: string
+                                  enum:
+                                    - even
+                                - type: string
+                                  enum:
+                                    - low
+                                - type: string
+                                  enum:
+                                    - high
+                                - type: string
+                                  enum:
+                                    - dozen
+                                - type: string
+                                  enum:
+                                    - column
+                            n:
+                              minimum: 0
+                              maximum: 36
+                              type: integer
+                            amount:
+                              minimum: 1
+                              maximum: 1000000
+                              type: integer
+                      last:
                         type: array
                         items:
                           additionalProperties: false
@@ -14053,6 +14820,7 @@ paths:
                           - status
                           - deadline
                           - mine
+                          - last
                           - actingPlayerId
                           - totals
                           - bets
@@ -14078,6 +14846,53 @@ paths:
                             type: string
                             nullable: true
                           mine:
+                            type: array
+                            items:
+                              additionalProperties: false
+                              title: RouletteBet
+                              type: object
+                              required:
+                                - type
+                                - amount
+                              properties:
+                                type:
+                                  anyOf:
+                                    - type: string
+                                      enum:
+                                        - straight
+                                    - type: string
+                                      enum:
+                                        - red
+                                    - type: string
+                                      enum:
+                                        - black
+                                    - type: string
+                                      enum:
+                                        - odd
+                                    - type: string
+                                      enum:
+                                        - even
+                                    - type: string
+                                      enum:
+                                        - low
+                                    - type: string
+                                      enum:
+                                        - high
+                                    - type: string
+                                      enum:
+                                        - dozen
+                                    - type: string
+                                      enum:
+                                        - column
+                                n:
+                                  minimum: 0
+                                  maximum: 36
+                                  type: integer
+                                amount:
+                                  minimum: 1
+                                  maximum: 1000000
+                                  type: integer
+                          last:
                             type: array
                             items:
                               additionalProperties: false
