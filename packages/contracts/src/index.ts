@@ -451,11 +451,13 @@ export const RouletteView = Obj({
   status: T.Union([T.Literal('betting'), T.Literal('done')]),
   /** Cuándo se cierran las apuestas y gira; null si todavía no hay apuestas o la ronda terminó. */
   deadline: Nullable(T.String()),
-  /** Tus apuestas (o las del jugador que manejás); vacío si no apostaste. */
+  /** Tus apuestas en la ronda que se está jugando (o las del jugador que manejás); vacío si no apostaste o la ronda ya giró. */
   mine: T.Array(RouletteBet),
+  /** Tus apuestas de la última ronda que giró, para repetirlas; vacío si no apostaste. */
+  last: T.Array(RouletteBet),
   /** Tu jugador (o uno que manejás) si podés apostar ahora; null si estás afuera o sos solo espectador. */
   actingPlayerId: Nullable(T.String()),
-  /** Total apostado y si tocó «Listo», por jugador. El detalle de cada apuesta se ve recién cuando gira. */
+  /** Total apostado por jugador (y si tocó «Listo», que ya no se usa desde la web). El detalle de cada apuesta se ve recién cuando gira. */
   totals: T.Array(Obj({ playerId: T.String(), total: T.Integer(), ready: T.Boolean() })),
   /** Al girar: el detalle de las apuestas de cada jugador. */
   bets: T.Array(Obj({ playerId: T.String(), bets: T.Array(RouletteBet) })),
@@ -573,10 +575,11 @@ export const StartTableBody = Obj({
   /** Póker: cada vez que suben las ciegas, todos juegan una mano de blackjack (por defecto sí). */
   bjInterlude: T.Optional(T.Boolean()),
 });
-/** Ruleta: las apuestas de un jugador en la ronda (reemplazan a las anteriores) y si ya está listo. */
+/** Ruleta: las apuestas de un jugador en la ronda (reemplazan a las anteriores). */
 export const RouletteBetsBody = Obj({
   bets: T.Array(RouletteBet, { maxItems: 20 }),
-  ready: T.Boolean(),
+  /** Opcional: dar la ronda por lista (gira cuando lo están todos los conectados). La web ya no lo manda. */
+  ready: T.Optional(T.Boolean()),
   /** Solo administradores: apostar por un jugador sin usuario. */
   playerId: T.Optional(T.String()),
 });

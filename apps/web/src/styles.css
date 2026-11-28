@@ -809,29 +809,60 @@ input[type="text"], input[type="search"], select {
 .bj-result .pos { color: var(--green); }
 .bj-result .neg { color: var(--red); }
 
-/* Ruleta contra todos: paño y asientos son los del póker */
-.rou-wheel { display: block; width: min(52vw, 190px); height: auto; margin: 0 auto; }
-.rou-spin { transition: transform 4s cubic-bezier(.15, .6, .2, 1); }
-.rou-spin-ball { transition: transform 4s cubic-bezier(.2, .5, .3, 1); }
-.rou-last { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+/*
+ * Ruleta contra todos: no hay paño, la rueda ocupa su lugar. Arriba los jugadores, después la rueda grande y, desde la mitad
+ * de la rueda hacia abajo, el tablero para apostar (se oculta mientras gira). El ancho de la rueda (--rou-w) es un porcentaje
+ * del ancho de la zona: el tablero sube justo la mitad de ese ancho para quedar sobre la mitad de abajo de la rueda.
+ */
+.rou-wrap { padding: 48px 8px 16px; max-width: 760px; }
+.rou-table { --rou-w: min(90%, 440px, 52dvh); display: block; }
+.rou-seats { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px 14px; margin-bottom: 8px; }
+.pseat-inline { position: relative; transform: none; width: auto; min-width: 96px; }
+.rou-repeat {
+  min-height: 44px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); color: var(--text);
+  font-weight: 700; font-size: 13px; cursor: pointer; white-space: nowrap;
+}
+.rou-repeat:disabled { opacity: .55; cursor: not-allowed; }
+.rou-last { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 4px; min-height: 40px; margin-bottom: 6px; }
+.rou-wheelbox { width: var(--rou-w); margin: 0 auto; }
+.rou-wheel { display: block; width: 100%; height: auto; }
+.rou-spin { transition: transform 4.2s cubic-bezier(.15, .6, .2, 1); }
+.rou-spin-ball { transition: transform 4.2s cubic-bezier(.2, .5, .3, 1); }
 .rou-num { display: inline-flex; align-items: center; justify-content: center; min-width: 26px; height: 26px; padding: 0 4px; border-radius: 999px; font-weight: 700; font-size: 13px; color: #fff; }
 .rou-num-big { min-width: 40px; height: 40px; font-size: 20px; }
 .rou-num.rou-red { background: #B91C1C; }
 .rou-num.rou-black { background: #1F2937; }
 .rou-num.rou-green { background: #15803D; }
-.rou-dock { display: grid; gap: 10px; }
-.rou-chips { display: flex; gap: 6px; flex-wrap: wrap; }
-.rou-chipbtn { min-height: 44px; min-width: 56px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font-weight: 700; cursor: pointer; }
+.rou-bet-area {
+  position: relative; z-index: 2; container-type: inline-size; box-sizing: border-box;
+  width: max(var(--rou-w), min(100%, 560px)); margin: calc(var(--rou-w) * -0.5) auto 0; padding: 8px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 14px; display: grid; gap: 8px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .25);
+}
+.rou-bet-area.rou-hidden { visibility: hidden; }
+.rou-chips { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+.rou-chipbtn { min-height: 44px; min-width: 56px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface-alt); color: var(--text); font-weight: 700; cursor: pointer; }
 .rou-chipbtn[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
-.rou-board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
-.rou-outside { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
-.rou-outside-6 { grid-template-columns: repeat(3, 1fr); }
-.rou-cell { position: relative; display: flex; align-items: center; justify-content: center; min-height: 44px; padding: 4px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-alt); color: var(--text); font-weight: 700; font-size: 14px; cursor: pointer; }
+/* Vertical (celular): 3 columnas; el 0 arriba, los 36 números, las columnas, las docenas y las apuestas simples en filas de 3. */
+.rou-board { display: grid; grid-template-columns: repeat(3, 1fr); grid-auto-rows: minmax(38px, auto); gap: 4px; }
+.rou-zero { grid-column: 1 / -1; }
+.rou-cell { position: relative; display: flex; align-items: center; justify-content: center; min-height: 40px; padding: 2px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-alt); color: var(--text); font-weight: 700; font-size: 14px; cursor: pointer; }
 .rou-cell:disabled { opacity: .6; cursor: not-allowed; }
 .rou-cell.rou-red { background: #B91C1C; color: #fff; border-color: #7F1D1D; }
 .rou-cell.rou-black { background: #1F2937; color: #fff; border-color: #111827; }
 .rou-cell.rou-green { background: #15803D; color: #fff; border-color: #14532D; }
-.rou-zero { grid-column: 1 / -1; }
 .rou-has { outline: 2px solid var(--accent); outline-offset: 1px; }
 .rou-stake { position: absolute; right: 2px; bottom: 1px; padding: 0 5px; border-radius: 999px; background: #FDE68A; color: #1A1D21; font-size: 11px; line-height: 16px; }
+/* Horizontal (pantalla ancha): como la mesa real, 12 columnas de 3 números, el 0 a la izquierda y «2 a 1» a la derecha. */
+@container (min-width: 480px) {
+  .rou-board { grid-template-columns: repeat(14, 1fr); grid-auto-rows: 40px; }
+  .rou-zero { grid-column: 1; grid-row: 1 / 4; }
+  .rou-n { grid-column: calc(var(--r) + 2); grid-row: calc(4 - var(--c)); }
+  .rou-col { grid-column: 14; grid-row: calc(4 - var(--c)); }
+  .rou-doz { grid-column: calc(2 + var(--i) * 4) / span 4; grid-row: 4; }
+  .rou-simple { grid-column: calc(2 + var(--i) * 2) / span 2; grid-row: 5; }
+}
+.rou-info { display: grid; gap: 8px; margin-top: 12px; max-width: 560px; margin-inline: auto; }
 .rou-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 8px; }
+.table-active .felt-wrap.rou-wrap { display: block; overflow-y: auto; padding: 44px 6px 12px; }
+.table-landscape .felt-wrap.rou-wrap { grid-area: 2 / 1 / 3 / 3; padding: 36px 8px 8px; }

@@ -820,36 +820,44 @@ test('blackjack contra todos con un solo conectado: el resto del grupo es la ban
   await expect(page.getByRole('group', { name: 'Tu apuesta' })).toBeVisible({ timeout: 10000 });
 });
 
-test('ruleta contra todos: apostar, listo, gira una sola bola y los saldos suman 0', async ({ page, browser }) => {
+test('ruleta contra todos: fichas que se guardan solas, gira, tablero oculto al girar, repetir jugada y saldos que suman 0', async ({ page, browser }) => {
   test.setTimeout(90000);
   const { page2, context2 } = await twoSeated(page, browser);
   await page.getByRole('button', { name: /Iniciar partida \(2 jugadores\)/ }).click();
   await page.getByTestId('game-roulette').click();
   await expect(page.getByLabel('Ficha mínima')).toBeVisible();
+  // Seba es administrador: él fija la apuesta máxima.
   await expect(page.getByLabel('Apuesta máxima por ronda')).toBeVisible();
   await expect(page.getByLabel('Segundos para apostar')).toBeVisible();
   await expect(page.getByLabel('Entrada por jugador')).toHaveCount(0);
   await page.getByRole('dialog').getByRole('button', { name: 'Iniciar partida' }).click();
 
   for (const p of [page, page2]) await expect(p.getByTestId('rou')).toBeVisible({ timeout: 15000 });
+  // No hay botones de apostar ni de listo: lo que ponés en el tablero se juega.
+  for (const p of [page, page2]) {
+    await expect(p.getByRole('button', { name: /^(Apostar|Listo|No apuesto)$/ })).toHaveCount(0);
+    await expect(p.getByTestId('rou-repeat')).toBeDisabled();
+  }
   await checkPage(page, 'ruleta: tablero');
-  // Seba apuesta 20 al rojo y 10 al 7; Nico, 30 al negro.
+  // Seba pone 20 al rojo y 10 al 7; Nico, 30 al negro. Se guarda solo y los demás ven el total.
   await page.getByTestId('rou-chip-2').click();
   await page.getByTestId('rou-cell-red').click();
   await page.getByTestId('rou-chip-1').click();
   await page.getByTestId('rou-cell-straight-7').click();
   await expect(page.getByTestId('rou-total')).toContainText('$30');
-  await page.getByTestId('rou-ready').click();
-  await expect(page.getByTestId('rou-status')).toBeVisible({ timeout: 10000 });
+  await expect(page2.getByTestId('seat-Seba')).toContainText('Apuesta $30', { timeout: 10000 });
   await page2.getByTestId('rou-chip-5').click();
   await page2.getByTestId('rou-cell-black').click();
   await page2.getByTestId('rou-chip-1').click();
   await page2.getByTestId('rou-cell-black').click();
   await page2.getByTestId('rou-cell-black').click();
-  await page2.getByTestId('rou-ready').click();
+  await expect(page.getByTestId('seat-Nico')).toContainText('Apuesta $70', { timeout: 10000 });
 
-  // Listos los dos: gira una sola bola y los dos ven el mismo número.
+  // Gira quien inició: mientras gira el tablero se oculta y al terminar vuelve con el resultado.
+  await page.getByTestId('rou-spin').click();
+  await expect(page.locator('.rou-bet-area.rou-hidden')).toHaveCount(1);
   for (const p of [page, page2]) await expect(p.getByTestId('rou-result')).toBeVisible({ timeout: 15000 });
+  await expect(page.locator('.rou-bet-area.rou-hidden')).toHaveCount(0);
   const last = async (p: Page) => (await p.getByTestId('rou-last').innerText()).trim();
   expect(await last(page)).toBe(await last(page2));
   await checkPage(page, 'ruleta: resultado');
@@ -857,6 +865,15 @@ test('ruleta contra todos: apostar, listo, gira una sola bola y los saldos suman
   expect((await bjStacks(page)).reduce((a, b) => a + b, 0)).toBe(0);
   expect((await bjStacks(page2)).reduce((a, b) => a + b, 0)).toBe(0);
 
+  // «Repetir jugada» vuelve a poner lo de la ronda anterior (y abre la ronda nueva).
+  await expect(page.getByTestId('rou-repeat')).toBeEnabled();
+  await page.getByTestId('rou-repeat').click();
+  await expect(page.getByTestId('rou-total')).toContainText('$30');
+  await expect(page2.getByTestId('seat-Seba')).toContainText('Apuesta $30', { timeout: 10000 });
+
+  // Con apuestas en juego no se cierra: primero gira.
+  await page.getByTestId('rou-spin').click();
+  await expect(page.getByTestId('rou-result')).toBeVisible({ timeout: 15000 });
   await page.getByRole('button', { name: 'Cerrar partida' }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Cerrar partida' }).click();
   await expect(page.getByRole('link', { name: 'Ver resultados y saldos' })).toBeVisible({ timeout: 10000 });

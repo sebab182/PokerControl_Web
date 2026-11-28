@@ -74,19 +74,21 @@ export function validateBets(bets: Bet[], limits: BetLimits): void {
 }
 
 export interface Settlement {
-  /** Lo que ganó o perdió cada apostador con sus apuestas (sin el reparto de la casa). */
+  /** Lo que ganó o perdió cada apostador con sus apuestas (sin el reparto con los demás). */
   nets: Record<string, number>;
   /** Lo que ganó la casa (negativo si perdió): es lo opuesto a la suma de lo de los apostadores. */
   house: number;
-  /** Parte de la casa que le toca a cada miembro del grupo. */
+  /** Lo que le toca a cada miembro por las apuestas de los demás (nunca por las suyas). */
   share: Record<string, number>;
-  /** Cambio de saldo final de cada miembro: lo suyo más su parte de la casa. Suma 0. */
+  /** Cambio de saldo final de cada miembro: lo suyo más lo que le toca por las apuestas de los demás. Suma 0. */
   deltas: Record<string, number>;
 }
 
 /**
- * Liquida una ronda. El resultado de la casa se reparte en partes iguales entre todos los miembros; como los saldos son
- * enteros, el resto se da de a uno en un orden fijo (por id) que rota con el número de ronda, así nadie lo cobra siempre.
+ * Liquida una ronda. Cada apostador juega contra el resto del grupo, sin contarse a sí mismo: si gana, lo pagan los demás
+ * miembros (estén o no conectados) en partes iguales; si pierde, se reparte entre los demás. Con varios apostadores se
+ * hace una vez por cada uno. Como los saldos son enteros, el resto se da de a uno en un orden fijo (por id) que rota con
+ * el número de ronda y con el apostador, así nadie lo cobra o lo paga siempre. En un grupo de uno no hay con quién repartir.
  */
 export function settleRound(input: { bets: Record<string, Bet[]>; result: number; members: string[]; round: number }): Settlement {
   const { bets, result, round } = input;
@@ -96,13 +98,19 @@ export function settleRound(input: { bets: Record<string, Bet[]>; result: number
   if (members.length === 0) throw new RouletteError('Hacen falta miembros.');
   // Se resta (no se niega la suma) para no dejar un -0 cuando la casa no gana ni pierde.
   const house = Object.values(nets).reduce((a, b) => a - b, 0);
-  const n = members.length;
-  const base = Math.floor(house / n);
-  const rest = house - base * n; // 0 a n−1
   const share: Record<string, number> = {};
-  const start = ((round % n) + n) % n;
-  members.forEach((id, i) => { share[id] = base + ((i - start + n) % n < rest ? 1 : 0); });
+  for (const id of members) share[id] = 0;
+  Object.keys(nets).sort().forEach((bettor, k) => {
+    const others = members.filter(id => id !== bettor);
+    const m = others.length;
+    if (m === 0) return;
+    const owed = 0 - nets[bettor]; // lo que le toca al resto: opuesto a lo del apostador
+    const base = Math.floor(owed / m);
+    const rest = owed - base * m; // 0 a m−1
+    const start = (((round + k) % m) + m) % m;
+    others.forEach((id, i) => { share[id] += base + ((i - start + m) % m < rest ? 1 : 0); });
+  });
   const deltas: Record<string, number> = {};
-  for (const id of members) deltas[id] = (nets[id] ?? 0) + share[id];
+  for (const id of members) deltas[id] = (members.length === 1 ? 0 : (nets[id] ?? 0)) + share[id];
   return { nets, house, share, deltas };
 }

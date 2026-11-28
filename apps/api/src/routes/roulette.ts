@@ -153,12 +153,17 @@ export async function rouletteView(
   const history = (await db.select({ result: schema.rouletteRounds.result }).from(schema.rouletteRounds)
     .where(and(eq(schema.rouletteRounds.sessionId, table.sessionId as string), eq(schema.rouletteRounds.status, 'done')))
     .orderBy(desc(schema.rouletteRounds.id)).limit(HISTORY)).map(r => r.result as number);
-  const base = { actingPlayerId: acting, history, minBet: table.rouMinBet, maxBet: table.rouMaxBet };
+  const who = acting ?? me.myId;
+  // Para «repetir jugada»: lo que apostó este jugador en la última ronda que giró.
+  const [lastDone] = row?.status === 'done' ? [row] : await db.select().from(schema.rouletteRounds)
+    .where(and(eq(schema.rouletteRounds.sessionId, table.sessionId as string), eq(schema.rouletteRounds.status, 'done')))
+    .orderBy(desc(schema.rouletteRounds.id)).limit(1);
+  const last = who ? lastDone?.bets[who] ?? [] : [];
+  const base = { actingPlayerId: acting, history, minBet: table.rouMinBet, maxBet: table.rouMaxBet, last };
   if (!row) {
     return { ...base, roundNo: 0, status: 'done', deadline: null, mine: [], totals: [], bets: [], result: null, nets: [], house: null, deltas: [] };
   }
   const done = row.status === 'done';
-  const who = acting ?? me.myId;
   const players = [...new Set([...Object.keys(row.bets), ...row.ready])];
   let nets: { playerId: string; net: number }[] = [];
   let house: number | null = null;
@@ -172,7 +177,8 @@ export async function rouletteView(
     roundNo: row.roundNo,
     status: row.status,
     deadline: !done && table.turnDeadline ? table.turnDeadline.toISOString() : null,
-    mine: who ? row.bets[who] ?? [] : [],
+    // Con la ronda terminada ya no hay apuestas armadas: lo apostado queda en `last` y en el detalle.
+    mine: who && !done ? row.bets[who] ?? [] : [],
     totals: players.map(playerId => ({ playerId, total: total(row.bets[playerId] ?? []), ready: row.ready.includes(playerId) })),
     bets: done ? Object.entries(row.bets).map(([playerId, bets]) => ({ playerId, bets })) : [],
     result: row.result,

@@ -1,6 +1,6 @@
 import type { ApiHandView, ApiTableView } from '@pokercontrol/contracts';
 import { evaluate, formatMoney } from '@pokercontrol/core';
-import type { CSSProperties } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { StreamVideo, useSeatStream, useVideo } from '../video';
 import { Avatar } from './ui';
 
@@ -88,8 +88,12 @@ export function SeatScore({ seat }: { seat: { rebuys: number; net: number } }) {
  * Un asiento del paño. Las cartas propias (las tuyas y las de los jugadores sin usuario que manejás) van en el asiento:
  * en el tuyo, abajo y grandes, con el nombre de tu jugada; en los demás, chicas en abanico sobre el avatar.
  */
-export function PlayerSeat({ view, hand, playerId, offset, total, note }: {
+export function PlayerSeat({ view, hand, playerId, offset, total, note, inline = false, action }: {
   view: ApiTableView; hand: ApiHandView; playerId: string; offset: number; total: number;
+  /** Sin posición sobre el paño: el asiento ocupa su lugar en el flujo (la ruleta, que no tiene paño). */
+  inline?: boolean;
+  /** Un botón junto al avatar (en la ruleta, «Repetir jugada»). */
+  action?: ReactNode;
   /** Texto junto a las cartas, en lugar del nombre de la jugada: en el blackjack, lo que suman. */
   note?: string;
 }) {
@@ -135,8 +139,8 @@ export function PlayerSeat({ view, hand, playerId, offset, total, note }: {
   );
   const holeCards = cards.map(x => <PokerCard key={x.i} card={x.c} size={hero ? 'lg' : 'sm'} mark={markOf(win, x.c)} own={x.own} />);
   return (
-    <div className={`pseat ${hero ? 'pseat-hero' : ''} ${turn ? 'pseat-turn' : ''} ${turn && !mine ? 'pseat-thinking' : ''} ${p.folded ? 'pseat-folded' : ''} ${won ? 'pseat-won' : ''}`}
-      style={{ ...seatPosition(offset, total), ...(turn && !mine ? seatInward(offset, total) : {}) }} data-testid={`seat-${seat.name}`} data-player={playerId}>
+    <div className={`pseat ${inline ? 'pseat-inline' : ''} ${hero ? 'pseat-hero' : ''} ${turn ? 'pseat-turn' : ''} ${turn && !mine ? 'pseat-thinking' : ''} ${p.folded ? 'pseat-folded' : ''} ${won ? 'pseat-won' : ''}`}
+      style={inline ? undefined : { ...seatPosition(offset, total), ...(turn && !mine ? seatInward(offset, total) : {}) }} data-testid={`seat-${seat.name}`} data-player={playerId}>
       {hero ? (
         <>
           <div className="pseat-hole" data-testid="my-hand">{holeCards}</div>
@@ -169,6 +173,7 @@ export function PlayerSeat({ view, hand, playerId, offset, total, note }: {
         </>
       )}
       {!hero && chips}
+      {action}
     </div>
   );
 }

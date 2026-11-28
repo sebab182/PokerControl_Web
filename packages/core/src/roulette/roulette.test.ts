@@ -70,62 +70,67 @@ describe('validación', () => {
   });
 });
 
-describe('liquidación con la banca compartida', () => {
+describe('liquidación contra los demás, sin contar al que apostó', () => {
   const members = ['a', 'b', 'c', 'd', 'e', 'f'];
-  it('gana uno: cobra de la casa y la pérdida de la casa se reparte entre todos', () => {
+  it('gana uno: cobra su apuesta de los otros cinco, que pagan en partes iguales', () => {
     const r = settleRound({ bets: { a: [{ type: 'red', amount: 10 }] }, result: 1, members, round: 0 });
     expect(r.nets).toEqual({ a: 10 });
     expect(r.house).toBe(-10);
-    // −10 entre 6: dos pagan 1 y cuatro pagan 2.
-    expect(Object.values(r.share).sort((x, y) => x - y)).toEqual([-2, -2, -2, -2, -1, -1]);
-    expect(sum(r.share)).toBe(-10);
-    expect(r.deltas.a).toBe(10 + r.share.a);
+    // −10 entre 5: cada uno paga 2. El que apostó no paga nada.
+    expect(r.share).toEqual({ a: 0, b: -2, c: -2, d: -2, e: -2, f: -2 });
+    expect(r.deltas).toEqual({ a: 10, b: -2, c: -2, d: -2, e: -2, f: -2 });
     expect(sum(r.deltas)).toBe(0);
   });
-  it('pierde uno: la casa gana y todos cobran su parte, también el que apostó', () => {
+  it('pierde uno: lo que perdió se reparte entre los otros cinco, sin que cobre el que apostó', () => {
     const r = settleRound({ bets: { a: [{ type: 'red', amount: 10 }] }, result: 2, members, round: 0 });
     expect(r.house).toBe(10);
-    // 10 entre 6: cuatro cobran 2 y dos cobran 1.
-    expect(Object.values(r.share).sort((x, y) => x - y)).toEqual([1, 1, 2, 2, 2, 2]);
-    expect(r.deltas.a).toBe(-10 + r.share.a);
+    expect(r.share.a).toBe(0);
+    expect(r.deltas.a).toBe(-10);
+    expect(['b', 'c', 'd', 'e', 'f'].map(m => r.deltas[m])).toEqual([2, 2, 2, 2, 2]);
     expect(sum(r.deltas)).toBe(0);
   });
-  it('un pleno que paga 35 no se lo cobra a un solo compañero: se reparte entre todos', () => {
+  it('un pleno que paga 35 se reparte entre los otros cinco y el resto rota', () => {
     const r = settleRound({ bets: { a: [{ type: 'straight', n: 5, amount: 100 }] }, result: 5, members, round: 3 });
     expect(r.nets.a).toBe(3500);
-    // 3500 / 6 = 583,33: cada uno paga 583 o 584 y el que apostó se queda con el resto.
-    expect(Object.values(r.share).every(v => v === -584 || v === -583)).toBe(true);
-    expect(r.deltas.a).toBeGreaterThan(2900);
-    expect(Object.values(r.deltas).filter(v => v < 0)).toHaveLength(5);
-    expect(sum(r.deltas)).toBe(0);
+    expect(r.deltas.a).toBe(3500);
+    // 3500 / 5 = 700 exacto.
+    expect(['b', 'c', 'd', 'e', 'f'].map(m => r.deltas[m])).toEqual([-700, -700, -700, -700, -700]);
+    const odd = settleRound({ bets: { a: [{ type: 'red', amount: 10 }] }, result: 2, members: ['a', 'b', 'c', 'd'], round: 0 });
+    // 10 entre 3: 4, 3 y 3 (el resto de uno).
+    expect(['b', 'c', 'd'].map(m => odd.deltas[m]).sort()).toEqual([3, 3, 4]);
+    expect(sum(odd.deltas)).toBe(0);
   });
-  it('varios apostadores se compensan antes de repartir', () => {
+  it('con varios apostadores, cada uno se reparte entre los demás y los saldos suman 0', () => {
     const r = settleRound({
       bets: { a: [{ type: 'red', amount: 50 }], b: [{ type: 'black', amount: 50 }] }, result: 1, members, round: 1,
     });
     expect(r.nets).toEqual({ a: 50, b: -50 });
     expect(r.house).toBe(0);
-    expect(r.deltas).toEqual({ a: 50, b: -50, c: 0, d: 0, e: 0, f: 0 });
+    // a gana 50: lo pagan b, c, d, e y f (10 cada uno). b pierde 50: lo cobran a, c, d, e y f (10 cada uno).
+    expect(r.deltas).toEqual({ a: 50 + 10, b: -50 - 10, c: 0, d: 0, e: 0, f: 0 });
+    expect(sum(r.deltas)).toBe(0);
   });
   it('el resto de la división rota con la ronda y los saldos suman 0 siempre', () => {
+    const ids = ['a', 'b', 'c', 'd'];
     const who = (round: number) => {
-      const r = settleRound({ bets: { a: [{ type: 'red', amount: 10 }] }, result: 2, members, round });
+      const r = settleRound({ bets: { a: [{ type: 'red', amount: 10 }] }, result: 2, members: ids, round });
       expect(sum(r.deltas)).toBe(0);
-      return members.filter(m => r.share[m] === 2).join('');
+      expect(r.deltas.a).toBe(-10);
+      return ids.filter(m => r.deltas[m] === 4).join('');
     };
-    const seen = new Set(Array.from({ length: 6 }, (_, i) => who(i)));
-    expect(seen.size).toBe(6); // cada ronda le toca a otros dos
+    const seen = new Set(Array.from({ length: 3 }, (_, i) => who(i)));
+    expect(seen.size).toBe(3); // cada ronda le toca el resto a otro
   });
-  it('sin resto no hay diferencias entre miembros', () => {
-    const r = settleRound({ bets: { a: [{ type: 'red', amount: 12 }] }, result: 2, members, round: 0 });
-    expect(Object.values(r.share)).toEqual([2, 2, 2, 2, 2, 2]);
-  });
-  it('un apostador que no figura entre los miembros igual participa del reparto', () => {
+  it('un apostador que no figura entre los miembros igual participa', () => {
     const r = settleRound({ bets: { z: [{ type: 'red', amount: 10 }] }, result: 2, members: ['a', 'b'], round: 0 });
     expect(Object.keys(r.deltas).sort()).toEqual(['a', 'b', 'z']);
     expect(sum(r.deltas)).toBe(0);
   });
-  it('con muchas rondas al azar los saldos suman 0 y nadie cobra siempre el resto', () => {
+  it('en un grupo de uno no hay con quién repartir: el saldo no cambia', () => {
+    const r = settleRound({ bets: { a: [{ type: 'red', amount: 10 }] }, result: 2, members: ['a'], round: 0 });
+    expect(r.deltas).toEqual({ a: 0 });
+  });
+  it('con muchas rondas al azar los saldos suman 0', () => {
     let seed = 11;
     const rng = (n: number) => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed % n; };
     const totals: Record<string, number> = Object.fromEntries(members.map(m => [m, 0]));
