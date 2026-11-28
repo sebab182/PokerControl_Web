@@ -866,3 +866,18 @@ input[type="text"], input[type="search"], select {
 .rou-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 8px; }
 .table-active .felt-wrap.rou-wrap { display: block; overflow-y: auto; padding: 44px 6px 12px; }
 .table-landscape .felt-wrap.rou-wrap { grid-area: 2 / 1 / 3 / 3; padding: 36px 8px 8px; }
+
+/* «Girar ya» sobre el centro de la rueda (solo quien puede repartir): cerca de lo que gira. */
+.rou-wheelbox { position: relative; }
+.rou-spin-now { position: absolute; left: 50%; top: 32%; transform: translateX(-50%); z-index: 1; min-height: 44px; white-space: nowrap; }
+/* Historial: los últimos 10 números, chicos, arriba de la rueda. */
+.rou-last .rou-num { min-width: 22px; height: 22px; font-size: 11px; padding: 0 3px; }
+/* Análisis de la partida (blackjack y ruleta). */
+.rou-stats { border: 1px solid var(--border); border-radius: 12px; padding: 8px 12px; background: var(--surface); }
+.rou-stats summary { cursor: pointer; font-weight: 600; font-size: 14px; min-height: 28px; display: flex; align-items: center; }
+.stats-list { margin: 8px 0 0; display: grid; gap: 4px; font-size: 13px; }
+.stats-list > div { display: flex; justify-content: space-between; gap: 12px; }
+.stats-list dt { color: var(--text-muted); }
+.stats-list dd { margin: 0; text-align: right; }
+.stats-list .pos { color: var(--green); }
+.stats-list .neg { color: var(--red); }

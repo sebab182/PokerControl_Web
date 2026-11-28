@@ -4,11 +4,18 @@
  * manos o rondas de la partida; al cerrarla ese saldo es el resultado de cada uno y se generan las deudas.
  */
 
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, inArray, isNull } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import type { Conn, Tx } from '../repo';
 
 type SeatRow = typeof schema.pokerSeats.$inferSelect;
+
+/** Nombres de los jugadores, por id (para el análisis de la partida). */
+export async function playerNames(db: Conn, ids: string[]): Promise<Map<string, string>> {
+  if (ids.length === 0) return new Map();
+  const rows = await db.select({ id: schema.players.id, name: schema.players.name }).from(schema.players).where(inArray(schema.players.id, ids));
+  return new Map(rows.map(r => [r.id, r.name]));
+}
 
 export const ONLINE_MS = 45_000;
 

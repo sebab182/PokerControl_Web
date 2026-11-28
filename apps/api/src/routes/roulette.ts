@@ -10,20 +10,21 @@
  */
 
 import { randomInt } from 'node:crypto';
-import { RouletteError, settleRound, validateBets, type Bet } from '@pokercontrol/core';
+import { RouletteError, analyzeRoulette, settleRound, validateBets, type Bet } from '@pokercontrol/core';
 import type { ApiRouletteView } from '@pokercontrol/contracts';
 import { and, asc, desc, eq, sql } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import { ApiError } from '../errors';
 import type { Conn, Tx } from '../repo';
-import { gameNets, plays } from './game-nets';
+import { gameNets, playerNames, plays } from './game-nets';
 
 type TableRow = typeof schema.pokerTables.$inferSelect;
 type SeatRow = typeof schema.pokerSeats.$inferSelect;
 export type RoundRow = typeof schema.rouletteRounds.$inferSelect;
 
 const bump = sql`${schema.pokerTables.version} + 1`;
-const HISTORY = 15;
+/** Cuántos números se muestran en el historial. */
+const HISTORY = 10;
 
 let draw: () => number = () => randomInt(37);
 /** Solo para los tests: fija el número que sale. Sin argumento vuelve al sorteo real (criptográfico). */
@@ -150,16 +151,25 @@ export async function rouletteView(
   // Quién puede apostar ahora entre vos y los jugadores sin usuario que manejás: los que están sentados y presentes.
   const ids = [...(me.myId ? [me.myId] : []), ...me.managed];
   const acting = ids.find(id => { const s = seats.find(x => x.playerId === id); return !!s && plays(s); }) ?? null;
+  // Historial de la mesa: los últimos números de todas las partidas de ruleta, no solo de la actual.
   const history = (await db.select({ result: schema.rouletteRounds.result }).from(schema.rouletteRounds)
-    .where(and(eq(schema.rouletteRounds.sessionId, table.sessionId as string), eq(schema.rouletteRounds.status, 'done')))
+    .where(and(eq(schema.rouletteRounds.tableId, table.id), eq(schema.rouletteRounds.status, 'done')))
     .orderBy(desc(schema.rouletteRounds.id)).limit(HISTORY)).map(r => r.result as number);
+  // Análisis de la partida en curso.
+  const played = await db.select({ result: schema.rouletteRounds.result, bets: schema.rouletteRounds.bets }).from(schema.rouletteRounds)
+    .where(and(eq(schema.rouletteRounds.sessionId, table.sessionId as string), eq(schema.rouletteRounds.status, 'done')))
+    .orderBy(desc(schema.rouletteRounds.id));
+  const raw = analyzeRoulette(played.map(r => ({ result: r.result as number, bets: r.bets })));
+  const names = await playerNames(db, [raw.best?.playerId, raw.worst?.playerId].filter((x): x is string => !!x));
+  const named = (x: { playerId: string; net: number } | null) => (x ? { ...x, name: names.get(x.playerId) ?? 'Un jugador' } : null);
+  const stats = { ...raw, best: named(raw.best), worst: named(raw.worst) };
   const who = acting ?? me.myId;
   // Para «repetir jugada»: lo que apostó este jugador en la última ronda que giró.
   const [lastDone] = row?.status === 'done' ? [row] : await db.select().from(schema.rouletteRounds)
     .where(and(eq(schema.rouletteRounds.sessionId, table.sessionId as string), eq(schema.rouletteRounds.status, 'done')))
     .orderBy(desc(schema.rouletteRounds.id)).limit(1);
   const last = who ? lastDone?.bets[who] ?? [] : [];
-  const base = { actingPlayerId: acting, history, minBet: table.rouMinBet, maxBet: table.rouMaxBet, last };
+  const base = { actingPlayerId: acting, history, minBet: table.rouMinBet, maxBet: table.rouMaxBet, last, stats };
   if (!row) {
     return { ...base, roundNo: 0, status: 'done', deadline: null, mine: [], totals: [], bets: [], result: null, nets: [], house: null, deltas: [] };
   }

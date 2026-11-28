@@ -759,6 +759,9 @@ test('blackjack contra todos: apostar, jugar la mano, rotar el turno y cerrar', 
   await bjStand(page);
   await expect(page2.getByTestId('bj-result')).toBeVisible({ timeout: 10000 });
   await expect(page2.getByTestId('bj-dealer').getByRole('img', { name: 'Carta oculta' })).toHaveCount(0);
+  // Análisis mínimo de la partida.
+  await page.getByTestId('bj-stats').locator('summary').click();
+  await expect(page.getByTestId('bj-stats')).toContainText('Manos jugadas');
   await checkPage(page, 'blackjack: resultado');
   await checkPage(page2, 'blackjack: resultado (lector)');
   // Los saldos arrancan en 0 y suman 0: lo que gana uno lo pierde el otro.
@@ -856,8 +859,18 @@ test('ruleta contra todos: fichas que se guardan solas, gira, tablero oculto al 
   // Gira quien inició: mientras gira el tablero se oculta y al terminar vuelve con el resultado.
   await page.getByTestId('rou-spin').click();
   await expect(page.locator('.rou-bet-area.rou-hidden')).toHaveCount(1);
+  // Mientras gira no se ven los saldos ni el resultado (ni en el historial); al terminar aparecen.
+  await expect(page.getByTestId('seat-Seba').locator('.pseat-stack')).toHaveText('$0');
+  await expect(page.getByTestId('rou-result')).toHaveCount(0);
+  await expect(page.getByTestId('rou-last')).toContainText('Todavía no salió');
   for (const p of [page, page2]) await expect(p.getByTestId('rou-result')).toBeVisible({ timeout: 15000 });
   await expect(page.locator('.rou-bet-area.rou-hidden')).toHaveCount(0);
+  await expect(page.getByTestId('seat-Seba').locator('.pseat-stack')).not.toHaveText('$0');
+  await expect(page.getByTestId('rou-last').locator('.rou-num')).toHaveCount(1);
+  // Análisis mínimo de la partida.
+  await page.getByTestId('rou-stats').locator('summary').click();
+  await expect(page.getByTestId('rou-stats')).toContainText('Rondas');
+  await expect(page.getByTestId('rou-stats')).toContainText('Total apostado');
   const last = async (p: Page) => (await p.getByTestId('rou-last').innerText()).trim();
   expect(await last(page)).toBe(await last(page2));
   await checkPage(page, 'ruleta: resultado');

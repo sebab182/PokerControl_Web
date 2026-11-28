@@ -10,7 +10,7 @@ import {
 } from '../components/ui';
 import { useGroup } from '../context';
 import { BjDock, BjFelt, bjAsHand } from './blackjack';
-import { RouletteStage, rouAsHand, useRouletteSounds } from './roulette';
+import { RouletteStage, rouAsHand, useRouletteSounds, withoutRound } from './roulette';
 import { LiveRoom } from './live';
 import { useTableSounds, useTickTock } from '../tableSounds';
 import { DECKS, type Deck, type TablePrefs, primeHandSound, useTablePrefs, useTurnAlert, useWakeLock } from '../tablePrefs';
@@ -169,6 +169,8 @@ function TableView() {
   const [startOpen, setStartOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [prefsOpen, setPrefsOpen] = useState(false);
+  // La ruleta avisa cuando gira: hasta que termina no se muestran saldos que adelanten el resultado.
+  const [rouSpinning, setRouSpinning] = useState(false);
   const [closedId, setClosedId] = useState<string | null>(null);
   const [prefs, setPrefs] = useTablePrefs();
 
@@ -392,6 +394,7 @@ function TableView() {
               })}
               onRouBets={rouPut}
               onRouSpin={() => run(() => post('roulette/spin'))}
+              onRouSpinning={setRouSpinning}
               onBjBet={amount => run(() => bjPost('bj/bet', { amount }))}
               onBjAct={action => run(() => bjPost('bj/act', { action }))}
               onRebuy={amount => run(() => post('rebuy', { amount }, { idempotent: true }))} />}
@@ -405,7 +408,7 @@ function TableView() {
               <NickChooser />
             </details>
           )}
-          {canEdit && <AdminSeats view={view} busy={busy} onAddOpen={() => setAddOpen(true)} {...admin} />}
+          {canEdit && <AdminSeats view={rouSpinning && view.roulette ? withoutRound(view, view.roulette) : view} busy={busy} onAddOpen={() => setAddOpen(true)} {...admin} />}
         </aside>
       </div>
       <PrefsModal open={prefsOpen} onClose={() => setPrefsOpen(false)} prefs={prefs} onChange={setPrefs} />
@@ -622,9 +625,9 @@ function StartModal({ view, isAdmin, open, onClose, onStart, busy }: {
 // ─── Partida en curso ────────────────────────────────────────────────────────
 type Seat = ApiTableView['seats'][number];
 
-function Playing({ view, updatedAt, bar, fab, busy, sound, onJoin, onLeave, onLeaveGame, onDeal, onClose, onAction, onBjBet, onBjAct, onRouBets, onRouSpin, onRebuy, onReveal }: {
+function Playing({ view, updatedAt, bar, fab, busy, sound, onJoin, onLeave, onLeaveGame, onDeal, onClose, onAction, onBjBet, onBjAct, onRouBets, onRouSpin, onRouSpinning, onRebuy, onReveal }: {
   view: ApiTableView; updatedAt: number; bar: ReactNode; fab: ReactNode; busy: boolean; sound: boolean; onJoin: () => void; onLeave: () => void; onLeaveGame: () => void; onDeal: () => void;
-  onClose: () => void; onAction: (a: ApiTableAction) => void; onBjBet: (amount: number) => void; onBjAct: (a: 'hit' | 'stand' | 'double') => void; onRouBets: (bets: ApiRouletteBet[]) => Promise<void>; onRouSpin: () => void; onRebuy: (amount: number) => void;
+  onClose: () => void; onAction: (a: ApiTableAction) => void; onBjBet: (amount: number) => void; onBjAct: (a: 'hit' | 'stand' | 'double') => void; onRouBets: (bets: ApiRouletteBet[]) => Promise<void>; onRouSpin: () => void; onRouSpinning: (spinning: boolean) => void; onRebuy: (amount: number) => void;
   onReveal: (playerIds: string[], cards?: number[]) => void;
 }) {
   const me = view.seats.find(s => s.isYou);
@@ -632,7 +635,6 @@ function Playing({ view, updatedAt, bar, fab, busy, sound, onJoin, onLeave, onLe
   const bj = view.blackjack;
   const bjHand = bj ? bjAsHand(view, bj) : null;
   const rou = view.roulette;
-  const rouHand = rou ? rouAsHand(view, rou) : null;
   const hand = bj || rou ? null : view.hand;
   // La ruleta está en juego mientras haya apuestas hechas en la ronda abierta.
   const rouLive = !!rou && rou.status === 'betting' && rou.totals.some(t => t.total > 0);
@@ -651,10 +653,10 @@ function Playing({ view, updatedAt, bar, fab, busy, sound, onJoin, onLeave, onLe
 
   return (
     <>
-      {rou && rouHand && (
+      {rou && (
         <div className="table-stage">
           {bar}
-          <RouletteStage view={view} r={rou} hand={rouHand} fab={fab} timer={<TurnTimer view={view} updatedAt={updatedAt} />} onBets={onRouBets} onSpin={onRouSpin} />
+          <RouletteStage view={view} r={rou} fab={fab} timer={<TurnTimer view={view} updatedAt={updatedAt} />} onBets={onRouBets} onSpin={onRouSpin} onSpinning={onRouSpinning} />
         </div>
       )}
       {bj && (

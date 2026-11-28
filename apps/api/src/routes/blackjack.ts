@@ -15,15 +15,15 @@
 
 import { randomInt, randomUUID } from 'node:crypto';
 import {
-  BlackjackError, act, canBet, handValue, legalBjActions, newRound, placeBet, skipRound,
-  type BjAction, type BjState,
+  BlackjackError, act, analyzeBlackjack, canBet, handValue, legalBjActions, newRound, placeBet, skipRound,
+  type BjAction, type BjResult, type BjState,
 } from '@pokercontrol/core';
 import type { ApiBjView } from '@pokercontrol/contracts';
 import { and, asc, desc, eq, sql } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import { ApiError } from '../errors';
 import type { Conn, Tx } from '../repo';
-import { finalizeNets, gameNets, groupPlayers, plays } from './game-nets';
+import { finalizeNets, gameNets, groupPlayers, playerNames, plays } from './game-nets';
 import { closeSessionTx, defaultSessionName } from './sessions';
 
 type TableRow = typeof schema.pokerTables.$inferSelect;
@@ -285,5 +285,20 @@ export async function bjView(
     actingPlayerId: acting,
     rivals: s.rivals.map(r => ({ playerId: r.id, stack: r.stack })),
     deltas: Object.entries(s.deltas).map(([playerId, delta]) => ({ playerId, delta })),
+    stats: await bjStatsOf(db, row.sessionId),
   };
+}
+
+/** Análisis de la partida: sale de las manos ya terminadas (sin traer los mazos, que no hacen falta). */
+async function bjStatsOf(db: Conn, sessionId: string): Promise<ApiBjView['stats']> {
+  const st = schema.blackjackHands.state;
+  const rows = await db.select({
+    playerId: sql<string>`${st}->>'playerId'`,
+    result: sql<BjResult | null>`${st}->>'result'`,
+    deltas: sql<Record<string, number>>`${st}->'deltas'`,
+  }).from(schema.blackjackHands).where(and(eq(schema.blackjackHands.sessionId, sessionId), eq(schema.blackjackHands.status, 'done')));
+  const raw = analyzeBlackjack(rows.map(r => ({ playerId: r.playerId, result: r.result, delta: r.deltas?.[r.playerId] ?? 0 })));
+  const names = await playerNames(db, [raw.best?.playerId, raw.worst?.playerId].filter((x): x is string => !!x));
+  const named = (x: { playerId: string; delta: number } | null) => (x ? { ...x, name: names.get(x.playerId) ?? 'Un jugador' } : null);
+  return { ...raw, best: named(raw.best), worst: named(raw.worst) };
 }

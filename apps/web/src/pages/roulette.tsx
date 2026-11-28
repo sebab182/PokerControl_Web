@@ -43,6 +43,13 @@ export function rouAsHand(view: ApiTableView, r: ApiRouletteView): ApiHandView {
   };
 }
 
+/** La mesa como estaba antes de la ronda que terminó (se usa mientras gira la rueda, para no adelantar el resultado en los saldos). */
+export function withoutRound(view: ApiTableView, r: ApiRouletteView): ApiTableView {
+  if (r.status !== 'done') return view;
+  const delta = (id: string) => r.deltas.find(d => d.playerId === id)?.delta ?? 0;
+  return { ...view, seats: view.seats.map(s => ({ ...s, stack: s.stack - delta(s.playerId), net: s.net - delta(s.playerId) })) };
+}
+
 // ─── La rueda ────────────────────────────────────────────────────────────────
 
 const FILL = { red: '#B91C1C', black: '#1F2937', green: '#15803D' } as const;
@@ -104,7 +111,7 @@ function Wheel({ result, spinId, onDone }: { result: number | null; spinId: numb
   );
 }
 
-/** El último número: un círculo del color de la casilla. */
+/** Un número: un círculo del color de la casilla. */
 function NumberChip({ n, big = false }: { n: number; big?: boolean }) {
   return <span className={`rou-num rou-${colorOf(n)}${big ? ' rou-num-big' : ''}`} aria-label={`${n}, ${COLOR_LABEL[colorOf(n)]}`}>{n}</span>;
 }
@@ -143,18 +150,24 @@ const sumOf = (bets: Bet[]) => bets.reduce((t, b) => t + b.amount, 0);
  * Las fichas que ponés se guardan solas (no hay botón de apostar ni de «listo»): si no pusiste fichas, no apostás; si pusiste,
  * lo que tengas en el tablero se juega cuando gira. Arriba, junto a tu avatar, «Repetir jugada» pone lo de la ronda anterior.
  */
-export function RouletteStage({ view, r, hand, fab, timer, onBets, onSpin }: {
-  view: ApiTableView; r: ApiRouletteView; hand: ApiHandView; fab: ReactNode; timer: ReactNode;
+export function RouletteStage({ view: liveView, r, fab, timer, onBets, onSpin, onSpinning }: {
+  view: ApiTableView; r: ApiRouletteView; fab: ReactNode; timer: ReactNode;
+  /** Avisa si la rueda está girando, para que el resto de la pantalla también oculte los saldos. */
+  onSpinning?: (spinning: boolean) => void;
   onBets: (bets: Bet[]) => Promise<void>; onSpin: () => void;
 }) {
   const betting = r.status === 'betting';
   const acting = r.actingPlayerId !== null;
-  const players = hand.players;
   const settledNow = r.status === 'done' && r.result !== null ? r.roundNo : null;
   // La ronda cuyo resultado ya se puede mostrar: la que estaba al abrir la página o la que terminó de girar la rueda.
   const [settled, setSettled] = useState<number | null>(settledNow);
   const spinning = settledNow !== null && settled !== settledNow;
   const shown = settledNow !== null && !spinning;
+  // Hasta que termina de girar no se ve el resultado en ningún lado: los saldos vuelven a como estaban antes de esta ronda.
+  const view = useMemo(() => (spinning ? withoutRound(liveView, r) : liveView), [liveView, r, spinning]);
+  useEffect(() => { onSpinning?.(spinning); }, [spinning]);
+  const hand = useMemo(() => ({ ...rouAsHand(view, r), ...(spinning ? { payouts: [] } : {}) }), [view, r, spinning]);
+  const players = hand.players;
 
   // Borrador local de las apuestas: se guarda solo, de a una a la vez y sin pisar lo que seguís tocando.
   const [draft, setDraft] = useState<Bet[]>(r.mine);
@@ -238,7 +251,8 @@ export function RouletteStage({ view, r, hand, fab, timer, onBets, onSpin }: {
   const mineNet = r.nets.find(x => x.playerId === me)?.net;
   const myDelta = r.deltas.find(x => x.playerId === me)?.delta;
   const fromOthers = myDelta !== undefined ? myDelta - (mineNet ?? 0) : undefined;
-  const recent = r.history.slice(spinning ? 1 : 0, spinning ? 9 : 8);
+  // Los últimos 10 números de la mesa (sin el que está saliendo, hasta que termina de girar).
+  const recent = r.history.slice(spinning ? 1 : 0, spinning ? 11 : 10);
 
   return (
     <div className="felt-wrap rou-wrap">
@@ -246,7 +260,7 @@ export function RouletteStage({ view, r, hand, fab, timer, onBets, onSpin }: {
       <section className="rou-table" aria-label="Ruleta" data-testid="rou">
         <div className="rou-seats">
           {players.map((p, i) => (
-            <PlayerSeat key={p.playerId} inline view={view} hand={spinning ? { ...hand, payouts: [] } : hand} playerId={p.playerId} offset={0} total={players.length || i + 1}
+            <PlayerSeat key={p.playerId} inline view={view} hand={hand} playerId={p.playerId} offset={0} total={players.length || i + 1}
               action={p.playerId === r.actingPlayerId ? (
                 <button type="button" className="rou-repeat" disabled={!canRepeat} onClick={repeat} data-testid="rou-repeat">Repetir jugada</button>
               ) : undefined} />
@@ -256,11 +270,12 @@ export function RouletteStage({ view, r, hand, fab, timer, onBets, onSpin }: {
         <div className="rou-last" data-testid="rou-last">
           {recent.length === 0
             ? <span className="muted xs">Todavía no salió ningún número</span>
-            : recent.map((n, i) => <NumberChip key={`${n}-${i}`} n={n} big={i === 0} />)}
+            : recent.map((n, i) => <NumberChip key={`${n}-${i}`} n={n} />)}
         </div>
 
         <div className="rou-wheelbox">
           <Wheel result={r.status === 'done' ? r.result : null} spinId={r.status === 'done' ? r.roundNo : -1} onDone={setSettled} />
+          {betting && view.canHost && <Btn className="rou-spin-now" onClick={onSpin} data-testid="rou-spin">Girar ya</Btn>}
         </div>
 
         <div className={`rou-bet-area${spinning ? ' rou-hidden' : ''}`} aria-hidden={spinning || undefined}>
@@ -308,7 +323,7 @@ export function RouletteStage({ view, r, hand, fab, timer, onBets, onSpin }: {
               <Btn variant="ghost" disabled={draft.length === 0 || spinning} onClick={() => { change([]); setHint(''); }} data-testid="rou-clear">Borrar</Btn>
             </div>
           )}
-          {betting && view.canHost && <Btn variant="ghost" block onClick={onSpin} data-testid="rou-spin">Girar ya</Btn>}
+          <RouletteAnalysis stats={r.stats} />
           <p className="xs muted">
             Un pleno paga 35 a 1; docenas y columnas, 2 a 1; el resto, 1 a 1. El 0 pierde las apuestas simples. No hay compra inicial: tu saldo puede quedar en negativo.
           </p>
@@ -316,6 +331,32 @@ export function RouletteStage({ view, r, hand, fab, timer, onBets, onSpin }: {
         </div>
       </section>
     </div>
+  );
+}
+
+const COLOR_NAME = { red: 'rojo', black: 'negro', green: 'cero' } as const;
+
+/** Análisis mínimo de la partida de ruleta, en un desplegable. */
+function RouletteAnalysis({ stats }: { stats: ApiRouletteView['stats'] }) {
+  if (stats.rounds === 0) return null;
+  const rows: [string, string][] = [
+    ['Rondas', String(stats.rounds)],
+    ['Rojo', `${stats.red} (${Math.round((stats.red / stats.rounds) * 100)}%)`],
+    ['Negro', `${stats.black} (${Math.round((stats.black / stats.rounds) * 100)}%)`],
+    ['Cero', `${stats.zero} (${Math.round((stats.zero / stats.rounds) * 100)}%)`],
+    ['Total apostado', formatMoney(stats.wagered)],
+  ];
+  return (
+    <details className="rou-stats" data-testid="rou-stats">
+      <summary>Análisis de la partida</summary>
+      <dl className="stats-list">
+        {rows.map(([k, v]) => <div key={k}><dt>{k}</dt><dd className="num">{v}</dd></div>)}
+        {stats.streak && stats.streak.count > 1 && <div><dt>Racha</dt><dd>{stats.streak.count} seguidos al {COLOR_NAME[stats.streak.color]}</dd></div>}
+        {stats.hot.length > 0 && <div><dt>Más frecuentes</dt><dd className="num">{stats.hot.map(h => `${h.n} (${h.count})`).join(' · ')}</dd></div>}
+        {stats.best && <div><dt>Mejor ronda</dt><dd className="num pos">{stats.best.name} +{formatMoney(stats.best.net)}</dd></div>}
+        {stats.worst && <div><dt>Peor ronda</dt><dd className="num neg">{stats.worst.name} −{formatMoney(-stats.worst.net)}</dd></div>}
+      </dl>
+    </details>
   );
 }
 

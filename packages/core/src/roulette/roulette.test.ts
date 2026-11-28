@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  MAX_BETS, RED_NUMBERS, RouletteError, WHEEL_ORDER, betNet, betWins, colorOf, settleRound, validateBets, type Bet,
+  MAX_BETS, RED_NUMBERS, RouletteError, WHEEL_ORDER, analyzeRoulette, betNet, betWins, colorOf, settleRound, validateBets, type Bet,
 } from './index';
 
 const sum = (o: Record<string, number>) => Object.values(o).reduce((a, b) => a + b, 0);
@@ -142,5 +142,27 @@ describe('liquidación contra los demás, sin contar al que apostó', () => {
       for (const m of members) totals[m] += r.deltas[m];
     }
     expect(sum(totals)).toBe(0);
+  });
+});
+
+describe('análisis de la partida', () => {
+  const round = (result: number, bets: Record<string, Bet[]> = {}) => ({ result, bets });
+  it('cuenta colores, números calientes, racha, lo apostado y la mejor y peor ronda', () => {
+    // De la más nueva a la más vieja: 1 (rojo), 3 (rojo), 17 (negro), 3 (rojo), 0.
+    const s = analyzeRoulette([
+      round(1, { a: [{ type: 'red', amount: 20 }] }),
+      round(3, { a: [{ type: 'straight', n: 3, amount: 10 }], b: [{ type: 'black', amount: 30 }] }),
+      round(17),
+      round(3),
+      round(0, { b: [{ type: 'red', amount: 50 }] }),
+    ]);
+    expect(s).toMatchObject({ rounds: 5, red: 3, black: 1, zero: 1, wagered: 110 });
+    expect(s.hot).toEqual([{ n: 3, count: 2 }]);
+    expect(s.streak).toEqual({ color: 'red', count: 2 });
+    expect(s.best).toEqual({ playerId: 'a', net: 350 });
+    expect(s.worst).toEqual({ playerId: 'b', net: -50 });
+  });
+  it('sin rondas no hay nada que analizar', () => {
+    expect(analyzeRoulette([])).toEqual({ rounds: 0, red: 0, black: 0, zero: 0, hot: [], streak: null, wagered: 0, best: null, worst: null });
   });
 });

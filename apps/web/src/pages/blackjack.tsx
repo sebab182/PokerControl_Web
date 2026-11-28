@@ -132,6 +132,31 @@ export function BjFelt({ view, bj, hand, fab }: { view: ApiTableView; bj: ApiBjV
 }
 
 /** Lo que hay que decidir en cada momento, debajo del paño: apostar, pedir / plantarse / doblar, el resultado y repartir la siguiente. */
+const pct = (n: number, of: number) => (of > 0 ? `${Math.round((n / of) * 100)}%` : '0%');
+
+/** Análisis mínimo de la partida: cómo les fue a quienes jugaron su mano contra el croupier. */
+function BjAnalysis({ stats }: { stats: ApiBjView['stats'] }) {
+  if (stats.hands === 0) return null;
+  const rows: [string, string][] = [
+    ['Manos jugadas', String(stats.hands)],
+    ['Ganadas por el jugador', `${stats.wins} (${pct(stats.wins, stats.hands)})`],
+    ['Empatadas', `${stats.pushes} (${pct(stats.pushes, stats.hands)})`],
+    ['Perdidas', `${stats.losses} (${pct(stats.losses, stats.hands)})`],
+    ['Blackjacks', String(stats.blackjacks)],
+    ['Pasadas de 21', String(stats.busts)],
+  ];
+  return (
+    <details className="rou-stats" data-testid="bj-stats">
+      <summary>Análisis de la partida</summary>
+      <dl className="stats-list">
+        {rows.map(([k, v]) => <div key={k}><dt>{k}</dt><dd className="num">{v}</dd></div>)}
+        {stats.best && <div><dt>Mejor mano</dt><dd className="num pos">{stats.best.name} +{formatMoney(stats.best.delta)}</dd></div>}
+        {stats.worst && <div><dt>Peor mano</dt><dd className="num neg">{stats.worst.name} −{formatMoney(-stats.worst.delta)}</dd></div>}
+      </dl>
+    </details>
+  );
+}
+
 export function BjDock({ view, bj, busy, sound, canDeal, waiting, onBet, onAct, onDeal }: {
   view: ApiTableView; bj: ApiBjView; busy: boolean; sound: boolean; canDeal: boolean; waiting: ReactNode;
   onBet: (amount: number) => void; onAct: (action: BjAction) => void; onDeal: () => void;
@@ -203,6 +228,7 @@ export function BjDock({ view, bj, busy, sound, canDeal, waiting, onBet, onAct, 
         </Btn>
       )}
       {done && !canDeal && waiting}
+      <BjAnalysis stats={bj.stats} />
     </section>
   );
 }
