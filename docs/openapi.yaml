@@ -1676,6 +1676,7 @@ paths:
                       - actingPlayerId
                       - rivals
                       - deltas
+                      - stats
                     properties:
                       handId:
                         type: integer
@@ -1796,6 +1797,62 @@ paths:
                               type: string
                             delta:
                               type: integer
+                      stats:
+                        additionalProperties: false
+                        title: BjStats
+                        type: object
+                        required:
+                          - hands
+                          - wins
+                          - pushes
+                          - losses
+                          - blackjacks
+                          - busts
+                          - best
+                          - worst
+                        properties:
+                          hands:
+                            type: integer
+                          wins:
+                            type: integer
+                          pushes:
+                            type: integer
+                          losses:
+                            type: integer
+                          blackjacks:
+                            type: integer
+                          busts:
+                            type: integer
+                          best:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - delta
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              delta:
+                                type: integer
+                            nullable: true
+                          worst:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - delta
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              delta:
+                                type: integer
+                            nullable: true
                     nullable: true
                   rouMinBet:
                     type: integer
@@ -1821,6 +1878,7 @@ paths:
                       - house
                       - deltas
                       - history
+                      - stats
                       - minBet
                       - maxBet
                     properties:
@@ -2046,6 +2104,95 @@ paths:
                         type: array
                         items:
                           type: integer
+                      stats:
+                        additionalProperties: false
+                        title: RouletteStats
+                        type: object
+                        required:
+                          - rounds
+                          - red
+                          - black
+                          - zero
+                          - hot
+                          - streak
+                          - wagered
+                          - best
+                          - worst
+                        properties:
+                          rounds:
+                            type: integer
+                          red:
+                            type: integer
+                          black:
+                            type: integer
+                          zero:
+                            type: integer
+                          hot:
+                            type: array
+                            items:
+                              additionalProperties: false
+                              type: object
+                              required:
+                                - n
+                                - count
+                              properties:
+                                n:
+                                  type: integer
+                                count:
+                                  type: integer
+                          streak:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - color
+                              - count
+                            properties:
+                              color:
+                                anyOf:
+                                  - type: string
+                                    enum:
+                                      - red
+                                  - type: string
+                                    enum:
+                                      - black
+                                  - type: string
+                                    enum:
+                                      - green
+                              count:
+                                type: integer
+                            nullable: true
+                          wagered:
+                            type: integer
+                          best:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - net
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              net:
+                                type: integer
+                            nullable: true
+                          worst:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - net
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              net:
+                                type: integer
+                            nullable: true
                       minBet:
                         type: integer
                       maxBet:
@@ -2470,6 +2617,7 @@ paths:
                       - actingPlayerId
                       - rivals
                       - deltas
+                      - stats
                     properties:
                       handId:
                         type: integer
@@ -2590,6 +2738,62 @@ paths:
                               type: string
                             delta:
                               type: integer
+                      stats:
+                        additionalProperties: false
+                        title: BjStats
+                        type: object
+                        required:
+                          - hands
+                          - wins
+                          - pushes
+                          - losses
+                          - blackjacks
+                          - busts
+                          - best
+                          - worst
+                        properties:
+                          hands:
+                            type: integer
+                          wins:
+                            type: integer
+                          pushes:
+                            type: integer
+                          losses:
+                            type: integer
+                          blackjacks:
+                            type: integer
+                          busts:
+                            type: integer
+                          best:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - delta
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              delta:
+                                type: integer
+                            nullable: true
+                          worst:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - delta
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              delta:
+                                type: integer
+                            nullable: true
                     nullable: true
                   rouMinBet:
                     type: integer
@@ -2615,6 +2819,7 @@ paths:
                       - house
                       - deltas
                       - history
+                      - stats
                       - minBet
                       - maxBet
                     properties:
@@ -2840,6 +3045,95 @@ paths:
                         type: array
                         items:
                           type: integer
+                      stats:
+                        additionalProperties: false
+                        title: RouletteStats
+                        type: object
+                        required:
+                          - rounds
+                          - red
+                          - black
+                          - zero
+                          - hot
+                          - streak
+                          - wagered
+                          - best
+                          - worst
+                        properties:
+                          rounds:
+                            type: integer
+                          red:
+                            type: integer
+                          black:
+                            type: integer
+                          zero:
+                            type: integer
+                          hot:
+                            type: array
+                            items:
+                              additionalProperties: false
+                              type: object
+                              required:
+                                - n
+                                - count
+                              properties:
+                                n:
+                                  type: integer
+                                count:
+                                  type: integer
+                          streak:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - color
+                              - count
+                            properties:
+                              color:
+                                anyOf:
+                                  - type: string
+                                    enum:
+                                      - red
+                                  - type: string
+                                    enum:
+                                      - black
+                                  - type: string
+                                    enum:
+                                      - green
+                              count:
+                                type: integer
+                            nullable: true
+                          wagered:
+                            type: integer
+                          best:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - net
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              net:
+                                type: integer
+                            nullable: true
+                          worst:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - net
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              net:
+                                type: integer
+                            nullable: true
                       minBet:
                         type: integer
                       maxBet:
@@ -3264,6 +3558,7 @@ paths:
                       - actingPlayerId
                       - rivals
                       - deltas
+                      - stats
                     properties:
                       handId:
                         type: integer
@@ -3384,6 +3679,62 @@ paths:
                               type: string
                             delta:
                               type: integer
+                      stats:
+                        additionalProperties: false
+                        title: BjStats
+                        type: object
+                        required:
+                          - hands
+                          - wins
+                          - pushes
+                          - losses
+                          - blackjacks
+                          - busts
+                          - best
+                          - worst
+                        properties:
+                          hands:
+                            type: integer
+                          wins:
+                            type: integer
+                          pushes:
+                            type: integer
+                          losses:
+                            type: integer
+                          blackjacks:
+                            type: integer
+                          busts:
+                            type: integer
+                          best:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - delta
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              delta:
+                                type: integer
+                            nullable: true
+                          worst:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - delta
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              delta:
+                                type: integer
+                            nullable: true
                     nullable: true
                   rouMinBet:
                     type: integer
@@ -3409,6 +3760,7 @@ paths:
                       - house
                       - deltas
                       - history
+                      - stats
                       - minBet
                       - maxBet
                     properties:
@@ -3634,6 +3986,95 @@ paths:
                         type: array
                         items:
                           type: integer
+                      stats:
+                        additionalProperties: false
+                        title: RouletteStats
+                        type: object
+                        required:
+                          - rounds
+                          - red
+                          - black
+                          - zero
+                          - hot
+                          - streak
+                          - wagered
+                          - best
+                          - worst
+                        properties:
+                          rounds:
+                            type: integer
+                          red:
+                            type: integer
+                          black:
+                            type: integer
+                          zero:
+                            type: integer
+                          hot:
+                            type: array
+                            items:
+                              additionalProperties: false
+                              type: object
+                              required:
+                                - n
+                                - count
+                              properties:
+                                n:
+                                  type: integer
+                                count:
+                                  type: integer
+                          streak:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - color
+                              - count
+                            properties:
+                              color:
+                                anyOf:
+                                  - type: string
+                                    enum:
+                                      - red
+                                  - type: string
+                                    enum:
+                                      - black
+                                  - type: string
+                                    enum:
+                                      - green
+                              count:
+                                type: integer
+                            nullable: true
+                          wagered:
+                            type: integer
+                          best:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - net
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              net:
+                                type: integer
+                            nullable: true
+                          worst:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - net
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              net:
+                                type: integer
+                            nullable: true
                       minBet:
                         type: integer
                       maxBet:
@@ -4058,6 +4499,7 @@ paths:
                       - actingPlayerId
                       - rivals
                       - deltas
+                      - stats
                     properties:
                       handId:
                         type: integer
@@ -4178,6 +4620,62 @@ paths:
                               type: string
                             delta:
                               type: integer
+                      stats:
+                        additionalProperties: false
+                        title: BjStats
+                        type: object
+                        required:
+                          - hands
+                          - wins
+                          - pushes
+                          - losses
+                          - blackjacks
+                          - busts
+                          - best
+                          - worst
+                        properties:
+                          hands:
+                            type: integer
+                          wins:
+                            type: integer
+                          pushes:
+                            type: integer
+                          losses:
+                            type: integer
+                          blackjacks:
+                            type: integer
+                          busts:
+                            type: integer
+                          best:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - delta
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              delta:
+                                type: integer
+                            nullable: true
+                          worst:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - delta
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              delta:
+                                type: integer
+                            nullable: true
                     nullable: true
                   rouMinBet:
                     type: integer
@@ -4203,6 +4701,7 @@ paths:
                       - house
                       - deltas
                       - history
+                      - stats
                       - minBet
                       - maxBet
                     properties:
@@ -4428,6 +4927,95 @@ paths:
                         type: array
                         items:
                           type: integer
+                      stats:
+                        additionalProperties: false
+                        title: RouletteStats
+                        type: object
+                        required:
+                          - rounds
+                          - red
+                          - black
+                          - zero
+                          - hot
+                          - streak
+                          - wagered
+                          - best
+                          - worst
+                        properties:
+                          rounds:
+                            type: integer
+                          red:
+                            type: integer
+                          black:
+                            type: integer
+                          zero:
+                            type: integer
+                          hot:
+                            type: array
+                            items:
+                              additionalProperties: false
+                              type: object
+                              required:
+                                - n
+                                - count
+                              properties:
+                                n:
+                                  type: integer
+                                count:
+                                  type: integer
+                          streak:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - color
+                              - count
+                            properties:
+                              color:
+                                anyOf:
+                                  - type: string
+                                    enum:
+                                      - red
+                                  - type: string
+                                    enum:
+                                      - black
+                                  - type: string
+                                    enum:
+                                      - green
+                              count:
+                                type: integer
+                            nullable: true
+                          wagered:
+                            type: integer
+                          best:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - net
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              net:
+                                type: integer
+                            nullable: true
+                          worst:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - net
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              net:
+                                type: integer
+                            nullable: true
                       minBet:
                         type: integer
                       maxBet:
@@ -4857,6 +5445,7 @@ paths:
                       - actingPlayerId
                       - rivals
                       - deltas
+                      - stats
                     properties:
                       handId:
                         type: integer
@@ -4977,6 +5566,62 @@ paths:
                               type: string
                             delta:
                               type: integer
+                      stats:
+                        additionalProperties: false
+                        title: BjStats
+                        type: object
+                        required:
+                          - hands
+                          - wins
+                          - pushes
+                          - losses
+                          - blackjacks
+                          - busts
+                          - best
+                          - worst
+                        properties:
+                          hands:
+                            type: integer
+                          wins:
+                            type: integer
+                          pushes:
+                            type: integer
+                          losses:
+                            type: integer
+                          blackjacks:
+                            type: integer
+                          busts:
+                            type: integer
+                          best:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - delta
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              delta:
+                                type: integer
+                            nullable: true
+                          worst:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - delta
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              delta:
+                                type: integer
+                            nullable: true
                     nullable: true
                   rouMinBet:
                     type: integer
@@ -5002,6 +5647,7 @@ paths:
                       - house
                       - deltas
                       - history
+                      - stats
                       - minBet
                       - maxBet
                     properties:
@@ -5227,6 +5873,95 @@ paths:
                         type: array
                         items:
                           type: integer
+                      stats:
+                        additionalProperties: false
+                        title: RouletteStats
+                        type: object
+                        required:
+                          - rounds
+                          - red
+                          - black
+                          - zero
+                          - hot
+                          - streak
+                          - wagered
+                          - best
+                          - worst
+                        properties:
+                          rounds:
+                            type: integer
+                          red:
+                            type: integer
+                          black:
+                            type: integer
+                          zero:
+                            type: integer
+                          hot:
+                            type: array
+                            items:
+                              additionalProperties: false
+                              type: object
+                              required:
+                                - n
+                                - count
+                              properties:
+                                n:
+                                  type: integer
+                                count:
+                                  type: integer
+                          streak:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - color
+                              - count
+                            properties:
+                              color:
+                                anyOf:
+                                  - type: string
+                                    enum:
+                                      - red
+                                  - type: string
+                                    enum:
+                                      - black
+                                  - type: string
+                                    enum:
+                                      - green
+                              count:
+                                type: integer
+                            nullable: true
+                          wagered:
+                            type: integer
+                          best:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - net
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              net:
+                                type: integer
+                            nullable: true
+                          worst:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - net
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              net:
+                                type: integer
+                            nullable: true
                       minBet:
                         type: integer
                       maxBet:
@@ -5655,6 +6390,7 @@ paths:
                       - actingPlayerId
                       - rivals
                       - deltas
+                      - stats
                     properties:
                       handId:
                         type: integer
@@ -5775,6 +6511,62 @@ paths:
                               type: string
                             delta:
                               type: integer
+                      stats:
+                        additionalProperties: false
+                        title: BjStats
+                        type: object
+                        required:
+                          - hands
+                          - wins
+                          - pushes
+                          - losses
+                          - blackjacks
+                          - busts
+                          - best
+                          - worst
+                        properties:
+                          hands:
+                            type: integer
+                          wins:
+                            type: integer
+                          pushes:
+                            type: integer
+                          losses:
+                            type: integer
+                          blackjacks:
+                            type: integer
+                          busts:
+                            type: integer
+                          best:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - delta
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              delta:
+                                type: integer
+                            nullable: true
+                          worst:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - delta
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              delta:
+                                type: integer
+                            nullable: true
                     nullable: true
                   rouMinBet:
                     type: integer
@@ -5800,6 +6592,7 @@ paths:
                       - house
                       - deltas
                       - history
+                      - stats
                       - minBet
                       - maxBet
                     properties:
@@ -6025,6 +6818,95 @@ paths:
                         type: array
                         items:
                           type: integer
+                      stats:
+                        additionalProperties: false
+                        title: RouletteStats
+                        type: object
+                        required:
+                          - rounds
+                          - red
+                          - black
+                          - zero
+                          - hot
+                          - streak
+                          - wagered
+                          - best
+                          - worst
+                        properties:
+                          rounds:
+                            type: integer
+                          red:
+                            type: integer
+                          black:
+                            type: integer
+                          zero:
+                            type: integer
+                          hot:
+                            type: array
+                            items:
+                              additionalProperties: false
+                              type: object
+                              required:
+                                - n
+                                - count
+                              properties:
+                                n:
+                                  type: integer
+                                count:
+                                  type: integer
+                          streak:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - color
+                              - count
+                            properties:
+                              color:
+                                anyOf:
+                                  - type: string
+                                    enum:
+                                      - red
+                                  - type: string
+                                    enum:
+                                      - black
+                                  - type: string
+                                    enum:
+                                      - green
+                              count:
+                                type: integer
+                            nullable: true
+                          wagered:
+                            type: integer
+                          best:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - net
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              net:
+                                type: integer
+                            nullable: true
+                          worst:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - net
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              net:
+                                type: integer
+                            nullable: true
                       minBet:
                         type: integer
                       maxBet:
@@ -6466,6 +7348,7 @@ paths:
                       - actingPlayerId
                       - rivals
                       - deltas
+                      - stats
                     properties:
                       handId:
                         type: integer
@@ -6586,6 +7469,62 @@ paths:
                               type: string
                             delta:
                               type: integer
+                      stats:
+                        additionalProperties: false
+                        title: BjStats
+                        type: object
+                        required:
+                          - hands
+                          - wins
+                          - pushes
+                          - losses
+                          - blackjacks
+                          - busts
+                          - best
+                          - worst
+                        properties:
+                          hands:
+                            type: integer
+                          wins:
+                            type: integer
+                          pushes:
+                            type: integer
+                          losses:
+                            type: integer
+                          blackjacks:
+                            type: integer
+                          busts:
+                            type: integer
+                          best:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - delta
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              delta:
+                                type: integer
+                            nullable: true
+                          worst:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - delta
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              delta:
+                                type: integer
+                            nullable: true
                     nullable: true
                   rouMinBet:
                     type: integer
@@ -6611,6 +7550,7 @@ paths:
                       - house
                       - deltas
                       - history
+                      - stats
                       - minBet
                       - maxBet
                     properties:
@@ -6836,6 +7776,95 @@ paths:
                         type: array
                         items:
                           type: integer
+                      stats:
+                        additionalProperties: false
+                        title: RouletteStats
+                        type: object
+                        required:
+                          - rounds
+                          - red
+                          - black
+                          - zero
+                          - hot
+                          - streak
+                          - wagered
+                          - best
+                          - worst
+                        properties:
+                          rounds:
+                            type: integer
+                          red:
+                            type: integer
+                          black:
+                            type: integer
+                          zero:
+                            type: integer
+                          hot:
+                            type: array
+                            items:
+                              additionalProperties: false
+                              type: object
+                              required:
+                                - n
+                                - count
+                              properties:
+                                n:
+                                  type: integer
+                                count:
+                                  type: integer
+                          streak:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - color
+                              - count
+                            properties:
+                              color:
+                                anyOf:
+                                  - type: string
+                                    enum:
+                                      - red
+                                  - type: string
+                                    enum:
+                                      - black
+                                  - type: string
+                                    enum:
+                                      - green
+                              count:
+                                type: integer
+                            nullable: true
+                          wagered:
+                            type: integer
+                          best:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - net
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              net:
+                                type: integer
+                            nullable: true
+                          worst:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - net
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              net:
+                                type: integer
+                            nullable: true
                       minBet:
                         type: integer
                       maxBet:
@@ -7323,6 +8352,7 @@ paths:
                       - actingPlayerId
                       - rivals
                       - deltas
+                      - stats
                     properties:
                       handId:
                         type: integer
@@ -7443,6 +8473,62 @@ paths:
                               type: string
                             delta:
                               type: integer
+                      stats:
+                        additionalProperties: false
+                        title: BjStats
+                        type: object
+                        required:
+                          - hands
+                          - wins
+                          - pushes
+                          - losses
+                          - blackjacks
+                          - busts
+                          - best
+                          - worst
+                        properties:
+                          hands:
+                            type: integer
+                          wins:
+                            type: integer
+                          pushes:
+                            type: integer
+                          losses:
+                            type: integer
+                          blackjacks:
+                            type: integer
+                          busts:
+                            type: integer
+                          best:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - delta
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              delta:
+                                type: integer
+                            nullable: true
+                          worst:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - delta
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              delta:
+                                type: integer
+                            nullable: true
                     nullable: true
                   rouMinBet:
                     type: integer
@@ -7468,6 +8554,7 @@ paths:
                       - house
                       - deltas
                       - history
+                      - stats
                       - minBet
                       - maxBet
                     properties:
@@ -7693,6 +8780,95 @@ paths:
                         type: array
                         items:
                           type: integer
+                      stats:
+                        additionalProperties: false
+                        title: RouletteStats
+                        type: object
+                        required:
+                          - rounds
+                          - red
+                          - black
+                          - zero
+                          - hot
+                          - streak
+                          - wagered
+                          - best
+                          - worst
+                        properties:
+                          rounds:
+                            type: integer
+                          red:
+                            type: integer
+                          black:
+                            type: integer
+                          zero:
+                            type: integer
+                          hot:
+                            type: array
+                            items:
+                              additionalProperties: false
+                              type: object
+                              required:
+                                - n
+                                - count
+                              properties:
+                                n:
+                                  type: integer
+                                count:
+                                  type: integer
+                          streak:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - color
+                              - count
+                            properties:
+                              color:
+                                anyOf:
+                                  - type: string
+                                    enum:
+                                      - red
+                                  - type: string
+                                    enum:
+                                      - black
+                                  - type: string
+                                    enum:
+                                      - green
+                              count:
+                                type: integer
+                            nullable: true
+                          wagered:
+                            type: integer
+                          best:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - net
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              net:
+                                type: integer
+                            nullable: true
+                          worst:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - net
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              net:
+                                type: integer
+                            nullable: true
                       minBet:
                         type: integer
                       maxBet:
@@ -8117,6 +9293,7 @@ paths:
                       - actingPlayerId
                       - rivals
                       - deltas
+                      - stats
                     properties:
                       handId:
                         type: integer
@@ -8237,6 +9414,62 @@ paths:
                               type: string
                             delta:
                               type: integer
+                      stats:
+                        additionalProperties: false
+                        title: BjStats
+                        type: object
+                        required:
+                          - hands
+                          - wins
+                          - pushes
+                          - losses
+                          - blackjacks
+                          - busts
+                          - best
+                          - worst
+                        properties:
+                          hands:
+                            type: integer
+                          wins:
+                            type: integer
+                          pushes:
+                            type: integer
+                          losses:
+                            type: integer
+                          blackjacks:
+                            type: integer
+                          busts:
+                            type: integer
+                          best:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - delta
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              delta:
+                                type: integer
+                            nullable: true
+                          worst:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - delta
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              delta:
+                                type: integer
+                            nullable: true
                     nullable: true
                   rouMinBet:
                     type: integer
@@ -8262,6 +9495,7 @@ paths:
                       - house
                       - deltas
                       - history
+                      - stats
                       - minBet
                       - maxBet
                     properties:
@@ -8487,6 +9721,95 @@ paths:
                         type: array
                         items:
                           type: integer
+                      stats:
+                        additionalProperties: false
+                        title: RouletteStats
+                        type: object
+                        required:
+                          - rounds
+                          - red
+                          - black
+                          - zero
+                          - hot
+                          - streak
+                          - wagered
+                          - best
+                          - worst
+                        properties:
+                          rounds:
+                            type: integer
+                          red:
+                            type: integer
+                          black:
+                            type: integer
+                          zero:
+                            type: integer
+                          hot:
+                            type: array
+                            items:
+                              additionalProperties: false
+                              type: object
+                              required:
+                                - n
+                                - count
+                              properties:
+                                n:
+                                  type: integer
+                                count:
+                                  type: integer
+                          streak:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - color
+                              - count
+                            properties:
+                              color:
+                                anyOf:
+                                  - type: string
+                                    enum:
+                                      - red
+                                  - type: string
+                                    enum:
+                                      - black
+                                  - type: string
+                                    enum:
+                                      - green
+                              count:
+                                type: integer
+                            nullable: true
+                          wagered:
+                            type: integer
+                          best:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - net
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              net:
+                                type: integer
+                            nullable: true
+                          worst:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - net
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              net:
+                                type: integer
+                            nullable: true
                       minBet:
                         type: integer
                       maxBet:
@@ -8978,6 +10301,7 @@ paths:
                       - actingPlayerId
                       - rivals
                       - deltas
+                      - stats
                     properties:
                       handId:
                         type: integer
@@ -9098,6 +10422,62 @@ paths:
                               type: string
                             delta:
                               type: integer
+                      stats:
+                        additionalProperties: false
+                        title: BjStats
+                        type: object
+                        required:
+                          - hands
+                          - wins
+                          - pushes
+                          - losses
+                          - blackjacks
+                          - busts
+                          - best
+                          - worst
+                        properties:
+                          hands:
+                            type: integer
+                          wins:
+                            type: integer
+                          pushes:
+                            type: integer
+                          losses:
+                            type: integer
+                          blackjacks:
+                            type: integer
+                          busts:
+                            type: integer
+                          best:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - delta
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              delta:
+                                type: integer
+                            nullable: true
+                          worst:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - delta
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              delta:
+                                type: integer
+                            nullable: true
                     nullable: true
                   rouMinBet:
                     type: integer
@@ -9123,6 +10503,7 @@ paths:
                       - house
                       - deltas
                       - history
+                      - stats
                       - minBet
                       - maxBet
                     properties:
@@ -9348,6 +10729,95 @@ paths:
                         type: array
                         items:
                           type: integer
+                      stats:
+                        additionalProperties: false
+                        title: RouletteStats
+                        type: object
+                        required:
+                          - rounds
+                          - red
+                          - black
+                          - zero
+                          - hot
+                          - streak
+                          - wagered
+                          - best
+                          - worst
+                        properties:
+                          rounds:
+                            type: integer
+                          red:
+                            type: integer
+                          black:
+                            type: integer
+                          zero:
+                            type: integer
+                          hot:
+                            type: array
+                            items:
+                              additionalProperties: false
+                              type: object
+                              required:
+                                - n
+                                - count
+                              properties:
+                                n:
+                                  type: integer
+                                count:
+                                  type: integer
+                          streak:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - color
+                              - count
+                            properties:
+                              color:
+                                anyOf:
+                                  - type: string
+                                    enum:
+                                      - red
+                                  - type: string
+                                    enum:
+                                      - black
+                                  - type: string
+                                    enum:
+                                      - green
+                              count:
+                                type: integer
+                            nullable: true
+                          wagered:
+                            type: integer
+                          best:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - net
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              net:
+                                type: integer
+                            nullable: true
+                          worst:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - net
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              net:
+                                type: integer
+                            nullable: true
                       minBet:
                         type: integer
                       maxBet:
@@ -9791,6 +11261,7 @@ paths:
                       - actingPlayerId
                       - rivals
                       - deltas
+                      - stats
                     properties:
                       handId:
                         type: integer
@@ -9911,6 +11382,62 @@ paths:
                               type: string
                             delta:
                               type: integer
+                      stats:
+                        additionalProperties: false
+                        title: BjStats
+                        type: object
+                        required:
+                          - hands
+                          - wins
+                          - pushes
+                          - losses
+                          - blackjacks
+                          - busts
+                          - best
+                          - worst
+                        properties:
+                          hands:
+                            type: integer
+                          wins:
+                            type: integer
+                          pushes:
+                            type: integer
+                          losses:
+                            type: integer
+                          blackjacks:
+                            type: integer
+                          busts:
+                            type: integer
+                          best:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - delta
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              delta:
+                                type: integer
+                            nullable: true
+                          worst:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - delta
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              delta:
+                                type: integer
+                            nullable: true
                     nullable: true
                   rouMinBet:
                     type: integer
@@ -9936,6 +11463,7 @@ paths:
                       - house
                       - deltas
                       - history
+                      - stats
                       - minBet
                       - maxBet
                     properties:
@@ -10161,6 +11689,95 @@ paths:
                         type: array
                         items:
                           type: integer
+                      stats:
+                        additionalProperties: false
+                        title: RouletteStats
+                        type: object
+                        required:
+                          - rounds
+                          - red
+                          - black
+                          - zero
+                          - hot
+                          - streak
+                          - wagered
+                          - best
+                          - worst
+                        properties:
+                          rounds:
+                            type: integer
+                          red:
+                            type: integer
+                          black:
+                            type: integer
+                          zero:
+                            type: integer
+                          hot:
+                            type: array
+                            items:
+                              additionalProperties: false
+                              type: object
+                              required:
+                                - n
+                                - count
+                              properties:
+                                n:
+                                  type: integer
+                                count:
+                                  type: integer
+                          streak:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - color
+                              - count
+                            properties:
+                              color:
+                                anyOf:
+                                  - type: string
+                                    enum:
+                                      - red
+                                  - type: string
+                                    enum:
+                                      - black
+                                  - type: string
+                                    enum:
+                                      - green
+                              count:
+                                type: integer
+                            nullable: true
+                          wagered:
+                            type: integer
+                          best:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - net
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              net:
+                                type: integer
+                            nullable: true
+                          worst:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - net
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              net:
+                                type: integer
+                            nullable: true
                       minBet:
                         type: integer
                       maxBet:
@@ -10611,6 +12228,7 @@ paths:
                       - actingPlayerId
                       - rivals
                       - deltas
+                      - stats
                     properties:
                       handId:
                         type: integer
@@ -10731,6 +12349,62 @@ paths:
                               type: string
                             delta:
                               type: integer
+                      stats:
+                        additionalProperties: false
+                        title: BjStats
+                        type: object
+                        required:
+                          - hands
+                          - wins
+                          - pushes
+                          - losses
+                          - blackjacks
+                          - busts
+                          - best
+                          - worst
+                        properties:
+                          hands:
+                            type: integer
+                          wins:
+                            type: integer
+                          pushes:
+                            type: integer
+                          losses:
+                            type: integer
+                          blackjacks:
+                            type: integer
+                          busts:
+                            type: integer
+                          best:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - delta
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              delta:
+                                type: integer
+                            nullable: true
+                          worst:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - delta
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              delta:
+                                type: integer
+                            nullable: true
                     nullable: true
                   rouMinBet:
                     type: integer
@@ -10756,6 +12430,7 @@ paths:
                       - house
                       - deltas
                       - history
+                      - stats
                       - minBet
                       - maxBet
                     properties:
@@ -10981,6 +12656,95 @@ paths:
                         type: array
                         items:
                           type: integer
+                      stats:
+                        additionalProperties: false
+                        title: RouletteStats
+                        type: object
+                        required:
+                          - rounds
+                          - red
+                          - black
+                          - zero
+                          - hot
+                          - streak
+                          - wagered
+                          - best
+                          - worst
+                        properties:
+                          rounds:
+                            type: integer
+                          red:
+                            type: integer
+                          black:
+                            type: integer
+                          zero:
+                            type: integer
+                          hot:
+                            type: array
+                            items:
+                              additionalProperties: false
+                              type: object
+                              required:
+                                - n
+                                - count
+                              properties:
+                                n:
+                                  type: integer
+                                count:
+                                  type: integer
+                          streak:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - color
+                              - count
+                            properties:
+                              color:
+                                anyOf:
+                                  - type: string
+                                    enum:
+                                      - red
+                                  - type: string
+                                    enum:
+                                      - black
+                                  - type: string
+                                    enum:
+                                      - green
+                              count:
+                                type: integer
+                            nullable: true
+                          wagered:
+                            type: integer
+                          best:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - net
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              net:
+                                type: integer
+                            nullable: true
+                          worst:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - net
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              net:
+                                type: integer
+                            nullable: true
                       minBet:
                         type: integer
                       maxBet:
@@ -11467,6 +13231,7 @@ paths:
                       - actingPlayerId
                       - rivals
                       - deltas
+                      - stats
                     properties:
                       handId:
                         type: integer
@@ -11587,6 +13352,62 @@ paths:
                               type: string
                             delta:
                               type: integer
+                      stats:
+                        additionalProperties: false
+                        title: BjStats
+                        type: object
+                        required:
+                          - hands
+                          - wins
+                          - pushes
+                          - losses
+                          - blackjacks
+                          - busts
+                          - best
+                          - worst
+                        properties:
+                          hands:
+                            type: integer
+                          wins:
+                            type: integer
+                          pushes:
+                            type: integer
+                          losses:
+                            type: integer
+                          blackjacks:
+                            type: integer
+                          busts:
+                            type: integer
+                          best:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - delta
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              delta:
+                                type: integer
+                            nullable: true
+                          worst:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - delta
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              delta:
+                                type: integer
+                            nullable: true
                     nullable: true
                   rouMinBet:
                     type: integer
@@ -11612,6 +13433,7 @@ paths:
                       - house
                       - deltas
                       - history
+                      - stats
                       - minBet
                       - maxBet
                     properties:
@@ -11837,6 +13659,95 @@ paths:
                         type: array
                         items:
                           type: integer
+                      stats:
+                        additionalProperties: false
+                        title: RouletteStats
+                        type: object
+                        required:
+                          - rounds
+                          - red
+                          - black
+                          - zero
+                          - hot
+                          - streak
+                          - wagered
+                          - best
+                          - worst
+                        properties:
+                          rounds:
+                            type: integer
+                          red:
+                            type: integer
+                          black:
+                            type: integer
+                          zero:
+                            type: integer
+                          hot:
+                            type: array
+                            items:
+                              additionalProperties: false
+                              type: object
+                              required:
+                                - n
+                                - count
+                              properties:
+                                n:
+                                  type: integer
+                                count:
+                                  type: integer
+                          streak:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - color
+                              - count
+                            properties:
+                              color:
+                                anyOf:
+                                  - type: string
+                                    enum:
+                                      - red
+                                  - type: string
+                                    enum:
+                                      - black
+                                  - type: string
+                                    enum:
+                                      - green
+                              count:
+                                type: integer
+                            nullable: true
+                          wagered:
+                            type: integer
+                          best:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - net
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              net:
+                                type: integer
+                            nullable: true
+                          worst:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - net
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              net:
+                                type: integer
+                            nullable: true
                       minBet:
                         type: integer
                       maxBet:
@@ -12261,6 +14172,7 @@ paths:
                       - actingPlayerId
                       - rivals
                       - deltas
+                      - stats
                     properties:
                       handId:
                         type: integer
@@ -12381,6 +14293,62 @@ paths:
                               type: string
                             delta:
                               type: integer
+                      stats:
+                        additionalProperties: false
+                        title: BjStats
+                        type: object
+                        required:
+                          - hands
+                          - wins
+                          - pushes
+                          - losses
+                          - blackjacks
+                          - busts
+                          - best
+                          - worst
+                        properties:
+                          hands:
+                            type: integer
+                          wins:
+                            type: integer
+                          pushes:
+                            type: integer
+                          losses:
+                            type: integer
+                          blackjacks:
+                            type: integer
+                          busts:
+                            type: integer
+                          best:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - delta
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              delta:
+                                type: integer
+                            nullable: true
+                          worst:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - delta
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              delta:
+                                type: integer
+                            nullable: true
                     nullable: true
                   rouMinBet:
                     type: integer
@@ -12406,6 +14374,7 @@ paths:
                       - house
                       - deltas
                       - history
+                      - stats
                       - minBet
                       - maxBet
                     properties:
@@ -12631,6 +14600,95 @@ paths:
                         type: array
                         items:
                           type: integer
+                      stats:
+                        additionalProperties: false
+                        title: RouletteStats
+                        type: object
+                        required:
+                          - rounds
+                          - red
+                          - black
+                          - zero
+                          - hot
+                          - streak
+                          - wagered
+                          - best
+                          - worst
+                        properties:
+                          rounds:
+                            type: integer
+                          red:
+                            type: integer
+                          black:
+                            type: integer
+                          zero:
+                            type: integer
+                          hot:
+                            type: array
+                            items:
+                              additionalProperties: false
+                              type: object
+                              required:
+                                - n
+                                - count
+                              properties:
+                                n:
+                                  type: integer
+                                count:
+                                  type: integer
+                          streak:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - color
+                              - count
+                            properties:
+                              color:
+                                anyOf:
+                                  - type: string
+                                    enum:
+                                      - red
+                                  - type: string
+                                    enum:
+                                      - black
+                                  - type: string
+                                    enum:
+                                      - green
+                              count:
+                                type: integer
+                            nullable: true
+                          wagered:
+                            type: integer
+                          best:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - net
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              net:
+                                type: integer
+                            nullable: true
+                          worst:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - net
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              net:
+                                type: integer
+                            nullable: true
                       minBet:
                         type: integer
                       maxBet:
@@ -13074,6 +15132,7 @@ paths:
                       - actingPlayerId
                       - rivals
                       - deltas
+                      - stats
                     properties:
                       handId:
                         type: integer
@@ -13194,6 +15253,62 @@ paths:
                               type: string
                             delta:
                               type: integer
+                      stats:
+                        additionalProperties: false
+                        title: BjStats
+                        type: object
+                        required:
+                          - hands
+                          - wins
+                          - pushes
+                          - losses
+                          - blackjacks
+                          - busts
+                          - best
+                          - worst
+                        properties:
+                          hands:
+                            type: integer
+                          wins:
+                            type: integer
+                          pushes:
+                            type: integer
+                          losses:
+                            type: integer
+                          blackjacks:
+                            type: integer
+                          busts:
+                            type: integer
+                          best:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - delta
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              delta:
+                                type: integer
+                            nullable: true
+                          worst:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - delta
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              delta:
+                                type: integer
+                            nullable: true
                     nullable: true
                   rouMinBet:
                     type: integer
@@ -13219,6 +15334,7 @@ paths:
                       - house
                       - deltas
                       - history
+                      - stats
                       - minBet
                       - maxBet
                     properties:
@@ -13444,6 +15560,95 @@ paths:
                         type: array
                         items:
                           type: integer
+                      stats:
+                        additionalProperties: false
+                        title: RouletteStats
+                        type: object
+                        required:
+                          - rounds
+                          - red
+                          - black
+                          - zero
+                          - hot
+                          - streak
+                          - wagered
+                          - best
+                          - worst
+                        properties:
+                          rounds:
+                            type: integer
+                          red:
+                            type: integer
+                          black:
+                            type: integer
+                          zero:
+                            type: integer
+                          hot:
+                            type: array
+                            items:
+                              additionalProperties: false
+                              type: object
+                              required:
+                                - n
+                                - count
+                              properties:
+                                n:
+                                  type: integer
+                                count:
+                                  type: integer
+                          streak:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - color
+                              - count
+                            properties:
+                              color:
+                                anyOf:
+                                  - type: string
+                                    enum:
+                                      - red
+                                  - type: string
+                                    enum:
+                                      - black
+                                  - type: string
+                                    enum:
+                                      - green
+                              count:
+                                type: integer
+                            nullable: true
+                          wagered:
+                            type: integer
+                          best:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - net
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              net:
+                                type: integer
+                            nullable: true
+                          worst:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - net
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              net:
+                                type: integer
+                            nullable: true
                       minBet:
                         type: integer
                       maxBet:
@@ -13880,6 +16085,7 @@ paths:
                       - actingPlayerId
                       - rivals
                       - deltas
+                      - stats
                     properties:
                       handId:
                         type: integer
@@ -14000,6 +16206,62 @@ paths:
                               type: string
                             delta:
                               type: integer
+                      stats:
+                        additionalProperties: false
+                        title: BjStats
+                        type: object
+                        required:
+                          - hands
+                          - wins
+                          - pushes
+                          - losses
+                          - blackjacks
+                          - busts
+                          - best
+                          - worst
+                        properties:
+                          hands:
+                            type: integer
+                          wins:
+                            type: integer
+                          pushes:
+                            type: integer
+                          losses:
+                            type: integer
+                          blackjacks:
+                            type: integer
+                          busts:
+                            type: integer
+                          best:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - delta
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              delta:
+                                type: integer
+                            nullable: true
+                          worst:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - delta
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              delta:
+                                type: integer
+                            nullable: true
                     nullable: true
                   rouMinBet:
                     type: integer
@@ -14025,6 +16287,7 @@ paths:
                       - house
                       - deltas
                       - history
+                      - stats
                       - minBet
                       - maxBet
                     properties:
@@ -14250,6 +16513,95 @@ paths:
                         type: array
                         items:
                           type: integer
+                      stats:
+                        additionalProperties: false
+                        title: RouletteStats
+                        type: object
+                        required:
+                          - rounds
+                          - red
+                          - black
+                          - zero
+                          - hot
+                          - streak
+                          - wagered
+                          - best
+                          - worst
+                        properties:
+                          rounds:
+                            type: integer
+                          red:
+                            type: integer
+                          black:
+                            type: integer
+                          zero:
+                            type: integer
+                          hot:
+                            type: array
+                            items:
+                              additionalProperties: false
+                              type: object
+                              required:
+                                - n
+                                - count
+                              properties:
+                                n:
+                                  type: integer
+                                count:
+                                  type: integer
+                          streak:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - color
+                              - count
+                            properties:
+                              color:
+                                anyOf:
+                                  - type: string
+                                    enum:
+                                      - red
+                                  - type: string
+                                    enum:
+                                      - black
+                                  - type: string
+                                    enum:
+                                      - green
+                              count:
+                                type: integer
+                            nullable: true
+                          wagered:
+                            type: integer
+                          best:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - net
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              net:
+                                type: integer
+                            nullable: true
+                          worst:
+                            additionalProperties: false
+                            type: object
+                            required:
+                              - playerId
+                              - name
+                              - net
+                            properties:
+                              playerId:
+                                type: string
+                              name:
+                                type: string
+                              net:
+                                type: integer
+                            nullable: true
                       minBet:
                         type: integer
                       maxBet:
@@ -14684,6 +17036,7 @@ paths:
                           - actingPlayerId
                           - rivals
                           - deltas
+                          - stats
                         properties:
                           handId:
                             type: integer
@@ -14804,6 +17157,62 @@ paths:
                                   type: string
                                 delta:
                                   type: integer
+                          stats:
+                            additionalProperties: false
+                            title: BjStats
+                            type: object
+                            required:
+                              - hands
+                              - wins
+                              - pushes
+                              - losses
+                              - blackjacks
+                              - busts
+                              - best
+                              - worst
+                            properties:
+                              hands:
+                                type: integer
+                              wins:
+                                type: integer
+                              pushes:
+                                type: integer
+                              losses:
+                                type: integer
+                              blackjacks:
+                                type: integer
+                              busts:
+                                type: integer
+                              best:
+                                additionalProperties: false
+                                type: object
+                                required:
+                                  - playerId
+                                  - name
+                                  - delta
+                                properties:
+                                  playerId:
+                                    type: string
+                                  name:
+                                    type: string
+                                  delta:
+                                    type: integer
+                                nullable: true
+                              worst:
+                                additionalProperties: false
+                                type: object
+                                required:
+                                  - playerId
+                                  - name
+                                  - delta
+                                properties:
+                                  playerId:
+                                    type: string
+                                  name:
+                                    type: string
+                                  delta:
+                                    type: integer
+                                nullable: true
                         nullable: true
                       rouMinBet:
                         type: integer
@@ -14829,6 +17238,7 @@ paths:
                           - house
                           - deltas
                           - history
+                          - stats
                           - minBet
                           - maxBet
                         properties:
@@ -15054,6 +17464,95 @@ paths:
                             type: array
                             items:
                               type: integer
+                          stats:
+                            additionalProperties: false
+                            title: RouletteStats
+                            type: object
+                            required:
+                              - rounds
+                              - red
+                              - black
+                              - zero
+                              - hot
+                              - streak
+                              - wagered
+                              - best
+                              - worst
+                            properties:
+                              rounds:
+                                type: integer
+                              red:
+                                type: integer
+                              black:
+                                type: integer
+                              zero:
+                                type: integer
+                              hot:
+                                type: array
+                                items:
+                                  additionalProperties: false
+                                  type: object
+                                  required:
+                                    - n
+                                    - count
+                                  properties:
+                                    n:
+                                      type: integer
+                                    count:
+                                      type: integer
+                              streak:
+                                additionalProperties: false
+                                type: object
+                                required:
+                                  - color
+                                  - count
+                                properties:
+                                  color:
+                                    anyOf:
+                                      - type: string
+                                        enum:
+                                          - red
+                                      - type: string
+                                        enum:
+                                          - black
+                                      - type: string
+                                        enum:
+                                          - green
+                                  count:
+                                    type: integer
+                                nullable: true
+                              wagered:
+                                type: integer
+                              best:
+                                additionalProperties: false
+                                type: object
+                                required:
+                                  - playerId
+                                  - name
+                                  - net
+                                properties:
+                                  playerId:
+                                    type: string
+                                  name:
+                                    type: string
+                                  net:
+                                    type: integer
+                                nullable: true
+                              worst:
+                                additionalProperties: false
+                                type: object
+                                required:
+                                  - playerId
+                                  - name
+                                  - net
+                                properties:
+                                  playerId:
+                                    type: string
+                                  name:
+                                    type: string
+                                  net:
+                                    type: integer
+                                nullable: true
                           minBet:
                             type: integer
                           maxBet:

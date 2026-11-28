@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  BlackjackError, act, canBet, handValue, isBlackjack, legalBjActions, newRound, placeBet, publicBjView, skipRound, type BjState,
+  BlackjackError, act, analyzeBlackjack, canBet, handValue, isBlackjack, legalBjActions, newRound, placeBet, publicBjView, skipRound, type BjState,
 } from './index';
 
 /** Mazo armado: jugador, croupier, jugador, croupier y después lo que se pida. */
@@ -173,5 +173,25 @@ describe('suma cero en muchas manos', () => {
     }
     // Perder deja el saldo debajo de 0: no hay nada que lo impida.
     expect(negative).toBeGreaterThan(0);
+  });
+});
+
+describe('análisis de la partida', () => {
+  it('cuenta victorias, empates, derrotas, blackjacks, pasadas y la mejor y peor mano; las salteadas no cuentan', () => {
+    const s = analyzeBlackjack([
+      { playerId: 'a', result: 'blackjack', delta: 75 },
+      { playerId: 'b', result: 'win', delta: 40 },
+      { playerId: 'a', result: 'push', delta: 0 },
+      { playerId: 'b', result: 'lose', delta: -30 },
+      { playerId: 'a', result: 'bust', delta: -60 },
+      { playerId: 'c', result: 'skipped', delta: 0 },
+    ]);
+    expect(s).toEqual({
+      hands: 5, wins: 2, pushes: 1, losses: 2, blackjacks: 1, busts: 1,
+      best: { playerId: 'a', delta: 75 }, worst: { playerId: 'a', delta: -60 },
+    });
+  });
+  it('sin manos no hay nada que analizar', () => {
+    expect(analyzeBlackjack([])).toMatchObject({ hands: 0, best: null, worst: null });
   });
 });

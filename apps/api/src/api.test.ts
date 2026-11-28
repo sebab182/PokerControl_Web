@@ -2670,6 +2670,8 @@ describe('mesa online', () => {
       expect(nets(done)).toEqual({ [pid[0]]: 100, [pid[1]]: -50, [pid[2]]: -50 });
       expect(total(done)).toBe(0);
       expect(done.blackjack.deltas).toEqual(expect.arrayContaining([{ playerId: pid[0], delta: 100 }, { playerId: pid[1], delta: -50 }]));
+      // Análisis de la partida: una mano ganada.
+      expect(done.blackjack.stats).toMatchObject({ hands: 1, wins: 1, pushes: 0, losses: 0, blackjacks: 0, busts: 0, best: { name: 'J0', delta: 100 }, worst: null });
     });
 
     it('perder le paga a cada rival; doblar duplica la apuesta y da una sola carta', async () => {
@@ -3118,6 +3120,38 @@ describe('mesa online', () => {
         expect((await view(a)).roulette).toMatchObject({ mine: [], last: [{ type: 'red', amount: 20 }, { type: 'straight', n: 7, amount: 10 }] });
         const again = await bets(a, (await view(a)).roulette.last);
         expect(again.roulette.mine).toHaveLength(2);
+      } finally { afterEachReset(); }
+    });
+
+    it('análisis de la partida y un historial de 10 números que sigue en las partidas siguientes', async () => {
+      try {
+        const { a, b } = await threeAtTable();
+        for (const n of [14, 14, 0]) {
+          fix(n);
+          await bets(a, [{ type: 'red', amount: 20 }]);
+          await a.ok('POST', '/g/table/roulette/spin');
+        }
+        const v = await view(a);
+        expect(v.roulette.history).toEqual([0, 14, 14]);
+        expect(v.roulette.stats).toMatchObject({
+          rounds: 3, red: 2, black: 0, zero: 1, wagered: 60,
+          hot: [{ n: 14, count: 2 }], streak: { color: 'green', count: 1 },
+          best: { name: 'J0', net: 20 }, worst: { name: 'J0', net: -20 },
+        });
+        // Otra partida: arranca el análisis de cero, pero los números anteriores siguen en el historial (hasta 10).
+        await a.idem('/g/table/close');
+        await a.ok('POST', '/g/table/join');
+        await b.ok('POST', '/g/table/join');
+        const second = await a.idem('/g/table/start', { game: 'roulette' });
+        expect(second.roulette.stats).toMatchObject({ rounds: 0, wagered: 0, best: null, streak: null });
+        expect(second.roulette.history).toEqual([0, 14, 14]);
+        for (let i = 0; i < 9; i++) {
+          fix(i + 1);
+          await bets(a, [{ type: 'odd', amount: 10 }]);
+          await a.ok('POST', '/g/table/roulette/spin');
+        }
+        expect((await view(a)).roulette.history).toHaveLength(10);
+        expect((await view(a)).roulette.history[0]).toBe(9);
       } finally { afterEachReset(); }
     });
 

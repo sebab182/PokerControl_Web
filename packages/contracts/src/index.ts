@@ -406,6 +406,12 @@ export const HandView = Obj({
 export const BjResult = T.Union([
   T.Literal('blackjack'), T.Literal('win'), T.Literal('push'), T.Literal('lose'), T.Literal('bust'), T.Literal('skipped'),
 ]);
+/** Análisis mínimo de la partida de blackjack: cómo les fue a quienes jugaron su mano contra el croupier. */
+export const BjStats = Obj({
+  hands: T.Integer(), wins: T.Integer(), pushes: T.Integer(), losses: T.Integer(), blackjacks: T.Integer(), busts: T.Integer(),
+  best: Nullable(Obj({ playerId: T.String(), name: T.String(), delta: T.Integer() })),
+  worst: Nullable(Obj({ playerId: T.String(), name: T.String(), delta: T.Integer() })),
+}, 'BjStats');
 /** Una mano de blackjack «contra todos»: un jugador contra el croupier y, por cabeza, contra todos los demás. */
 export const BjView = Obj({
   handId: T.Integer(),
@@ -435,6 +441,8 @@ export const BjView = Obj({
   rivals: T.Array(Obj({ playerId: T.String(), stack: T.Integer() })),
   /** Al terminar: lo que ganó o perdió cada uno (el jugador y sus rivales). */
   deltas: T.Array(Obj({ playerId: T.String(), delta: T.Integer() })),
+  /** Análisis de la partida en la que se registra la mano. */
+  stats: BjStats,
 }, 'BjView');
 /** Una apuesta de ruleta: el pleno (`n` de 0 a 36), docena y columna (`n` de 1 a 3) o una de las externas. */
 export const RouletteBet = Obj({
@@ -445,6 +453,17 @@ export const RouletteBet = Obj({
   n: T.Optional(T.Integer({ minimum: 0, maximum: 36 })),
   amount: T.Integer({ minimum: 1, maximum: 1_000_000 }),
 }, 'RouletteBet');
+/** Análisis mínimo de la partida de ruleta. */
+export const RouletteStats = Obj({
+  rounds: T.Integer(), red: T.Integer(), black: T.Integer(), zero: T.Integer(),
+  /** Los números que más salieron (al menos 2 veces). */
+  hot: T.Array(Obj({ n: T.Integer(), count: T.Integer() })),
+  /** Rondas seguidas, hasta la última, con el mismo color. */
+  streak: Nullable(Obj({ color: T.Union([T.Literal('red'), T.Literal('black'), T.Literal('green')]), count: T.Integer() })),
+  wagered: T.Integer(),
+  best: Nullable(Obj({ playerId: T.String(), name: T.String(), net: T.Integer() })),
+  worst: Nullable(Obj({ playerId: T.String(), name: T.String(), net: T.Integer() })),
+}, 'RouletteStats');
 /** La ronda de ruleta en curso (o la última, hasta que se abre otra con la primera apuesta). */
 export const RouletteView = Obj({
   roundNo: T.Integer(),
@@ -467,8 +486,10 @@ export const RouletteView = Obj({
   nets: T.Array(Obj({ playerId: T.String(), net: T.Integer() })),
   house: Nullable(T.Integer()),
   deltas: T.Array(Obj({ playerId: T.String(), delta: T.Integer() })),
-  /** Últimos números que salieron, del más nuevo al más viejo. */
+  /** Los últimos 10 números que salieron en esta mesa (también de partidas anteriores), del más nuevo al más viejo. */
   history: T.Array(T.Integer()),
+  /** Análisis de la partida en curso. */
+  stats: RouletteStats,
   minBet: T.Integer(), maxBet: T.Integer(),
 }, 'RouletteView');
 export const TableView = Obj({
